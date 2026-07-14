@@ -1,7 +1,14 @@
 import "server-only";
 
+import type { MisconceptionId } from "@/domain/contracts";
 import { MISCONCEPTION_BY_ID, misconceptionIdSchema } from "@/domain/misconception-taxonomy.mjs";
 import { getDatabase } from "@/lib/db";
+import {
+  getLatestTeachingBrief,
+  listLatestPracticeByMembership,
+  type PracticeSummary,
+  type TeachingBriefRecord,
+} from "@/server/repositories/instructional-support";
 
 type AssignmentRow = {
   id: string;
@@ -72,13 +79,14 @@ export type HeatmapDashboard = {
   studentCount: number;
   diagnosedStudentCount: number;
   largestCluster: {
-    misconceptionId: string;
+    misconceptionId: MisconceptionId;
     label: string;
     shortLabel: string;
     affectedCount: number;
   } | null;
+  teachingBrief: TeachingBriefRecord | null;
   columns: Array<{
-    misconceptionId: string;
+    misconceptionId: MisconceptionId;
     label: string;
     shortLabel: string;
     affectedCount: number;
@@ -90,8 +98,14 @@ export type HeatmapDashboard = {
     studentName: string;
     diagnosedCount: number;
     reviewCount: number;
+    practiceTarget: {
+      misconceptionId: MisconceptionId;
+      misconceptionLabel: string;
+      shortLabel: string;
+    } | null;
+    practice: PracticeSummary | null;
     cells: Array<{
-      misconceptionId: string;
+      misconceptionId: MisconceptionId;
       state: "MISCONCEPTION" | "CLEAR" | "REVIEW" | "NO_DATA";
       severity: 0 | 1 | 2 | 3;
       frequency: number;
@@ -186,7 +200,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
   }
 
   const aggregateByMisconception = new Map<
-    string,
+    MisconceptionId,
     {
       memberships: Set<string>;
       problemPositions: Set<number>;
@@ -215,10 +229,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
 
   const columns = [...aggregateByMisconception.entries()]
     .flatMap(([misconceptionId, aggregate]) => {
-      const parsedId = misconceptionIdSchema.safeParse(misconceptionId);
-      const term = parsedId.success
-        ? MISCONCEPTION_BY_ID.get(parsedId.data)
-        : undefined;
+      const term = MISCONCEPTION_BY_ID.get(misconceptionId);
       return term
         ? [
             {
@@ -255,7 +266,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
     steps: stepsByDiagnosis.get(diagnosis.diagnosis_id) ?? [],
   });
 
-  const rows = memberships.map((membership) => {
+  const rows: HeatmapDashboard["rows"] = memberships.map((membership) => {
     const studentDiagnoses = diagnosesByMembership.get(membership.id) ?? [];
     const definitive = studentDiagnoses.filter((diagnosis) =>
       ["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
@@ -263,68 +274,94 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
     const review = studentDiagnoses.filter(
       (diagnosis) => !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
     );
+    const cells = columns.map((column) => {
+      const relevantProblemPositions =
+        aggregateByMisconception.get(column.misconceptionId)?.problemPositions ??
+        new Set<number>();
+      const relevantDiagnoses = studentDiagnoses.filter((diagnosis) =>
+        relevantProblemPositions.has(diagnosis.problem_position),
+      );
+      const matches = relevantDiagnoses.filter(
+        (diagnosis) =>
+          diagnosis.outcome === "MISCONCEPTION" &&
+          diagnosis.misconception_id === column.misconceptionId,
+      );
+      const strongest = [...matches].sort(
+        (left, right) =>
+          right.severity - left.severity ||
+          right.confidence - left.confidence ||
+          right.created_at.localeCompare(left.created_at),
+      )[0];
+      if (strongest) {
+        return {
+          misconceptionId: column.misconceptionId,
+          state: "MISCONCEPTION" as const,
+          severity: strongest.severity,
+          frequency: matches.length,
+          evidenceQuote: strongest.evidence_quote,
+          detail: detailFor(strongest),
+        };
+      }
+      if (
+        relevantDiagnoses.some((diagnosis) =>
+          ["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+        )
+      ) {
+        return {
+          misconceptionId: column.misconceptionId,
+          state: "CLEAR" as const,
+          severity: 0 as const,
+          frequency: 0,
+          evidenceQuote: null,
+          detail: null,
+        };
+      }
+      const reviewDiagnosis = relevantDiagnoses.find(
+        (diagnosis) =>
+          !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+      );
+      return {
+        misconceptionId: column.misconceptionId,
+        state: reviewDiagnosis ? ("REVIEW" as const) : ("NO_DATA" as const),
+        severity: 0 as const,
+        frequency: 0,
+        evidenceQuote: null,
+        detail: reviewDiagnosis ? detailFor(reviewDiagnosis) : null,
+      };
+    });
+    const targetCell = cells.find((cell) => cell.state === "MISCONCEPTION");
+    const targetColumn = targetCell
+      ? columns.find(
+          (column) => column.misconceptionId === targetCell.misconceptionId,
+        )
+      : null;
     return {
       membershipId: membership.id,
       studentName: membership.display_name,
       diagnosedCount: definitive.length,
       reviewCount: review.length,
-      cells: columns.map((column) => {
-        const relevantProblemPositions =
-          aggregateByMisconception.get(column.misconceptionId)?.problemPositions ??
-          new Set<number>();
-        const relevantDiagnoses = studentDiagnoses.filter((diagnosis) =>
-          relevantProblemPositions.has(diagnosis.problem_position),
-        );
-        const matches = relevantDiagnoses.filter(
-          (diagnosis) =>
-            diagnosis.outcome === "MISCONCEPTION" &&
-            diagnosis.misconception_id === column.misconceptionId,
-        );
-        const strongest = [...matches].sort(
-          (left, right) =>
-            right.severity - left.severity ||
-            right.confidence - left.confidence ||
-            right.created_at.localeCompare(left.created_at),
-        )[0];
-        if (strongest) {
-          return {
-            misconceptionId: column.misconceptionId,
-            state: "MISCONCEPTION" as const,
-            severity: strongest.severity,
-            frequency: matches.length,
-            evidenceQuote: strongest.evidence_quote,
-            detail: detailFor(strongest),
-          };
-        }
-        if (
-          relevantDiagnoses.some((diagnosis) =>
-            ["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
-          )
-        ) {
-          return {
-            misconceptionId: column.misconceptionId,
-            state: "CLEAR" as const,
-            severity: 0 as const,
-            frequency: 0,
-            evidenceQuote: null,
-            detail: null,
-          };
-        }
-        const reviewDiagnosis = relevantDiagnoses.find(
-          (diagnosis) =>
-            !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
-        );
-        return {
-          misconceptionId: column.misconceptionId,
-          state: reviewDiagnosis ? ("REVIEW" as const) : ("NO_DATA" as const),
-          severity: 0 as const,
-          frequency: 0,
-          evidenceQuote: null,
-          detail: reviewDiagnosis ? detailFor(reviewDiagnosis) : null,
-        };
-      }),
+      practiceTarget:
+        targetCell && targetColumn
+          ? {
+              misconceptionId: targetCell.misconceptionId,
+              misconceptionLabel: targetColumn.label,
+              shortLabel: targetColumn.shortLabel,
+            }
+          : null,
+      practice: null,
+      cells,
     };
   });
+
+  const practices = listLatestPracticeByMembership(assignment.id);
+  for (const row of rows) {
+    row.practice =
+      practices.find(
+        (practice) =>
+          practice.membershipId === row.membershipId &&
+          practice.misconceptionId === row.practiceTarget?.misconceptionId,
+      ) ?? null;
+  }
 
   rows.sort((left, right) => {
     const firstLeft = left.cells[0];
@@ -359,6 +396,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
           affectedCount: largest.affectedCount,
         }
       : null,
+    teachingBrief: getLatestTeachingBrief(assignment.id),
     columns,
     rows,
   };

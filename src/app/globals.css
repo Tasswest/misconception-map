@@ -45,3 +45,50 @@ button {
   background: var(--mint);
   color: var(--sidebar);
 }
+
+@page {
+  size: A4;
+  margin: 14mm;
+}
+
+@media print {
+  html,
+  body {
+    background: white;
+  }
+
+  .app-shell-layout {
+    display: block !important;
+    min-height: 0;
+  }
+
+  .app-shell-sidebar,
+  .app-shell-header,
+  .print-hidden {
+    display: none !important;
+  }
+
+  .app-shell-main {
+    width: 100%;
+  }
+
+  .print-root {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .print-sheet {
+    min-height: calc(297mm - 28mm);
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: white !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .print-page-break {
+    break-before: page;
+    page-break-before: always;
+  }
+}

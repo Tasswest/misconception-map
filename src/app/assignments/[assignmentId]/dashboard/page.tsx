@@ -15,10 +15,11 @@ export default async function AssignmentDashboardPage({
   const { assignmentId } = await params;
   const dashboard = getHeatmapDashboard(assignmentId);
   if (!dashboard) notFound();
+  const liveAiReady = isOpenAIConfigured();
 
   return (
-    <AppShell activeNav="Dashboard" liveAiReady={isOpenAIConfigured()}>
-      <MisconceptionHeatmap dashboard={dashboard} />
+    <AppShell activeNav="Dashboard" liveAiReady={liveAiReady}>
+      <MisconceptionHeatmap dashboard={dashboard} liveAiReady={liveAiReady} />
     </AppShell>
   );
 }

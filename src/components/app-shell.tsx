@@ -40,8 +40,8 @@ export function AppShell({
   activeNav = "Overview",
 }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-[var(--canvas)] text-[var(--ink)] lg:grid lg:grid-cols-[272px_1fr]">
-      <aside className="hidden min-h-screen flex-col bg-[var(--sidebar)] px-5 py-6 text-white lg:flex">
+    <div className="app-shell-layout min-h-screen bg-[var(--canvas)] text-[var(--ink)] lg:grid lg:grid-cols-[272px_1fr]">
+      <aside className="app-shell-sidebar hidden min-h-screen flex-col bg-[var(--sidebar)] px-5 py-6 text-white lg:flex">
         <Link
           className="flex items-center gap-3 rounded-xl px-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--mint)]"
           href="/"
@@ -103,14 +103,14 @@ export function AppShell({
           </div>
           <p className="mt-2 text-xs leading-5 text-white/50">
             {liveAiReady
-              ? "GPT-5.6 is configured for live diagnosis."
-              : "Add an API key when you are ready for live diagnosis."}
+              ? "GPT-5.6 is configured for live diagnosis and instructional support."
+              : "Add an API key for live diagnosis and instructional support."}
           </p>
         </div>
       </aside>
 
-      <div className="min-w-0">
-        <header className="flex h-16 items-center justify-between border-b border-black/[0.06] bg-white/75 px-5 backdrop-blur md:px-8 lg:px-10">
+      <div className="app-shell-main min-w-0">
+        <header className="app-shell-header flex h-16 items-center justify-between border-b border-black/[0.06] bg-white/75 px-5 backdrop-blur md:px-8 lg:px-10">
           <Link className="flex items-center gap-3 lg:hidden" href="/">
             <div className="grid size-8 grid-cols-2 gap-0.5 rounded-lg bg-[var(--sidebar)] p-1.5">
               <span className="rounded-[2px] bg-[var(--mint)]" />

@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { AlertIcon, CheckIcon, GridIcon, XIcon } from "@/components/icons";
+import {
+  AlertIcon,
+  CheckIcon,
+  GridIcon,
+  SparkIcon,
+  SpinnerIcon,
+  XIcon,
+} from "@/components/icons";
 import type {
   HeatmapDashboard,
   HeatmapDiagnosisDetail,
@@ -11,14 +18,90 @@ import type {
 
 export function MisconceptionHeatmap({
   dashboard,
+  liveAiReady,
 }: {
   dashboard: HeatmapDashboard;
+  liveAiReady: boolean;
 }) {
   const [selected, setSelected] = useState<{
     studentName: string;
     misconceptionLabel: string;
     detail: HeatmapDiagnosisDetail;
   } | null>(null);
+  const [teachingBrief, setTeachingBrief] = useState(dashboard.teachingBrief);
+  const [briefBusy, setBriefBusy] = useState(false);
+  const [briefError, setBriefError] = useState<string | null>(null);
+  const [practiceBusy, setPracticeBusy] = useState<string | null>(null);
+  const [practiceError, setPracticeError] = useState<string | null>(null);
+  const [practiceByTarget, setPracticeByTarget] = useState(() =>
+    new Map(
+      dashboard.rows.flatMap((row) =>
+        row.practice && row.practiceTarget
+          ? [[practiceKey(row.membershipId, row.practiceTarget.misconceptionId), row.practice] as const]
+          : [],
+      ),
+    ),
+  );
+
+  async function createTeachingBrief() {
+    if (briefBusy || !liveAiReady) return;
+    setBriefBusy(true);
+    setBriefError(null);
+    try {
+      const data = await postGeneration(
+        `/api/assignments/${encodeURIComponent(dashboard.assignment.id)}/teaching-brief`,
+        {},
+      );
+      setTeachingBrief(data as NonNullable<HeatmapDashboard["teachingBrief"]>);
+    } catch (error) {
+      setBriefError(messageFromError(error));
+    } finally {
+      setBriefBusy(false);
+    }
+  }
+
+  async function createPractice(row: HeatmapDashboard["rows"][number]) {
+    if (!row.practiceTarget || practiceBusy || !liveAiReady) return;
+    const key = practiceKey(row.membershipId, row.practiceTarget.misconceptionId);
+    setPracticeBusy(key);
+    setPracticeError(null);
+    try {
+      const data = await postGeneration(
+        `/api/assignments/${encodeURIComponent(dashboard.assignment.id)}/practice`,
+        {
+          membershipId: row.membershipId,
+          misconceptionId: row.practiceTarget.misconceptionId,
+        },
+      );
+      const record = data as Record<string, unknown>;
+      const worksheetId = typeof record.id === "string" ? record.id : "";
+      if (!worksheetId) throw new Error("The generated worksheet did not return an ID.");
+      setPracticeByTarget((current) => {
+        const next = new Map(current);
+        next.set(key, {
+          worksheetId,
+          membershipId: row.membershipId,
+          misconceptionId: row.practiceTarget!.misconceptionId,
+          title: typeof record.title === "string" ? record.title : "Targeted practice",
+          modelStatus:
+            record.modelStatus === "SUPPORTED" ? "SUPPORTED" : "PROVISIONAL",
+          ruleStatement:
+            typeof record.ruleStatement === "string"
+              ? record.ruleStatement
+              : "Provisional rule hypothesis",
+          createdAt:
+            typeof record.createdAt === "string"
+              ? record.createdAt
+              : new Date().toISOString(),
+        });
+        return next;
+      });
+    } catch (error) {
+      setPracticeError(`${row.studentName}: ${messageFromError(error)}`);
+    } finally {
+      setPracticeBusy(null);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-[1500px] px-5 py-7 md:px-8 lg:px-10 lg:py-9">
@@ -63,9 +146,73 @@ export function MisconceptionHeatmap({
               </p>
             </div>
           </div>
-          <p className="text-xs font-medium text-[var(--muted)]">
-            {dashboard.diagnosedStudentCount} students have diagnosed work
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs font-medium text-[var(--muted)]">
+              {dashboard.diagnosedStudentCount} students have diagnosed work
+            </p>
+            <button
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#244b42] disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={briefBusy || !liveAiReady}
+              onClick={() => void createTeachingBrief()}
+              title={liveAiReady ? undefined : "Configure OPENAI_API_KEY to generate the brief"}
+              type="button"
+            >
+              {briefBusy ? (
+                <SpinnerIcon className="size-3.5 animate-spin" />
+              ) : (
+                <SparkIcon className="size-3.5" />
+              )}
+              {briefBusy
+                ? "Writing tomorrow’s brief…"
+                : teachingBrief
+                  ? "Refresh brief"
+                  : "Teach This Tomorrow"}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {briefError ? (
+        <p
+          aria-live="polite"
+          className="mt-3 rounded-xl border border-[var(--coral)]/20 bg-[var(--soft-coral)] px-4 py-3 text-sm text-[#8e402d]"
+        >
+          {briefError}
+        </p>
+      ) : null}
+
+      {teachingBrief ? (
+        <section className="mt-5 overflow-hidden rounded-[24px] border border-[var(--sage)]/15 bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
+          <div className="grid gap-5 p-5 md:grid-cols-[minmax(0,1fr)_320px] md:p-6">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
+                Teach This Tomorrow
+              </p>
+              <h2 className="mt-2 text-xl font-semibold tracking-[-0.025em]">
+                {teachingBrief.misconceptionLabel}
+              </h2>
+              <p className="mt-3 text-sm leading-7 text-[var(--ink)]">
+                {teachingBrief.paragraph}
+              </p>
+              <p className="mt-3 text-[10px] font-medium text-[var(--muted)]">
+                Evidence snapshot: {teachingBrief.clusterStudentCount} of {teachingBrief.diagnosedStudentCount} diagnosed students · cutoff {formatDate(teachingBrief.evidenceCutoffAt)}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-[var(--sage)]/15 bg-[var(--soft-mint)]/65 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--sage)]">
+                Put this on the board
+              </p>
+              <p className="mt-3 whitespace-pre-wrap font-mono text-sm leading-6">
+                {teachingBrief.workedExample.problemPrompt}
+              </p>
+              <div className="mt-4 border-t border-[var(--sage)]/15 pt-3">
+                <p className="text-[10px] font-semibold text-[var(--muted)]">Worked answer</p>
+                <p className="mt-1 whitespace-pre-wrap font-mono text-sm font-semibold text-[var(--sidebar)]">
+                  {teachingBrief.workedExample.correctAnswer}
+                </p>
+              </div>
+            </div>
+          </div>
         </section>
       ) : null}
 
@@ -89,6 +236,15 @@ export function MisconceptionHeatmap({
           </div>
         </div>
 
+        {practiceError ? (
+          <p
+            aria-live="polite"
+            className="border-b border-[var(--coral)]/15 bg-[var(--soft-coral)] px-5 py-3 text-xs font-medium text-[#8e402d]"
+          >
+            {practiceError}
+          </p>
+        ) : null}
+
         {dashboard.columns.length === 0 ? (
           <div className="grid min-h-72 place-items-center px-6 py-12 text-center">
             <div className="max-w-md">
@@ -106,7 +262,7 @@ export function MisconceptionHeatmap({
             <div
               className="grid min-w-max"
               style={{
-                gridTemplateColumns: `210px repeat(${dashboard.columns.length}, minmax(132px, 1fr))`,
+                gridTemplateColumns: `250px repeat(${dashboard.columns.length}, minmax(132px, 1fr))`,
               }}
             >
               <div className="sticky left-0 z-20 border-b border-r border-black/[0.06] bg-[var(--paper)] p-4">
@@ -126,57 +282,92 @@ export function MisconceptionHeatmap({
                 </div>
               ))}
 
-              {dashboard.rows.flatMap((row) => [
-                <div
-                  className="sticky left-0 z-10 flex min-h-[72px] items-center border-b border-r border-black/[0.06] bg-[var(--paper)] px-4 py-3"
-                  key={`${row.membershipId}-name`}
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{row.studentName}</p>
-                    <p className="mt-1 text-[10px] text-[var(--muted)]">
-                      {row.diagnosedCount} diagnosed{row.reviewCount ? ` · ${row.reviewCount} review` : ""}
-                    </p>
-                  </div>
-                </div>,
-                ...row.cells.map((cell, columnIndex) => {
-                  const column = dashboard.columns[columnIndex];
-                  const copy = cellTooltip(cell, column.shortLabel, row.studentName);
-                  return (
-                    <div
-                      className="grid min-h-[72px] place-items-center border-b border-r border-black/[0.06] p-2"
-                      key={`${row.membershipId}-${cell.misconceptionId}`}
-                    >
-                      <button
-                        aria-label={copy}
-                        className={`group relative grid size-11 place-items-center rounded-xl shadow-[inset_0_0_0_1px_rgba(0,0,0,0.035)] transition ${cellClass(cell.state, cell.severity)} ${cell.detail ? "cursor-pointer hover:scale-105 hover:shadow-md" : "cursor-default"}`}
-                        disabled={!cell.detail}
-                        onClick={() => {
-                          if (!cell.detail) return;
-                          setSelected({
-                            studentName: row.studentName,
-                            misconceptionLabel: column.label,
-                            detail: cell.detail,
-                          });
-                        }}
-                        title={copy}
-                        type="button"
-                      >
-                        {cell.state === "MISCONCEPTION" ? (
-                          <span className="text-xs font-bold text-[#623326]">
-                            {cell.frequency > 1 ? cell.frequency : cell.severity}
-                          </span>
-                        ) : cell.state === "CLEAR" ? (
-                          <CheckIcon className="size-4 text-[var(--sidebar)]" />
-                        ) : cell.state === "REVIEW" ? (
-                          <AlertIcon className="size-4 text-[#765725]" />
+              {dashboard.rows.flatMap((row) => {
+                const key = row.practiceTarget
+                  ? practiceKey(row.membershipId, row.practiceTarget.misconceptionId)
+                  : "";
+                const practice = key ? practiceByTarget.get(key) : null;
+                return [
+                  <div
+                    className="sticky left-0 z-10 flex min-h-[88px] items-center border-b border-r border-black/[0.06] bg-[var(--paper)] px-4 py-3"
+                    key={`${row.membershipId}-name`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{row.studentName}</p>
+                      <p className="mt-1 text-[10px] text-[var(--muted)]">
+                        {row.diagnosedCount} diagnosed{row.reviewCount ? ` · ${row.reviewCount} review` : ""}
+                      </p>
+                      {row.practiceTarget ? (
+                        practice ? (
+                          <Link
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[var(--soft-mint)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--sidebar)] transition hover:bg-[var(--mint)]/55"
+                            href={`/assignments/${dashboard.assignment.id}/practice/${practice.worksheetId}`}
+                          >
+                            <CheckIcon className="size-3" /> Open practice
+                          </Link>
                         ) : (
-                          <span className="size-1.5 rounded-full bg-black/15" />
-                        )}
-                      </button>
+                          <button
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-[var(--sage)]/20 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-[var(--sidebar)] transition hover:bg-[var(--soft-mint)] disabled:cursor-not-allowed disabled:opacity-45"
+                            disabled={practiceBusy !== null || !liveAiReady}
+                            onClick={() => void createPractice(row)}
+                            title={`Generate practice for ${row.practiceTarget.shortLabel}`}
+                            type="button"
+                          >
+                            {practiceBusy === key ? (
+                              <SpinnerIcon className="size-3 animate-spin" />
+                            ) : (
+                              <SparkIcon className="size-3" />
+                            )}
+                            {practiceBusy === key ? "Generating…" : "Generate practice"}
+                          </button>
+                        )
+                      ) : null}
                     </div>
-                  );
-                }),
-              ])}
+                  </div>,
+                  ...row.cells.map((cell, columnIndex) => {
+                    const column = dashboard.columns[columnIndex];
+                    const copy = cellTooltip(
+                      cell,
+                      column.shortLabel,
+                      row.studentName,
+                    );
+                    return (
+                      <div
+                        className="grid min-h-[88px] place-items-center border-b border-r border-black/[0.06] p-2"
+                        key={`${row.membershipId}-${cell.misconceptionId}`}
+                      >
+                        <button
+                          aria-label={copy}
+                          className={`group relative grid size-11 place-items-center rounded-xl shadow-[inset_0_0_0_1px_rgba(0,0,0,0.035)] transition ${cellClass(cell.state, cell.severity)} ${cell.detail ? "cursor-pointer hover:scale-105 hover:shadow-md" : "cursor-default"}`}
+                          disabled={!cell.detail}
+                          onClick={() => {
+                            if (!cell.detail) return;
+                            setSelected({
+                              studentName: row.studentName,
+                              misconceptionLabel: column.label,
+                              detail: cell.detail,
+                            });
+                          }}
+                          title={copy}
+                          type="button"
+                        >
+                          {cell.state === "MISCONCEPTION" ? (
+                            <span className="text-xs font-bold text-[#623326]">
+                              {cell.frequency > 1 ? cell.frequency : cell.severity}
+                            </span>
+                          ) : cell.state === "CLEAR" ? (
+                            <CheckIcon className="size-4 text-[var(--sidebar)]" />
+                          ) : cell.state === "REVIEW" ? (
+                            <AlertIcon className="size-4 text-[#765725]" />
+                          ) : (
+                            <span className="size-1.5 rounded-full bg-black/15" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  }),
+                ];
+              })}
             </div>
           </div>
         )}
@@ -187,6 +378,46 @@ export function MisconceptionHeatmap({
       ) : null}
     </div>
   );
+}
+
+function practiceKey(membershipId: string, misconceptionId: string) {
+  return `${membershipId}:${misconceptionId}`;
+}
+
+async function postGeneration(url: string, body: unknown) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | { data?: unknown; error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(
+      payload?.error?.message ?? "The generation request did not complete.",
+    );
+  }
+  if (payload?.data === undefined) {
+    throw new Error("The generation request returned no saved result.");
+  }
+  return payload.data;
+}
+
+function messageFromError(error: unknown) {
+  return error instanceof Error ? error.message : "The generation request failed.";
+}
+
+function formatDate(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : new Intl.DateTimeFormat("en", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(parsed);
 }
 
 function DiagnosisDrawer({
