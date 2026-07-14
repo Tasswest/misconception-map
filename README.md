@@ -1,6 +1,6 @@
 # Misconception Map
 
-Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. Phase 2 implements class and assignment setup, local work intake, live diagnosis, and the recoverable diagnosis queue.
+Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. Through Phase 3, the app implements worksheet-aware assignment setup, local work intake, live diagnosis, a recoverable diagnosis queue, and a clustered class misconception heatmap.
 
 The project is being built for the Education category of OpenAI Build Week. It is intentionally local-first: the web app and SQLite database run on one machine, while live diagnosis and generation use the OpenAI API.
 
@@ -39,17 +39,18 @@ MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
 - **npm run db:check** — verify database integrity and required bootstrap tables.
 - **npm run verify:phase1** — test taxonomy invariants, schema constraints, model versioning, and frozen-prediction behavior in an isolated temporary database.
 - **npm run verify:phase2** — test the strict model-facing schema plus evidence grounding, domain, confidence, and abstention policies without calling the API.
+- **npm run verify:images** — verify the exact handwriting regression fixture and the earlier algebra/fraction samples retain their complete, high-detail ink regions.
 - **npm run lint** — run ESLint.
 - **npm run typecheck** — run TypeScript without emitting files.
 - **npm run build** — create a production build.
-- **npm run check** — run lint, typecheck, both phase verifiers, and the production build.
+- **npm run check** — run lint, typecheck, all deterministic verifiers, and the production build.
 
 The `npm run seed` command and synthetic `sample-work/` images arrive in Phase 5; they are not part of this handoff yet.
 
 ## Architecture
 
 - Next.js App Router and React Server Components for database-backed pages.
-- Small client-side islands for the Phase 2 upload queue and progress; later phases add interactive heatmap cells and print controls.
+- Small client-side islands for the upload queue, progress, worksheet review, and interactive heatmap evidence drawer; a later phase adds print controls.
 - SQLite through better-sqlite3, with versioned SQL migrations stored in db/migrations.
 - Node.js Route Handlers for local file processing and OpenAI calls.
 - OpenAI Responses API with gpt-5.6, vision inputs, and strict structured outputs.
@@ -57,16 +58,21 @@ The `npm run seed` command and synthetic `sample-work/` images arrive in Phase 5
 
 ### Live diagnosis path
 
-1. A teacher creates a class, roster, and assignment-scoped diagnostic problem, including the expected answer.
-2. Each photo or typed response requires an explicit teacher confirmation that names in the work content were removed or covered, then is saved locally as its own work item. Multi-file queues are tracked as one batch, while diagnosis jobs run at concurrency two.
-3. Images are auto-oriented, resized, converted to WebP, stripped of metadata, and stored under `uploads/` with private local permissions.
-4. The server sends only the assignment context and selected work—not the roster name or local filename—to `gpt-5.6` through the Responses API with `store: false`.
-5. A strict root-object schema captures the transcription, observable steps, evidence quote, misconception candidate, confidence, severity, and review signals. A separate deterministic policy rejects ungrounded quotes, cross-domain labels, poor transcriptions, and definitive diagnoses below `0.72`.
-6. The successful API run, exact submission target, immutable answer version, diagnosis, steps, ranked candidates, hashes, token use, and latency are committed atomically. Transport failures retain the local work in a safe retry state.
+1. A teacher creates a class and roster, then pastes or photographs a blank exam/worksheet once for an assignment. `gpt-5.6` extracts its problem statements and expected answers into a strict schema; the teacher reviews and confirms them before any student work is accepted.
+2. Each photo or typed response is explicitly matched to one confirmed worksheet problem and requires confirmation that student names were removed or covered. The response is then saved locally as its own work item. Multi-file queues are tracked as one batch, while diagnosis jobs run at concurrency two.
+3. Student images are auto-oriented, cropped to a line-aware ink region, locally contrast-normalized, enlarged to at least a 1,800-pixel long edge when needed, converted to high-quality WebP, stripped of metadata, and stored under `uploads/` with private local permissions. Worksheet photos keep the full page so distant problems are not discarded.
+4. The server sends only the confirmed problem, expected answer, and selected work—not the roster name or local filename—to `gpt-5.6` through the Responses API with `store: false`.
+5. The problem-aware prompt warns that handwritten equals signs can resemble short dashes and requires every line to be classified as an equation, expression, answer, annotation, or unparseable fragment. A strict root-object schema captures the exact transcription, observable steps, evidence quote, misconception candidate, confidence, severity, and review signals.
+6. A separate deterministic policy rejects ungrounded quotes, cross-domain labels, poor transcriptions, and definitive diagnoses below `0.72`. For algebra images, an implausible final variable-bearing fragment that is not an equation caps transcription confidence below the review threshold instead of allowing a guessed label.
+7. The successful API run, exact worksheet problem target, immutable answer version, preprocessing provenance, diagnosis, steps, ranked candidates, hashes, token use, and latency are committed atomically. Transport failures retain the local work in a safe retry state.
 
 Saved queue items reload after navigation or refresh. In-flight jobs are polled by submission ID every two seconds, and runs left stale for three minutes become explicitly retryable. OpenAI calls time out after 85 seconds with no hidden SDK retry. Exact image re-uploads or repeated diagnosis requests replay the persisted result instead of creating duplicate work or duplicate API calls.
 
 A wrong final answer alone never earns a misconception label. A definitive label requires an exact evidence quote, a transcription-grounded incorrect step, a distinct observed transformation tied to that step, and confidence of at least `0.72`; ambiguous, illegible, weakly grounded, or conflicting work is saved for teacher review instead.
+
+### Heatmap dashboard
+
+The assignment dashboard uses each submission’s latest diagnosis. Misconception columns are sorted by affected-student count, signal frequency, and severity; students in the largest cluster are sorted to the top so the dominant block starts at the upper left. Cells distinguish clear evidence, emerging/strong misconception evidence, teacher review, and not assessed. Opening an evidence cell shows the matched worksheet problem, exact transcription, evidence quote, and the flawed step highlighted in context.
 
 Intake accepts JPEG, PNG, and WebP images. Limits are 10 MB per photo, 20 photos and 80 MB per upload queue, 20 typed responses, and 8,000 characters per typed response. Programmatic API clients must send `Content-Length` for request bodies.
 
@@ -109,7 +115,7 @@ A Student Model is a versioned, testable hypothesis about the strategy visible i
 
 ## Privacy
 
-The Phase 5 seed data and sample work will be synthetic. Student display names remain in the local database and are not sent in OpenAI prompts. Teachers must de-identify live work before saving it for diagnosis, and the server requires that confirmation for both typed and photographed work. At diagnosis time, assignment context and typed responses are also blocked if they contain an exact roster name or a roster-name component of two or more characters. This roster check is not general personal-data detection. This hackathon build is not a substitute for an institution's student-data, consent, retention, or child-safety compliance review.
+The Phase 5 seed data and sample work will be synthetic. The live regression fixture under `fixtures/student-work/` contains mathematical work only and no student name. Student display names remain in the local database and are not sent in OpenAI prompts. Teachers must use a blank, deidentified worksheet source and de-identify live work before saving it for diagnosis; the server requires those confirmations for both typed and photographed content. Before worksheet extraction or diagnosis, typed content is also blocked if it contains an exact roster name or a roster-name component of two or more characters. This roster check is not general personal-data detection. This hackathon build is not a substitute for an institution's student-data, consent, retention, or child-safety compliance review.
 
 Roster labels and original filenames are used only to organize local work. They are excluded from request hashes and OpenAI payloads. De-identification is teacher-attested, not automatic: this phase strips image metadata but does not OCR, detect, blur, or redact names inside image pixels. Anything visible in a submitted photo is sent to OpenAI, so the upload screen requires the teacher to cover or remove names first. The local SQLite database, filenames, and normalized uploads persist on disk; the app does not encrypt or automatically purge them. Live diagnosis sends the teacher-attested work and assignment context to the OpenAI API with response storage disabled.
 
