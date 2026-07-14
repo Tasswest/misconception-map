@@ -43,8 +43,13 @@ type AssignmentContext = {
   title: string;
   description: string | null;
   domain: "ALGEBRA" | "FRACTIONS" | "MIXED";
-  problemPrompt: string;
-  correctAnswer: string;
+  items: Array<{
+    id: string;
+    position: number;
+    prompt: string;
+    correctAnswer: string;
+    answerFormat: string;
+  }>;
 };
 
 type QueueStatus =
@@ -60,6 +65,7 @@ type QueueStatus =
 type QueueBase = {
   clientId: string;
   membershipId: string;
+  assignmentItemId: string;
   status: QueueStatus;
   createdAt: number;
   submissionId?: string;
@@ -120,6 +126,9 @@ export function DiagnosisWorkbench({
   const [typedStudentId, setTypedStudentId] = useState(
     students.length === 1 ? students[0].membershipId : "",
   );
+  const [typedAssignmentItemId, setTypedAssignmentItemId] = useState(
+    assignment.items.length === 1 ? assignment.items[0].id : "",
+  );
   const [typedResponse, setTypedResponse] = useState("");
   const [dragging, setDragging] = useState(false);
   const [intakeErrors, setIntakeErrors] = useState<string[]>([]);
@@ -147,6 +156,9 @@ export function DiagnosisWorkbench({
   );
   const readyWithMissingStudent = actionableItems.some(
     (item) => !item.membershipId,
+  );
+  const readyWithMissingProblem = actionableItems.some(
+    (item) => !item.assignmentItemId,
   );
   const workAttestationMissing =
     unsavedActionableItems.length > 0 && !workDeidentificationConfirmed;
@@ -295,6 +307,8 @@ export function DiagnosisWorkbench({
         previewUrl,
         byteSize: file.size,
         membershipId: students.length === 1 ? students[0].membershipId : "",
+        assignmentItemId:
+          assignment.items.length === 1 ? assignment.items[0].id : "",
         status: "READY",
         createdAt: queueSequence.current,
       });
@@ -342,6 +356,7 @@ export function DiagnosisWorkbench({
         kind: "TYPED",
         responseText: cleanResponse,
         membershipId: typedStudentId,
+        assignmentItemId: typedAssignmentItemId,
         status: "READY",
         createdAt: queueSequence.current,
       },
@@ -399,6 +414,7 @@ export function DiagnosisWorkbench({
           items: uploadableItems.map((item) => ({
             clientId: item.clientId,
             membershipId: item.membershipId,
+            assignmentItemId: item.assignmentItemId,
           })),
         }),
       );
@@ -454,6 +470,7 @@ export function DiagnosisWorkbench({
             items: items.map((item) => ({
               clientId: item.clientId,
               membershipId: item.membershipId,
+              assignmentItemId: item.assignmentItemId,
               responseText: item.responseText,
             })),
           }),
@@ -512,8 +529,10 @@ export function DiagnosisWorkbench({
 
   async function persistAndDiagnose(items: QueueItem[]) {
     if (!liveAiReady || items.length === 0) return;
-    if (items.some((item) => !item.membershipId)) {
-      setRunError("Choose a student for every queued item before diagnosing.");
+    if (items.some((item) => !item.membershipId || !item.assignmentItemId)) {
+      setRunError(
+        "Choose a student and worksheet problem for every queued item before diagnosing.",
+      );
       return;
     }
     const unsavedItems = items.filter((item) => !item.submissionId);
@@ -602,11 +621,19 @@ export function DiagnosisWorkbench({
             Match each piece of work to a student, then diagnose two submissions at a time.
           </p>
         </div>
-        <div className="flex items-center gap-2 self-start rounded-full border border-black/[0.07] bg-white/65 px-3 py-2 text-xs font-semibold text-[var(--muted)] md:self-auto">
-          <span
-            className={`size-2 rounded-full ${liveAiReady ? "bg-[var(--sage)]" : "bg-[var(--amber)]"}`}
-          />
-          {liveAiReady ? "Live diagnosis ready" : "Setup required for live diagnosis"}
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+          <Link
+            className="rounded-full border border-black/[0.08] bg-white px-3.5 py-2 text-xs font-semibold text-[var(--ink)] transition hover:bg-[var(--paper)]"
+            href={`/assignments/${assignment.id}/dashboard`}
+          >
+            View heatmap
+          </Link>
+          <div className="flex items-center gap-2 rounded-full border border-black/[0.07] bg-white/65 px-3 py-2 text-xs font-semibold text-[var(--muted)]">
+            <span
+              className={`size-2 rounded-full ${liveAiReady ? "bg-[var(--sage)]" : "bg-[var(--amber)]"}`}
+            />
+            {liveAiReady ? "Live diagnosis ready" : "Setup required for live diagnosis"}
+          </div>
         </div>
       </div>
 
@@ -691,23 +718,41 @@ export function DiagnosisWorkbench({
                 </div>
               ) : (
                 <form className="space-y-4" onSubmit={addTypedItem}>
-                  <div className="grid gap-4 md:grid-cols-[220px_1fr]">
-                    <label className="block text-sm font-semibold">
-                      Student
-                      <select
-                        className={selectClass + " mt-2"}
-                        disabled={processing}
-                        onChange={(event) => setTypedStudentId(event.target.value)}
-                        value={typedStudentId}
-                      >
-                        <option value="">Choose a student</option>
-                        {students.map((student) => (
-                          <option key={student.membershipId} value={student.membershipId}>
-                            {student.displayName}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                  <div className="grid gap-4 md:grid-cols-[240px_1fr]">
+                    <div className="space-y-4">
+                      <label className="block text-sm font-semibold">
+                        Student
+                        <select
+                          className={selectClass + " mt-2"}
+                          disabled={processing}
+                          onChange={(event) => setTypedStudentId(event.target.value)}
+                          value={typedStudentId}
+                        >
+                          <option value="">Choose a student</option>
+                          {students.map((student) => (
+                            <option key={student.membershipId} value={student.membershipId}>
+                              {student.displayName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block text-sm font-semibold">
+                        Worksheet problem
+                        <select
+                          className={selectClass + " mt-2"}
+                          disabled={processing}
+                          onChange={(event) => setTypedAssignmentItemId(event.target.value)}
+                          value={typedAssignmentItemId}
+                        >
+                          <option value="">Choose a problem</option>
+                          {assignment.items.map((problem) => (
+                            <option key={problem.id} value={problem.id}>
+                              {problem.position}. {problem.prompt}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
                     <label className="block text-sm font-semibold">
                       Student response
                       <textarea
@@ -726,6 +771,8 @@ export function DiagnosisWorkbench({
                       disabled={
                         processing ||
                         !typedResponse.trim() ||
+                        !typedStudentId ||
+                        !typedAssignmentItemId ||
                         queuedTypedCount >= MAX_TYPED_RESPONSES
                       }
                       type="submit"
@@ -807,12 +854,16 @@ export function DiagnosisWorkbench({
                     onMembershipChange={(membershipId) =>
                       updateItem(item.clientId, { membershipId })
                     }
+                    onProblemChange={(assignmentItemId) =>
+                      updateItem(item.clientId, { assignmentItemId })
+                    }
                     onRemove={() => removeItem(item)}
                     onResponseChange={(responseText) =>
                       updateTypedResponse(item.clientId, responseText)
                     }
                     onRetry={() => void retryItem(item)}
                     processing={processing}
+                    problems={assignment.items}
                     studentName={
                       students.find(
                         (student) => student.membershipId === item.membershipId,
@@ -832,6 +883,11 @@ export function DiagnosisWorkbench({
             {readyWithMissingStudent ? (
               <p className="mt-4 text-xs font-medium text-[#8e6328]">
                 Choose a student for each ready item to enable diagnosis.
+              </p>
+            ) : null}
+            {readyWithMissingProblem ? (
+              <p className="mt-2 text-xs font-medium text-[#8e6328]">
+                Match each ready item to the worksheet problem it answers.
               </p>
             ) : null}
             {unsavedActionableItems.length > 0 ? (
@@ -863,6 +919,7 @@ export function DiagnosisWorkbench({
                   !liveAiReady ||
                   actionableItems.length === 0 ||
                   readyWithMissingStudent ||
+                  readyWithMissingProblem ||
                   workAttestationMissing
                 }
                 onClick={() => void persistAndDiagnose(actionableItems)}
@@ -891,15 +948,24 @@ export function DiagnosisWorkbench({
                 {domainLabel(assignment.domain)}
               </span>
             </div>
-            <h2 className="mt-4 text-lg font-semibold">Problem students saw</h2>
-            <p className="mt-3 whitespace-pre-wrap rounded-2xl border border-black/[0.06] bg-white/65 p-4 font-mono text-sm leading-7 text-[var(--ink)]">
-              {assignment.problemPrompt}
-            </p>
-            <div className="mt-5 border-t border-black/[0.06] pt-5">
-              <p className="text-xs font-semibold text-[var(--muted)]">Expected answer</p>
-              <p className="mt-2 rounded-xl bg-[var(--soft-mint)] px-3.5 py-3 font-mono text-sm font-semibold text-[var(--sidebar)]">
-                {assignment.correctAnswer}
-              </p>
+            <h2 className="mt-4 text-lg font-semibold">Extracted worksheet</h2>
+            <div className="mt-3 max-h-[440px] space-y-3 overflow-y-auto pr-1">
+              {assignment.items.map((problem) => (
+                <div
+                  className="rounded-2xl border border-black/[0.06] bg-white/65 p-4"
+                  key={problem.id}
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--sage)]">
+                    Problem {problem.position}
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap font-mono text-sm leading-6 text-[var(--ink)]">
+                    {problem.prompt}
+                  </p>
+                  <p className="mt-3 rounded-xl bg-[var(--soft-mint)] px-3 py-2 font-mono text-xs font-semibold text-[var(--sidebar)]">
+                    Expected: {problem.correctAnswer}
+                  </p>
+                </div>
+              ))}
             </div>
             <p className="mt-5 text-xs leading-5 text-[var(--muted)]">
               This shared context helps the model separate a calculation slip from a consistent misconception.
@@ -955,18 +1021,22 @@ function TabButton({
 function QueueCard({
   item,
   students,
+  problems,
   studentName,
   processing,
   onMembershipChange,
+  onProblemChange,
   onResponseChange,
   onRemove,
   onRetry,
 }: {
   item: QueueItem;
   students: StudentOption[];
+  problems: AssignmentContext["items"];
   studentName: string;
   processing: boolean;
   onMembershipChange: (membershipId: string) => void;
+  onProblemChange: (assignmentItemId: string) => void;
   onResponseChange: (responseText: string) => void;
   onRemove: () => void;
   onRetry: () => void;
@@ -977,7 +1047,7 @@ function QueueCard({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-black/[0.07] bg-white/65">
-      <div className="grid gap-4 p-4 md:grid-cols-[64px_minmax(0,1fr)_210px] md:items-center">
+      <div className="grid gap-4 p-4 md:grid-cols-[64px_minmax(0,1fr)_250px] md:items-center">
         {item.kind === "PHOTO" && item.previewUrl ? (
           <div
             aria-label={`Preview of ${item.filename}`}
@@ -1032,23 +1102,42 @@ function QueueCard({
         </div>
 
         <div className="flex items-center gap-2 md:justify-end">
-          <label className="min-w-0 flex-1 md:max-w-[170px]">
-            <span className="sr-only">Student for this submission</span>
-            <select
-              aria-label={`Student for ${item.kind === "PHOTO" ? item.filename : "typed response"}`}
-              className={selectClass}
-              disabled={!canEdit || processing}
-              onChange={(event) => onMembershipChange(event.target.value)}
-              value={item.membershipId}
-            >
-              <option value="">Choose student</option>
-              {students.map((student) => (
-                <option key={student.membershipId} value={student.membershipId}>
-                  {student.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="min-w-0 flex-1 space-y-2 md:max-w-[210px]">
+            <label className="block">
+              <span className="sr-only">Student for this submission</span>
+              <select
+                aria-label={`Student for ${item.kind === "PHOTO" ? item.filename : "typed response"}`}
+                className={selectClass}
+                disabled={!canEdit || processing}
+                onChange={(event) => onMembershipChange(event.target.value)}
+                value={item.membershipId}
+              >
+                <option value="">Choose student</option>
+                {students.map((student) => (
+                  <option key={student.membershipId} value={student.membershipId}>
+                    {student.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="sr-only">Worksheet problem for this submission</span>
+              <select
+                aria-label={`Worksheet problem for ${item.kind === "PHOTO" ? item.filename : "typed response"}`}
+                className={selectClass}
+                disabled={!canEdit || processing}
+                onChange={(event) => onProblemChange(event.target.value)}
+                value={item.assignmentItemId}
+              >
+                <option value="">Choose problem</option>
+                {problems.map((problem) => (
+                  <option key={problem.id} value={problem.id}>
+                    Problem {problem.position}: {problem.prompt}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {item.status === "FAILED" ? (
             <button
               aria-label="Retry this submission"
@@ -1352,6 +1441,7 @@ function queueItemFromPersisted(item: PersistedDiagnosisQueueItem): QueueItem {
     clientId: item.submissionId,
     submissionId: item.submissionId,
     membershipId: item.membershipId,
+    assignmentItemId: item.assignmentItemId,
     status,
     createdAt: Number.isFinite(parsedCreatedAt) ? parsedCreatedAt : Date.now(),
     result,
@@ -1450,12 +1540,14 @@ function parsePersistedQueueItems(
     if (!isRecord(value)) return [];
     const submissionId = readString(value, "submissionId");
     const membershipId = readString(value, "membershipId");
+    const assignmentItemId = readString(value, "assignmentItemId");
     const inputKind = readString(value, "inputKind");
     const status = readString(value, "status");
     const createdAt = readString(value, "createdAt");
     if (
       !submissionId ||
       !membershipId ||
+      !assignmentItemId ||
       (inputKind !== "IMAGE" && inputKind !== "TYPED") ||
       ![
         "UPLOADED",
@@ -1473,6 +1565,7 @@ function parsePersistedQueueItems(
       {
         submissionId,
         membershipId,
+        assignmentItemId,
         inputKind,
         status: status as PersistedDiagnosisQueueItem["status"],
         filename: readString(value, "filename") || null,
@@ -1567,10 +1660,20 @@ function parseDiagnosisStep(value: unknown, index: number): DiagnosisStep[] {
   const step = readString(value, "step") || readString(value, "studentWork");
   if (!step) return [];
   const correctness = readString(value, "correctness");
+  const stepKind = readString(value, "stepKind");
   return [{
     position: readNumber(value, "position", index + 1),
     step,
     normalizedMath: readString(value, "normalizedMath") || null,
+    stepKind:
+      stepKind === "EQUATION" ||
+      stepKind === "EXPRESSION" ||
+      stepKind === "ANSWER" ||
+      stepKind === "ANNOTATION" ||
+      stepKind === "UNPARSEABLE"
+        ? stepKind
+        : undefined,
+    parseIssue: readString(value, "parseIssue") || null,
     correctness:
       correctness === "CORRECT" ||
       correctness === "INCORRECT" ||
@@ -1673,6 +1776,8 @@ function reviewReasonCopy(reason: string | null) {
       "The reasoning pattern is too uncertain to classify safely.",
     LOW_TRANSCRIPTION_CONFIDENCE:
       "Part of the student work may not have been transcribed reliably.",
+    IMPLAUSIBLE_TRANSCRIPTION_STEP:
+      "A transcribed line does not parse as a plausible step for this problem, so the work needs a teacher check.",
     POOR_IMAGE_QUALITY:
       "The image quality makes the student’s steps difficult to verify.",
     UNREADABLE_TRANSCRIPTION:

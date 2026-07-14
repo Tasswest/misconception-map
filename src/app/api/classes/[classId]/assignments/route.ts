@@ -1,4 +1,8 @@
+import { z } from "zod";
+
 import {
+  createAssignment,
+  createAssignmentInputSchema,
   createDiagnosticAssignment,
   createDiagnosticAssignmentInputSchema,
   entityIdSchema,
@@ -16,6 +20,13 @@ type RouteContext = {
 
 const createAssignmentRequestSchema =
   createDiagnosticAssignmentInputSchema.omit({ classId: true });
+const createDraftAssignmentRequestSchema = createAssignmentInputSchema.omit({
+  classId: true,
+});
+const requestSchema = z.union([
+  createAssignmentRequestSchema,
+  createDraftAssignmentRequestSchema,
+]);
 
 export async function POST(request: Request, context: RouteContext) {
   const guard = guardLocalApiRequest(request);
@@ -23,10 +34,11 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const { classId: rawClassId } = await context.params;
     const classId = entityIdSchema.parse(rawClassId);
-    const input = createAssignmentRequestSchema.parse(
-      await readJsonBody(request),
-    );
-    const assignment = createDiagnosticAssignment({ ...input, classId });
+    const input = requestSchema.parse(await readJsonBody(request));
+    const assignment =
+      "problemPrompt" in input
+        ? createDiagnosticAssignment({ ...input, classId })
+        : createAssignment({ ...input, classId });
 
     return Response.json({ data: assignment }, { status: 201 });
   } catch (error) {

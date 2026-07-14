@@ -5,6 +5,8 @@ import { chmod, mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 
+import { preprocessMathImage } from "@/server/storage/image-preprocessing.mjs";
+
 export const MAX_STUDENT_WORK_BYTES = 10 * 1024 * 1024;
 export const MAX_FILES_PER_UPLOAD = 20;
 
@@ -45,6 +47,13 @@ export type PreparedStudentWorkAsset = {
   sha256: string;
   width: number;
   height: number;
+  sourceWidth: number;
+  sourceHeight: number;
+  cropLeft: number;
+  cropTop: number;
+  cropWidth: number;
+  cropHeight: number;
+  preprocessingVersion: string;
   bytes: Buffer;
 };
 
@@ -91,18 +100,9 @@ export async function prepareStudentWorkAsset(input: {
       );
     }
 
-    const normalized = await image
-      .rotate()
-      .resize({
-        width: 2_200,
-        height: 2_200,
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .webp({ quality: 90, effort: 4 })
-      .toBuffer({ resolveWithObject: true });
+    const normalized = await preprocessMathImage(input.bytes);
 
-    if (!normalized.info.width || !normalized.info.height) {
+    if (!normalized.width || !normalized.height) {
       throw new StudentWorkAssetError(
         "UNREADABLE_IMAGE",
         "The image dimensions could not be read.",
@@ -123,11 +123,18 @@ export async function prepareStudentWorkAsset(input: {
       storageKey,
       originalFilename: safeOriginalFilename(input.originalFilename),
       mediaType: "image/webp",
-      byteSize: normalized.data.byteLength,
-      sha256: createHash("sha256").update(normalized.data).digest("hex"),
-      width: normalized.info.width,
-      height: normalized.info.height,
-      bytes: normalized.data,
+      byteSize: normalized.bytes.byteLength,
+      sha256: createHash("sha256").update(normalized.bytes).digest("hex"),
+      width: normalized.width,
+      height: normalized.height,
+      sourceWidth: normalized.sourceWidth,
+      sourceHeight: normalized.sourceHeight,
+      cropLeft: normalized.crop.left,
+      cropTop: normalized.crop.top,
+      cropWidth: normalized.crop.width,
+      cropHeight: normalized.crop.height,
+      preprocessingVersion: normalized.preprocessingVersion,
+      bytes: normalized.bytes,
     };
   } catch (error) {
     if (error instanceof StudentWorkAssetError) {
@@ -143,7 +150,7 @@ export async function prepareStudentWorkAsset(input: {
 }
 
 function getUploadRoot() {
-  return path.resolve(
+  return path.join(
     /* turbopackIgnore: true */ process.cwd(),
     "uploads",
   );
@@ -175,7 +182,7 @@ function absoluteStoragePath(storageKey: string) {
   // Resolve runtime keys beneath the fixed uploads root, never against the
   // project root. Besides traversal containment, this keeps build tracing away
   // from the live SQLite database and the rest of the workspace.
-  const absolutePath = path.resolve(
+  const absolutePath = path.join(
     /* turbopackIgnore: true */ uploadRoot,
     ...relativeKey.split("/"),
   );

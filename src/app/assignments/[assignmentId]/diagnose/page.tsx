@@ -29,8 +29,13 @@ export default async function AssignmentDiagnosePage({
           title: assignment.title,
           description: assignment.description,
           domain: assignment.domain,
-          problemPrompt: assignment.item.prompt,
-          correctAnswer: assignment.item.correctAnswer,
+          items: assignment.items.map((item) => ({
+            id: item.id,
+            position: item.position,
+            prompt: item.prompt,
+            correctAnswer: item.correctAnswer,
+            answerFormat: item.answerFormat,
+          })),
         }}
         initialItems={initialItems}
         liveAiReady={liveAiReady}

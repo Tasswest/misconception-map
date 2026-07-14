@@ -16,6 +16,8 @@ const baseOutput = {
       position: 1,
       step: "-(x + 4) = -x + 4",
       normalizedMath: "-(x+4)=-x+4",
+      stepKind: "EQUATION",
+      parseIssue: null,
       correctness: "INCORRECT",
       errorNote: "The sign changed only the first term.",
       evidenceQuote: "-x + 4",
@@ -55,6 +57,7 @@ function normalize(output, overrides = {}) {
     assignmentDomain: "ALGEBRA",
     inputKind: "IMAGE",
     observedPrompt: "Expand -(x + 4).",
+    correctAnswer: "-x - 4",
     typedResponse: null,
     ...overrides,
   });
@@ -132,6 +135,8 @@ const bareWrongAnswer = normalize({
       position: 1,
       step: "2/5",
       normalizedMath: "2/5",
+      stepKind: "ANSWER",
+      parseIssue: null,
       correctness: "INCORRECT",
       errorNote: "The final answer is incorrect.",
       evidenceQuote: "2/5",
@@ -155,6 +160,8 @@ const bareWrongAnswerWithSelfTransformation = normalize({
       position: 1,
       step: "2/5",
       normalizedMath: "2/5",
+      stepKind: "ANSWER",
+      parseIssue: null,
       correctness: "INCORRECT",
       errorNote: "The final answer is incorrect.",
       evidenceQuote: "2/5",
@@ -193,6 +200,8 @@ const bareFinalEquation = normalize({
       position: 1,
       step: "x = 4",
       normalizedMath: "x=4",
+      stepKind: "EQUATION",
+      parseIssue: null,
       correctness: "INCORRECT",
       errorNote: "Only the final equation is visible.",
       evidenceQuote: "x = 4",
@@ -221,6 +230,8 @@ const bareFinalEquationSplitIntoInventedSteps = normalize({
       position: 1,
       step: "x",
       normalizedMath: "x",
+      stepKind: "EXPRESSION",
+      parseIssue: null,
       correctness: "CORRECT",
       errorNote: null,
       evidenceQuote: "x",
@@ -229,6 +240,8 @@ const bareFinalEquationSplitIntoInventedSteps = normalize({
       position: 2,
       step: "x = 4",
       normalizedMath: "x=4",
+      stepKind: "EQUATION",
+      parseIssue: null,
       correctness: "INCORRECT",
       errorNote: "Only the final equation is visible.",
       evidenceQuote: "x = 4",
@@ -374,6 +387,72 @@ assert.ok(
   lowTranscription.reviewReasons.includes("LOW_TRANSCRIPTION_CONFIDENCE"),
 );
 
+const implausibleFinalLine = normalize(
+  {
+    ...baseOutput,
+    transcription: "−3(x+4)=0\nx+4=0\n4−x",
+    steps: [
+      {
+        position: 1,
+        step: "−3(x+4)=0",
+        normalizedMath: "-3(x+4)=0",
+        stepKind: "EQUATION",
+        parseIssue: null,
+        correctness: "CORRECT",
+        errorNote: null,
+        evidenceQuote: "−3(x+4)=0",
+      },
+      {
+        position: 2,
+        step: "x+4=0",
+        normalizedMath: "x+4=0",
+        stepKind: "EQUATION",
+        parseIssue: null,
+        correctness: "CORRECT",
+        errorNote: null,
+        evidenceQuote: "x+4=0",
+      },
+      {
+        position: 3,
+        step: "4−x",
+        normalizedMath: "4-x",
+        stepKind: "EXPRESSION",
+        parseIssue: null,
+        correctness: "INCORRECT",
+        errorNote: "This fragment does not state a solved equation.",
+        evidenceQuote: "4−x",
+      },
+    ],
+    observedPrompt: "Solve −3(x+4)=0 for x.",
+    studentAnswer: "4−x",
+    normalizedAnswer: null,
+    evidenceQuote: "4−x",
+    observedTransformation: {
+      inputExpression: "x+4=0",
+      observedOutput: "4−x",
+      transformationDescription: "Produced a variable-containing fragment.",
+      sourceStepPosition: 3,
+    },
+  },
+  {
+    observedPrompt: "Solve −3(x+4)=0 for x.",
+    correctAnswer: "x=−4",
+  },
+);
+assert.equal(implausibleFinalLine.coreDiagnosis.outcome, "NEEDS_REVIEW");
+assert.ok(
+  implausibleFinalLine.coreDiagnosis.transcriptionConfidence <
+    LOW_CONFIDENCE_REVIEW_THRESHOLD,
+);
+assert.ok(
+  implausibleFinalLine.reviewReasons.includes(
+    "IMPLAUSIBLE_TRANSCRIPTION_STEP",
+  ),
+);
+assert.ok(
+  !implausibleFinalLine.reviewReasons.includes("LOW_TRANSCRIPTION_CONFIDENCE"),
+);
+
 const typed = normalizeDiagnosisAIOutput({
   output: {
     ...baseOutput,
@@ -384,6 +463,8 @@ const typed = normalizeDiagnosisAIOutput({
         position: 1,
         step: "x = 4",
         normalizedMath: "x=4",
+        stepKind: "EQUATION",
+        parseIssue: null,
         correctness: "CORRECT",
         errorNote: null,
         evidenceQuote: "x = 4",
@@ -403,6 +484,7 @@ const typed = normalizeDiagnosisAIOutput({
   assignmentDomain: "ALGEBRA",
   inputKind: "TYPED",
   observedPrompt: "Solve x + 2 = 6.",
+  correctAnswer: "x = 4",
   typedResponse: "x = 4",
 });
 assert.equal(typed.coreDiagnosis.outcome, "CORRECT");
@@ -412,5 +494,5 @@ assert.equal(typed.imageQuality, "NOT_APPLICABLE");
 assert.equal(typed.coreDiagnosis.transcriptionConfidence, 1);
 
 console.log(
-  "Phase 2 AI-output verification passed: strict schema, grounding, domain, confidence, and abstention policies.",
+  "Phase 2 AI-output verification passed: strict schema, grounding, problem-aware parseability, domain, confidence, and abstention policies.",
 );

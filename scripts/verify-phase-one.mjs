@@ -421,14 +421,15 @@ function verifyDatabase() {
     const insertSubmission = db.prepare(
       [
         "INSERT INTO submissions",
-        "(id, class_id, assignment_id, membership_id, attempt_number, input_kind, submitted_at)",
-        "VALUES (?, ?, ?, ?, ?, 'TYPED', ?)",
+        "(id, class_id, assignment_id, assignment_item_id, membership_id, attempt_number, input_kind, submitted_at)",
+        "VALUES (?, ?, ?, ?, ?, ?, 'TYPED', ?)",
       ].join(" "),
     );
     insertSubmission.run(
       "submission_a",
       "class_a",
       "assignment_a",
+      "item_a1",
       "membership_a",
       1,
       time.oldSubmission,
@@ -437,6 +438,7 @@ function verifyDatabase() {
       "submission_b",
       "class_b",
       "assignment_b",
+      "item_b1",
       "membership_b",
       1,
       time.oldSubmission,
@@ -445,6 +447,7 @@ function verifyDatabase() {
       "submission_a_future_recorded",
       "class_a",
       "assignment_a",
+      "item_future_recorded",
       "membership_a",
       3,
       time.postSubmission,
@@ -455,6 +458,7 @@ function verifyDatabase() {
           "submission_cross_class",
           "class_a",
           "assignment_a",
+          "item_a1",
           "membership_b",
           1,
           time.oldSubmission,
@@ -467,6 +471,15 @@ function verifyDatabase() {
           .prepare("UPDATE submissions SET submitted_at = ? WHERE id = ?")
           .run(time.postSubmission, "submission_a"),
       /submission identity and observed timestamp are immutable/,
+    );
+    expectConstraint(
+      () =>
+        db
+          .prepare(
+            "UPDATE submissions SET assignment_item_id = NULL WHERE id = ?",
+          )
+          .run("submission_a"),
+      /submission assignment context is immutable/,
     );
 
     const insertAnswer = db.prepare(
@@ -1192,6 +1205,7 @@ function verifyDatabase() {
       "submission_live",
       "class_live",
       "assignment_live",
+      "item_live_1",
       "membership_live",
       1,
       liveStart,
@@ -1507,6 +1521,7 @@ function verifyDatabase() {
       "submission_a_later",
       "class_a",
       "assignment_a",
+      "item_a3",
       "membership_a",
       2,
       time.postSubmission,

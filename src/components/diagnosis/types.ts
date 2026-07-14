@@ -25,6 +25,8 @@ export type DiagnosisStep = {
   position?: number;
   step: string;
   normalizedMath?: string | null;
+  stepKind?: "EQUATION" | "EXPRESSION" | "ANSWER" | "ANNOTATION" | "UNPARSEABLE";
+  parseIssue?: string | null;
   correctness?: "CORRECT" | "INCORRECT" | "UNCLEAR";
   correct?: boolean;
   errorNote?: string | null;
@@ -55,6 +57,7 @@ export type DiagnosisSummary = {
 export type PersistedDiagnosisQueueItem = {
   submissionId: string;
   membershipId: string;
+  assignmentItemId: string;
   inputKind: "IMAGE" | "TYPED";
   status:
     | "UPLOADED"

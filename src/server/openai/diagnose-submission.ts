@@ -384,6 +384,7 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
       assignmentDomain: prepared.assignmentDomain,
       inputKind: prepared.inputKind,
       observedPrompt: prepared.observedPrompt,
+      correctAnswer: prepared.correctAnswer,
       typedResponse:
         prepared.inputKind === "TYPED" ? prepared.typedResponse : null,
     });

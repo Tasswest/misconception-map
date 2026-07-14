@@ -89,6 +89,7 @@ export type WorkspaceMembershipRecord = {
 
 export type DiagnosticAssignmentItemRecord = {
   id: string;
+  position: number;
   problemId: string;
   prompt: string;
   correctAnswer: string;
@@ -102,6 +103,7 @@ export type WorkspaceAssignmentRecord = {
   domain: z.infer<typeof assignmentDomainSchema>;
   status: AssignmentStatus;
   item: DiagnosticAssignmentItemRecord | null;
+  items: DiagnosticAssignmentItemRecord[];
 };
 
 export type WorkspaceClassRecord = {
@@ -118,12 +120,13 @@ export type DiagnosticAssignmentRecord = WorkspaceAssignmentRecord & {
   classId: string;
   className: string;
   item: DiagnosticAssignmentItemRecord;
+  items: DiagnosticAssignmentItemRecord[];
   memberships: WorkspaceMembershipRecord[];
 };
 
 export type CreatedDiagnosticAssignmentRecord = Pick<
   DiagnosticAssignmentRecord,
-  "id" | "classId" | "title" | "domain" | "item"
+  "id" | "classId" | "title" | "domain" | "item" | "items"
 >;
 
 type ClassRow = {
@@ -154,6 +157,7 @@ type AssignmentWithItemRow = {
   domain: z.infer<typeof assignmentDomainSchema>;
   status: AssignmentStatus;
   item_id: string | null;
+  item_position: number | null;
   problem_id: string | null;
   prompt: string | null;
   correct_answer: string | null;
@@ -205,6 +209,7 @@ function mapAssignmentItem(
 ): DiagnosticAssignmentItemRecord | null {
   if (
     row.item_id === null ||
+    row.item_position === null ||
     row.problem_id === null ||
     row.prompt === null ||
     row.correct_answer === null ||
@@ -215,6 +220,7 @@ function mapAssignmentItem(
 
   return {
     id: row.item_id,
+    position: row.item_position,
     problemId: row.problem_id,
     prompt: row.prompt,
     correctAnswer: row.correct_answer,
@@ -225,13 +231,15 @@ function mapAssignmentItem(
 function mapWorkspaceAssignment(
   row: AssignmentWithItemRow,
 ): WorkspaceAssignmentRecord {
+  const item = mapAssignmentItem(row);
   return {
     id: row.id,
     title: row.title,
     description: row.description,
     domain: row.domain,
     status: row.status,
-    item: mapAssignmentItem(row),
+    item,
+    items: item ? [item] : [],
   };
 }
 
@@ -320,7 +328,7 @@ export function listWorkspaceOverview(): WorkspaceClassRecord[] {
       [
         "SELECT assignment.id, assignment.class_id, class.name AS class_name,",
         "assignment.title, assignment.description, assignment.domain, assignment.status,",
-        "item.id AS item_id, problem.id AS problem_id, problem.prompt,",
+        "item.id AS item_id, item.position AS item_position, problem.id AS problem_id, problem.prompt,",
         "problem.correct_answer, problem.answer_format",
         "FROM assignments AS assignment",
         "JOIN classes AS class ON class.id = assignment.class_id",
@@ -333,7 +341,7 @@ export function listWorkspaceOverview(): WorkspaceClassRecord[] {
         "LEFT JOIN problems AS problem ON problem.id = item.problem_id",
         "WHERE class.archived_at IS NULL",
         "AND assignment.archived_at IS NULL",
-        "AND assignment.status != 'ARCHIVED'",
+        "AND assignment.status = 'READY'",
         "ORDER BY assignment.created_at DESC, assignment.title COLLATE NOCASE",
       ].join(" "),
     )
@@ -369,36 +377,38 @@ export function getDiagnosticAssignment(
   assignmentId: string,
 ): DiagnosticAssignmentRecord | null {
   const parsedAssignmentId = entityIdSchema.parse(assignmentId);
-  const row = getDatabase()
+  const rows = getDatabase()
     .prepare(
       [
         "SELECT assignment.id, assignment.class_id, class.name AS class_name,",
         "assignment.title, assignment.description, assignment.domain, assignment.status,",
-        "item.id AS item_id, problem.id AS problem_id, problem.prompt,",
+        "item.id AS item_id, item.position AS item_position, problem.id AS problem_id, problem.prompt,",
         "problem.correct_answer, problem.answer_format",
         "FROM assignments AS assignment",
         "JOIN classes AS class ON class.id = assignment.class_id",
         "JOIN assignment_items AS item",
         "ON item.assignment_id = assignment.id",
-        "AND item.position = (",
-        "SELECT MIN(first_item.position) FROM assignment_items AS first_item",
-        "WHERE first_item.assignment_id = assignment.id",
-        ")",
         "JOIN problems AS problem ON problem.id = item.problem_id",
         "WHERE assignment.id = ?",
         "AND class.archived_at IS NULL",
         "AND assignment.archived_at IS NULL",
         "AND assignment.status != 'ARCHIVED'",
+        "ORDER BY item.position",
       ].join(" "),
     )
-    .get(parsedAssignmentId) as AssignmentWithItemRow | undefined;
+    .all(parsedAssignmentId) as AssignmentWithItemRow[];
 
+  const row = rows[0];
   if (row === undefined) {
     return null;
   }
 
-  const item = mapAssignmentItem(row);
-  if (item === null) {
+  const items = rows.flatMap((candidate) => {
+    const mapped = mapAssignmentItem(candidate);
+    return mapped ? [mapped] : [];
+  });
+  const item = items[0];
+  if (!item) {
     return null;
   }
 
@@ -407,6 +417,7 @@ export function getDiagnosticAssignment(
     classId: row.class_id,
     className: row.class_name,
     item,
+    items,
     memberships: listActiveMembershipRows(row.class_id).map(mapMembership),
   };
 }
@@ -561,17 +572,20 @@ export function createDiagnosticAssignment(
       .run(itemId, parsed.classId, assignmentId, problemId);
   })();
 
+  const item = {
+    id: itemId,
+    position: 1,
+    problemId,
+    prompt: parsed.problemPrompt,
+    correctAnswer: parsed.correctAnswer,
+    answerFormat,
+  };
   return {
     id: assignmentId,
     classId: parsed.classId,
     title: parsed.title,
     domain: parsed.domain,
-    item: {
-      id: itemId,
-      problemId,
-      prompt: parsed.problemPrompt,
-      correctAnswer: parsed.correctAnswer,
-      answerFormat,
-    },
+    item,
+    items: [item],
   };
 }

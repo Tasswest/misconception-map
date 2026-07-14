@@ -48,6 +48,19 @@ function containsTransformationMarker(value) {
 }
 
 /** @param {string} value */
+function containsEquationOrAnswerMarker(value) {
+  return /(?:=|≈|≃|→|⇒|->|=>)/u.test(value);
+}
+
+/** @param {string} value */
+function isPlausibleScalarAnswer(value) {
+  const canonical = canonicalizeObservedMath(value).replace(/[−–—]/gu, "-");
+  return /^[+-]?(?:(?:\d+(?:[.,]\d+)?)|(?:\d+\/\d+)|(?:\d+\s+\d+\/\d+))$/u.test(
+    canonical,
+  );
+}
+
+/** @param {string} value */
 function isSubstantiveMathExpression(value) {
   const canonical = canonicalizeObservedMath(value);
   // A lone variable or constant copied from a final equation is not the input
@@ -75,6 +88,7 @@ function matchesAssignmentDomain(misconceptionId, assignmentDomain) {
  *   assignmentDomain: "ALGEBRA" | "FRACTIONS" | "MIXED";
  *   inputKind: "IMAGE" | "TYPED";
  *   observedPrompt: string;
+ *   correctAnswer: string;
  *   typedResponse: string | null;
  * }} input
  */
@@ -97,15 +111,10 @@ export function normalizeDiagnosisAIOutput(input) {
     input.inputKind === "TYPED"
       ? /** @type {string} */ (input.typedResponse)
       : parsed.transcription;
-  const transcriptionConfidence =
+  let transcriptionConfidence =
     input.inputKind === "TYPED" ? 1 : parsed.transcriptionConfidence;
   const imageQuality =
     input.inputKind === "TYPED" ? "NOT_APPLICABLE" : parsed.imageQuality;
-  const confidence = Math.min(
-    parsed.confidence,
-    parsed.reasoningConfidence,
-    transcriptionConfidence,
-  );
 
   const sortedSteps = parsed.steps
     .map((step, originalIndex) => ({ step, originalIndex }))
@@ -131,6 +140,13 @@ export function normalizeDiagnosisAIOutput(input) {
     }
 
     const normalizedStep = step.step.trim();
+    const parseIssue = normalizeNullableText(step.parseIssue);
+    if (
+      (step.stepKind === "UNPARSEABLE" && parseIssue === null) ||
+      (step.stepKind !== "UNPARSEABLE" && parseIssue !== null)
+    ) {
+      policyReasons.add("INCONSISTENT_OUTPUT");
+    }
     const groundedStart = transcription.indexOf(normalizedStep, groundingCursor);
     if (groundedStart >= 0) {
       const groundedEnd = groundedStart + normalizedStep.length;
@@ -148,6 +164,8 @@ export function normalizeDiagnosisAIOutput(input) {
       position,
       step: normalizedStep,
       normalizedMath: normalizeNullableText(step.normalizedMath),
+      stepKind: step.stepKind,
+      parseIssue,
       correctness: step.correctness,
       errorNote: normalizeNullableText(step.errorNote),
       evidenceQuote: normalizeGroundedQuote(
@@ -157,6 +175,32 @@ export function normalizeDiagnosisAIOutput(input) {
       ),
     };
   });
+
+  const finalStep = steps.at(-1);
+  const equationAnswerExpected =
+    input.inputKind === "IMAGE" &&
+    input.assignmentDomain === "ALGEBRA" &&
+    /=/u.test(input.correctAnswer);
+  const finalStepIsImplausible =
+    finalStep !== undefined &&
+    (finalStep.stepKind === "UNPARSEABLE" ||
+      (equationAnswerExpected &&
+        !containsEquationOrAnswerMarker(finalStep.step) &&
+        !isPlausibleScalarAnswer(finalStep.step)));
+
+  if (finalStepIsImplausible) {
+    policyReasons.add("IMPLAUSIBLE_TRANSCRIPTION_STEP");
+    transcriptionConfidence = Math.min(
+      transcriptionConfidence,
+      LOW_CONFIDENCE_REVIEW_THRESHOLD - 0.01,
+    );
+  }
+
+  const confidence = Math.min(
+    parsed.confidence,
+    parsed.reasoningConfidence,
+    transcriptionConfidence,
+  );
 
   let studentAnswer =
     input.inputKind === "TYPED"
@@ -398,7 +442,8 @@ export function normalizeDiagnosisAIOutput(input) {
     }
 
     if (
-      transcriptionConfidence < LOW_CONFIDENCE_REVIEW_THRESHOLD
+      transcriptionConfidence < LOW_CONFIDENCE_REVIEW_THRESHOLD &&
+      !policyReasons.has("IMPLAUSIBLE_TRANSCRIPTION_STEP")
     ) {
       policyReasons.add("LOW_TRANSCRIPTION_CONFIDENCE");
     }

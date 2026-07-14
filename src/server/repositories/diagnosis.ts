@@ -17,6 +17,7 @@ import {
 } from "@/domain/misconception-taxonomy.mjs";
 import { OPENAI_MODEL } from "@/lib/config";
 import { getDatabase } from "@/lib/db";
+import { containsRosterName } from "@/server/privacy/roster-text";
 import type { PreparedStudentWorkAsset } from "@/server/storage/submission-assets";
 
 const nowSql = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
@@ -32,6 +33,7 @@ export const imageUploadItemSchema = z
     clientId: clientIdSchema,
     membershipId: idSchema,
     submissionId: idSchema,
+    assignmentItemId: idSchema,
   })
   .strict();
 
@@ -39,6 +41,7 @@ export const typedSubmissionItemSchema = z
   .object({
     clientId: clientIdSchema,
     membershipId: idSchema,
+    assignmentItemId: idSchema,
     responseText: z.string().trim().min(1).max(12_000),
   })
   .strict();
@@ -251,8 +254,8 @@ export class DiagnosisRepositoryError extends Error {
   }
 }
 
-function getAssignmentDiagnosisRow(assignmentId: string) {
-  const row = getDatabase()
+function getAssignmentDiagnosisRows(assignmentId: string) {
+  const rows = getDatabase()
     .prepare(
       [
         "SELECT assignment.id, assignment.class_id, assignment.domain, assignment.status,",
@@ -264,61 +267,102 @@ function getAssignmentDiagnosisRow(assignmentId: string) {
         "LEFT JOIN problems AS problem",
         "ON problem.id = item.problem_id AND problem.class_id = assignment.class_id",
         "WHERE assignment.id = ? AND assignment.archived_at IS NULL",
-        "ORDER BY item.position LIMIT 1",
+        "ORDER BY item.position",
       ].join(" "),
     )
-    .get(assignmentId) as AssignmentDiagnosisRow | undefined;
+    .all(assignmentId) as AssignmentDiagnosisRow[];
 
-  if (!row) {
+  if (rows.length === 0) {
     throw new DiagnosisRepositoryError(
       "ASSIGNMENT_NOT_FOUND",
       "That assignment could not be found.",
     );
   }
 
-  if (row.status !== "READY") {
+  if (rows[0].status !== "READY") {
     throw new DiagnosisRepositoryError(
       "ASSIGNMENT_NOT_READY",
       "That assignment is not ready for diagnosis.",
     );
   }
 
-  if (!row.assignment_item_id || !row.prompt || !row.correct_answer) {
+  if (
+    rows.some(
+      (row) => !row.assignment_item_id || !row.prompt || !row.correct_answer,
+    )
+  ) {
     throw new DiagnosisRepositoryError(
       "ASSIGNMENT_CONTEXT_MISSING",
       "Add a diagnostic problem and correct answer before uploading work.",
     );
   }
 
+  return rows;
+}
+
+function getAssignmentDiagnosisRow(
+  assignmentId: string,
+  assignmentItemId?: string,
+) {
+  const rows = getAssignmentDiagnosisRows(assignmentId);
+  if (assignmentItemId === undefined) {
+    if (rows.length !== 1) {
+      throw new DiagnosisRepositoryError(
+        "ASSIGNMENT_CONTEXT_MISSING",
+        "Choose which worksheet problem this student work answers.",
+      );
+    }
+    return rows[0];
+  }
+
+  const row = rows.find((candidate) => candidate.assignment_item_id === assignmentItemId);
+  if (!row) {
+    throw new DiagnosisRepositoryError(
+      "ASSIGNMENT_CONTEXT_MISSING",
+      "The selected worksheet problem is unavailable.",
+    );
+  }
   return row;
 }
 
 export function validateDiagnosisTargets(input: {
   assignmentId: string;
-  membershipIds: string[];
+  targets: Array<{ membershipId: string; assignmentItemId: string }>;
 }) {
   const parsed = z
     .object({
       assignmentId: z.string().trim().min(1).max(200),
-      membershipIds: z.array(idSchema).min(1).max(20),
+      targets: z
+        .array(
+          z
+            .object({
+              membershipId: idSchema,
+              assignmentItemId: idSchema,
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(20),
     })
     .strict()
     .parse(input);
-  const assignment = getAssignmentDiagnosisRow(parsed.assignmentId);
-  requireMembershipsInClass(assignment.class_id, parsed.membershipIds);
-  requireNoRosterNamesInText(assignment.class_id, [
-    assignment.prompt,
-    assignment.correct_answer,
-  ]);
+  const assignments = parsed.targets.map((target) =>
+    getAssignmentDiagnosisRow(parsed.assignmentId, target.assignmentItemId),
+  );
+  const assignment = assignments[0];
+  requireMembershipsInClass(
+    assignment.class_id,
+    parsed.targets.map((target) => target.membershipId),
+  );
+  requireNoRosterNamesInText(
+    assignment.class_id,
+    assignments.flatMap((target) => [target.prompt, target.correct_answer]),
+  );
 
   return {
     assignmentId: assignment.id,
     classId: assignment.class_id,
     domain: assignment.domain,
-    assignmentItemId: assignment.assignment_item_id,
-    problemPrompt: assignment.prompt,
-    correctAnswer: assignment.correct_answer,
-    answerFormat: assignment.answer_format,
   };
 }
 
@@ -343,53 +387,15 @@ function requireMembershipsInClass(classId: string, membershipIds: string[]) {
   }
 }
 
-function escapeRegularExpression(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function requireNoRosterNamesInText(
   classId: string,
   values: Array<string | null>,
 ) {
-  const rosterNames = getDatabase()
-    .prepare(
-      [
-        "SELECT student.display_name",
-        "FROM class_memberships AS membership",
-        "JOIN students AS student ON student.id = membership.student_id",
-        "WHERE membership.class_id = ?",
-        "AND membership.archived_at IS NULL AND student.archived_at IS NULL",
-      ].join(" "),
-    )
-    .all(classId) as Array<{ display_name: string }>;
-  const normalizedValues = values
-    .filter((value): value is string => value !== null)
-    .map((value) => value.normalize("NFKC").toLocaleLowerCase("en-US"));
-
-  for (const { display_name: displayName } of rosterNames) {
-    const normalizedName = displayName
-      .normalize("NFKC")
-      .trim()
-      .toLocaleLowerCase("en-US");
-    if (!normalizedName) continue;
-    const rosterNameTerms = new Set([
-      normalizedName,
-      ...normalizedName
-        .split(/[^\p{L}\p{N}]+/u)
-        .filter((part) => part.length >= 2),
-    ]);
-    for (const term of rosterNameTerms) {
-      const pattern = new RegExp(
-        `(?:^|[^\\p{L}\\p{N}])${escapeRegularExpression(term)}(?=$|[^\\p{L}\\p{N}])`,
-        "u",
-      );
-      if (normalizedValues.some((value) => pattern.test(value))) {
-        throw new DiagnosisRepositoryError(
-          "PERSONAL_DATA_DETECTED",
-          FAILURE_MESSAGES.PERSONAL_DATA_DETECTED,
-        );
-      }
-    }
+  if (containsRosterName(classId, values)) {
+    throw new DiagnosisRepositoryError(
+      "PERSONAL_DATA_DETECTED",
+      FAILURE_MESSAGES.PERSONAL_DATA_DETECTED,
+    );
   }
 }
 
@@ -460,6 +466,7 @@ type ImageUploadBatchInput = {
   items: Array<{
     clientId: string;
     membershipId: string;
+    assignmentItemId: string;
     submissionId: string;
     asset: PreparedStudentWorkAsset;
   }>;
@@ -480,6 +487,7 @@ type ExistingImageSubmissionRow = {
   assignment_id: string;
   class_id: string;
   membership_id: string;
+  assignment_item_id: string | null;
   upload_batch_id: string | null;
   input_kind: SubmissionInputKind;
   sha256: string | null;
@@ -499,6 +507,7 @@ function parseImageUploadItems(input: ImageUploadBatchInput) {
     const parsed = imageUploadItemSchema.parse({
       clientId: item.clientId,
       membershipId: item.membershipId,
+      assignmentItemId: item.assignmentItemId,
       submissionId: item.submissionId,
     });
     if (
@@ -518,13 +527,14 @@ function parseImageUploadItems(input: ImageUploadBatchInput) {
 }
 
 function findImageUploadReplay(
-  assignment: AssignmentDiagnosisRow,
+  assignmentId: string,
+  classId: string,
   items: ReturnType<typeof parseImageUploadItems>,
 ): ImageUploadBatchResult | null {
   const findExisting = getDatabase().prepare(
     [
       "SELECT submission.id, submission.assignment_id, submission.class_id,",
-      "submission.membership_id, submission.upload_batch_id, submission.input_kind,",
+      "submission.membership_id, submission.assignment_item_id, submission.upload_batch_id, submission.input_kind,",
       "asset.sha256, asset.original_filename",
       "FROM submissions AS submission",
       "LEFT JOIN submission_assets AS asset",
@@ -548,9 +558,10 @@ function findImageUploadReplay(
     existingCount += 1;
 
     if (
-      existing.assignment_id !== assignment.id ||
-      existing.class_id !== assignment.class_id ||
+      existing.assignment_id !== assignmentId ||
+      existing.class_id !== classId ||
       existing.membership_id !== item.membershipId ||
+      existing.assignment_item_id !== item.assignmentItemId ||
       existing.input_kind !== "IMAGE" ||
       existing.sha256 !== item.asset.sha256 ||
       existing.original_filename === null ||
@@ -599,16 +610,18 @@ function findImageUploadReplay(
 
 export function preflightImageUploadBatch(input: ImageUploadBatchInput) {
   const items = parseImageUploadItems(input);
-  const assignment = getAssignmentDiagnosisRow(input.assignmentId);
+  const targets = items.map((item) =>
+    getAssignmentDiagnosisRow(input.assignmentId, item.assignmentItemId),
+  );
+  const assignment = targets[0];
   requireMembershipsInClass(
     assignment.class_id,
     items.map((item) => item.membershipId),
   );
   requireNoRosterNamesInText(assignment.class_id, [
-    assignment.prompt,
-    assignment.correct_answer,
+    ...targets.flatMap((target) => [target.prompt, target.correct_answer]),
   ]);
-  return findImageUploadReplay(assignment, items);
+  return findImageUploadReplay(assignment.id, assignment.class_id, items);
 }
 
 export function createImageUploadBatch(
@@ -620,16 +633,18 @@ export function createImageUploadBatch(
   let result: ImageUploadBatchResult | null = null;
 
   database.transaction(() => {
-    const assignment = getAssignmentDiagnosisRow(input.assignmentId);
+    const targets = items.map((item) =>
+      getAssignmentDiagnosisRow(input.assignmentId, item.assignmentItemId),
+    );
+    const assignment = targets[0];
     requireMembershipsInClass(
       assignment.class_id,
       items.map((item) => item.membershipId),
     );
     requireNoRosterNamesInText(assignment.class_id, [
-      assignment.prompt,
-      assignment.correct_answer,
+      ...targets.flatMap((target) => [target.prompt, target.correct_answer]),
     ]);
-    const replay = findImageUploadReplay(assignment, items);
+    const replay = findImageUploadReplay(assignment.id, assignment.class_id, items);
     if (replay) {
       result = replay;
       return;
@@ -650,14 +665,15 @@ export function createImageUploadBatch(
         .prepare(
           [
             "INSERT INTO submissions",
-            "(id, class_id, assignment_id, membership_id, upload_batch_id, attempt_number, input_kind, status)",
-            "VALUES (?, ?, ?, ?, ?, ?, 'IMAGE', 'UPLOADED')",
+            "(id, class_id, assignment_id, assignment_item_id, membership_id, upload_batch_id, attempt_number, input_kind, status)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 'IMAGE', 'UPLOADED')",
           ].join(" "),
         )
         .run(
           item.clientId,
           assignment.class_id,
           assignment.id,
+          item.assignmentItemId,
           item.membershipId,
           batchId,
           nextAttemptNumber(assignment.id, item.membershipId),
@@ -667,8 +683,9 @@ export function createImageUploadBatch(
         .prepare(
           [
             "INSERT INTO submission_assets",
-            "(id, submission_id, page_position, storage_key, original_filename, media_type, byte_size, sha256, width, height)",
-            "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)",
+            "(id, submission_id, page_position, storage_key, original_filename, media_type, byte_size, sha256, width, height,",
+            "source_width, source_height, crop_left, crop_top, crop_width, crop_height, preprocessing_version)",
+            "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           ].join(" "),
         )
         .run(
@@ -681,6 +698,13 @@ export function createImageUploadBatch(
           item.asset.sha256,
           item.asset.width,
           item.asset.height,
+          item.asset.sourceWidth,
+          item.asset.sourceHeight,
+          item.asset.cropLeft,
+          item.asset.cropTop,
+          item.asset.cropWidth,
+          item.asset.cropHeight,
+          item.asset.preprocessingVersion,
         );
     }
 
@@ -718,20 +742,22 @@ export function createTypedSubmissions(input: {
   let replayed = false;
 
   database.transaction(() => {
-    const assignment = getAssignmentDiagnosisRow(input.assignmentId);
+    const targets = items.map((item) =>
+      getAssignmentDiagnosisRow(input.assignmentId, item.assignmentItemId),
+    );
+    const assignment = targets[0];
     requireMembershipsInClass(
       assignment.class_id,
       items.map((item) => item.membershipId),
     );
     requireNoRosterNamesInText(assignment.class_id, [
-      assignment.prompt,
-      assignment.correct_answer,
+      ...targets.flatMap((target) => [target.prompt, target.correct_answer]),
       ...items.map((item) => item.responseText),
     ]);
     const findExisting = database.prepare(
       [
         "SELECT submission.id, submission.assignment_id, submission.class_id,",
-        "submission.membership_id, submission.input_kind, answer_version.response_text",
+        "submission.membership_id, submission.assignment_item_id, submission.input_kind, answer_version.response_text",
         "FROM submissions AS submission",
         "LEFT JOIN submission_answers AS answer",
         "ON answer.submission_id = submission.id AND answer.position = 1",
@@ -749,6 +775,7 @@ export function createTypedSubmissions(input: {
             assignment_id: string;
             class_id: string;
             membership_id: string;
+            assignment_item_id: string | null;
             input_kind: SubmissionInputKind;
             response_text: string | null;
           }
@@ -759,6 +786,7 @@ export function createTypedSubmissions(input: {
         existing.assignment_id !== assignment.id ||
         existing.class_id !== assignment.class_id ||
         existing.membership_id !== item.membershipId ||
+        existing.assignment_item_id !== item.assignmentItemId ||
         existing.input_kind !== "TYPED" ||
         existing.response_text !== item.responseText
       ) {
@@ -790,19 +818,24 @@ export function createTypedSubmissions(input: {
     for (const item of items) {
       const submissionId = item.clientId;
       const answerId = randomUUID();
+      const target = getAssignmentDiagnosisRow(
+        input.assignmentId,
+        item.assignmentItemId,
+      );
 
       database
         .prepare(
           [
             "INSERT INTO submissions",
-            "(id, class_id, assignment_id, membership_id, attempt_number, input_kind, status)",
-            "VALUES (?, ?, ?, ?, ?, 'TYPED', 'UPLOADED')",
+            "(id, class_id, assignment_id, assignment_item_id, membership_id, attempt_number, input_kind, status)",
+            "VALUES (?, ?, ?, ?, ?, ?, 'TYPED', 'UPLOADED')",
           ].join(" "),
         )
         .run(
           submissionId,
           assignment.class_id,
           assignment.id,
+          item.assignmentItemId,
           item.membershipId,
           nextAttemptNumber(assignment.id, item.membershipId),
         );
@@ -820,8 +853,8 @@ export function createTypedSubmissions(input: {
           submissionId,
           assignment.id,
           assignment.class_id,
-          assignment.assignment_item_id,
-          assignment.prompt,
+          target.assignment_item_id,
+          target.prompt,
         );
 
       database
@@ -877,7 +910,8 @@ export function getSubmissionDiagnosisContext(
         "JOIN assignments AS assignment ON assignment.id = submission.assignment_id",
         "AND assignment.status = 'READY' AND assignment.archived_at IS NULL",
         "JOIN classes AS class ON class.id = submission.class_id AND class.archived_at IS NULL",
-        "JOIN assignment_items AS item ON item.assignment_id = assignment.id AND item.position = 1",
+        "JOIN assignment_items AS item ON item.id = submission.assignment_item_id",
+        "AND item.assignment_id = assignment.id AND item.class_id = submission.class_id",
         "JOIN problems AS problem ON problem.id = item.problem_id",
         "LEFT JOIN submission_assets AS asset ON asset.submission_id = submission.id AND asset.page_position = 1 AND asset.purged_at IS NULL",
         "LEFT JOIN submission_answers AS answer ON answer.submission_id = submission.id AND answer.position = 1",
@@ -1091,7 +1125,8 @@ function getRunAndSubmission(runId: string, submissionId: string) {
         "FROM ai_runs AS run",
         "JOIN diagnosis_run_targets AS target ON target.ai_run_id = run.id",
         "JOIN submissions AS submission ON submission.id = target.submission_id AND submission.class_id = run.class_id",
-        "JOIN assignment_items AS item ON item.assignment_id = submission.assignment_id AND item.position = 1",
+        "JOIN assignment_items AS item ON item.id = submission.assignment_item_id",
+        "AND item.assignment_id = submission.assignment_id AND item.class_id = submission.class_id",
         "WHERE run.id = ? AND target.submission_id = ? AND run.purpose = 'DIAGNOSIS'",
       ].join(" "),
     )
@@ -1274,8 +1309,8 @@ export function completeDiagnosisRun(input: {
     const insertStep = database.prepare(
       [
         "INSERT INTO diagnosis_steps",
-        "(id, diagnosis_id, position, step_text, normalized_math, correctness, error_note, evidence_quote)",
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "(id, diagnosis_id, position, step_text, normalized_math, step_kind, parse_issue, correctness, error_note, evidence_quote)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ].join(" "),
     );
     for (const step of diagnosis.steps) {
@@ -1285,6 +1320,8 @@ export function completeDiagnosisRun(input: {
         step.position,
         step.step,
         step.normalizedMath,
+        step.stepKind,
+        step.parseIssue,
         step.correctness,
         step.errorNote,
         step.evidenceQuote,
@@ -1409,6 +1446,7 @@ type DiagnosisSummaryRow = {
 type AssignmentDiagnosisQueueRow = {
   submission_id: string;
   membership_id: string;
+  assignment_item_id: string;
   input_kind: "IMAGE" | "TYPED";
   status:
     | "UPLOADED"
@@ -1456,7 +1494,7 @@ export function getDiagnosisSummary(diagnosisId: string) {
   const steps = getDatabase()
     .prepare(
       [
-        "SELECT position, step_text, normalized_math, correctness, error_note, evidence_quote",
+        "SELECT position, step_text, normalized_math, step_kind, parse_issue, correctness, error_note, evidence_quote",
         "FROM diagnosis_steps WHERE diagnosis_id = ? ORDER BY position",
       ].join(" "),
     )
@@ -1464,6 +1502,8 @@ export function getDiagnosisSummary(diagnosisId: string) {
     position: number;
     step_text: string;
     normalized_math: string | null;
+    step_kind: "EQUATION" | "EXPRESSION" | "ANSWER" | "ANNOTATION" | "UNPARSEABLE";
+    parse_issue: string | null;
     correctness: "CORRECT" | "INCORRECT" | "UNCLEAR";
     error_note: string | null;
     evidence_quote: string | null;
@@ -1490,6 +1530,8 @@ export function getDiagnosisSummary(diagnosisId: string) {
       position: step.position,
       step: step.step_text,
       normalizedMath: step.normalized_math,
+      stepKind: step.step_kind,
+      parseIssue: step.parse_issue,
       correctness: step.correctness,
       errorNote: step.error_note,
       evidenceQuote: step.evidence_quote,
@@ -1520,7 +1562,7 @@ export function getPersistedDiagnosisSummaryForSubmission(
 }
 
 export function listAssignmentDiagnosisQueue(assignmentId: string) {
-  const assignment = getAssignmentDiagnosisRow(assignmentId);
+  const assignment = getAssignmentDiagnosisRows(assignmentId)[0];
   const database = getDatabase();
   const processingRows = database
     .prepare(
@@ -1540,7 +1582,7 @@ export function listAssignmentDiagnosisQueue(assignmentId: string) {
   const rows = database
     .prepare(
       [
-        "SELECT submission.id AS submission_id, submission.membership_id,",
+        "SELECT submission.id AS submission_id, submission.membership_id, submission.assignment_item_id,",
         "submission.input_kind, submission.status,",
         "CASE WHEN submission.input_kind = 'IMAGE' THEN asset.original_filename ELSE NULL END AS filename,",
         "CASE WHEN submission.input_kind = 'TYPED' THEN input_version.response_text ELSE NULL END AS response_text,",
@@ -1581,6 +1623,7 @@ export function listAssignmentDiagnosisQueue(assignmentId: string) {
   return rows.map((row) => ({
     submissionId: row.submission_id,
     membershipId: row.membership_id,
+    assignmentItemId: row.assignment_item_id,
     inputKind: row.input_kind,
     status: row.status,
     filename: row.filename,

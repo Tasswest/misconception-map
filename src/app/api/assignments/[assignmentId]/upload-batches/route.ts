@@ -37,6 +37,7 @@ const metadataSchema = z
           .object({
             clientId: z.string().uuid(),
             membershipId: z.string().uuid(),
+            assignmentItemId: z.string().uuid(),
           })
           .strict(),
       )
@@ -182,7 +183,10 @@ export async function POST(
     // student-work images or writing anything to disk.
     validateDiagnosisTargets({
       assignmentId,
-      membershipIds: metadata.map((item) => item.membershipId),
+      targets: metadata.map((item) => ({
+        membershipId: item.membershipId,
+        assignmentItemId: item.assignmentItemId,
+      })),
     });
 
     const preparedAssets: PreparedStudentWorkAsset[] = [];

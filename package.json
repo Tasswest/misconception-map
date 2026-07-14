@@ -9,11 +9,12 @@
     "start": "npm run db:migrate && next start --hostname 127.0.0.1",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck && npm run verify:phase1 && npm run verify:phase2 && npm run build",
+    "check": "npm run lint && npm run typecheck && npm run verify:phase1 && npm run verify:phase2 && npm run verify:images && npm run build",
     "db:migrate": "node scripts/migrate.mjs",
     "db:check": "node scripts/check-db.mjs",
     "verify:phase1": "node scripts/verify-phase-one.mjs",
-    "verify:phase2": "node scripts/verify-phase-two-output.mjs"
+    "verify:phase2": "node scripts/verify-phase-two-output.mjs",
+    "verify:images": "node scripts/verify-image-regressions.mjs"
   },
   "engines": {
     "node": ">=20.9.0"
