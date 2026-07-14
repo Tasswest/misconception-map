@@ -1,6 +1,6 @@
 # Misconception Map
 
-Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. Through Phase 3, the app implements worksheet-aware assignment setup, local work intake, live diagnosis, a recoverable diagnosis queue, and a clustered class misconception heatmap.
+Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. Through Phase 4, the app implements worksheet-aware assignment setup, local work intake, live diagnosis, a recoverable diagnosis queue, a clustered class misconception heatmap, targeted micro-practice, and a Teach This Tomorrow brief.
 
 The project is being built for the Education category of OpenAI Build Week. It is intentionally local-first: the web app and SQLite database run on one machine, while live diagnosis and generation use the OpenAI API.
 
@@ -40,6 +40,7 @@ MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
 - **npm run verify:phase1** — test taxonomy invariants, schema constraints, model versioning, and frozen-prediction behavior in an isolated temporary database.
 - **npm run verify:phase2** — test the strict model-facing schema plus evidence grounding, domain, confidence, and abstention policies without calling the API.
 - **npm run verify:images** — verify the exact handwriting regression fixture and the earlier algebra/fraction samples retain their complete, high-detail ink regions.
+- **npm run verify:phase4** — verify provisional Student Model output, the exact five-problem difficulty ramp, discrepant answers, and the one-paragraph brief contract without calling the API.
 - **npm run lint** — run ESLint.
 - **npm run typecheck** — run TypeScript without emitting files.
 - **npm run build** — create a production build.
@@ -50,11 +51,11 @@ The `npm run seed` command and synthetic `sample-work/` images arrive in Phase 5
 ## Architecture
 
 - Next.js App Router and React Server Components for database-backed pages.
-- Small client-side islands for the upload queue, progress, worksheet review, and interactive heatmap evidence drawer; a later phase adds print controls.
+- Small client-side islands for the upload queue, progress, worksheet review, interactive heatmap evidence drawer, generation actions, and browser print control.
 - SQLite through better-sqlite3, with versioned SQL migrations stored in db/migrations.
 - Node.js Route Handlers for local file processing and OpenAI calls.
 - OpenAI Responses API with gpt-5.6, vision inputs, and strict structured outputs.
-- Class and assignment setup remain usable without an API key; live AI actions report configuration status explicitly. Phase 5 adds offline seeded content.
+- Class and assignment setup, saved diagnoses, heatmaps, and generated artifacts remain usable without an API key; only new live AI actions require it. Phase 5 adds offline seeded content.
 
 ### Live diagnosis path
 
@@ -73,6 +74,16 @@ A wrong final answer alone never earns a misconception label. A definitive label
 ### Heatmap dashboard
 
 The assignment dashboard uses each submission’s latest diagnosis. Misconception columns are sorted by affected-student count, signal frequency, and severity; students in the largest cluster are sorted to the top so the dominant block starts at the upper left. Cells distinguish clear evidence, emerging/strong misconception evidence, teacher review, and not assessed. Opening an evidence cell shows the matched worksheet problem, exact transcription, evidence quote, and the flawed step highlighted in context.
+
+### Instructional support path
+
+The dashboard can turn a supported misconception cell into targeted practice. On the first request for that student and misconception, `gpt-5.6` synthesizes a provisional, falsifiable rule hypothesis from the diagnosed transformation and exact evidence—not from the student’s name. The hypothesis records a human-readable action rule, a formal input/transformation/predicted-output pattern, scope limits, confidence, and its evidence link. It remains provisional after one response and is stored as an append-oriented Student Model version.
+
+The practice generator uses that exact model version to create five structurally varied problems whose difficulty and position ramp from 1 through 5. Every item stores both the correct answer and the answer the provisional rule predicts; the schema rejects an item when those answers are the same. The printable two-page A4 view includes a student worksheet and teacher answer key with hints, misconception-specific explanations, and the visible mismatch. This is a **discrepant event**: the learner can compare the rule’s prediction with mathematical evidence, creating a concrete reason to revise the rule instead of merely being told it is wrong.
+
+Teach This Tomorrow uses the assignment’s current largest supported cluster, aggregate evidence, and taxonomy repair move to create one paragraph: what the misconception is, a non-blaming account of why it can form, and a timed ten-minute intervention. A worked example is also stored as a generated problem and rendered separately for the board. Each brief freezes its cluster count, diagnosed-student denominator, evidence cutoff, and diagnosis links so the teacher can see which evidence snapshot it summarized.
+
+Both flows use the Responses API with `gpt-5.6`, strict Structured Outputs, `store: false`, bounded inputs, explicit prompt/schema versions, hashes, response identifiers, token counts, and latency provenance. Student display names are added only when the saved worksheet is rendered locally; they are never part of model synthesis, practice, or brief payloads.
 
 Intake accepts JPEG, PNG, and WebP images. Limits are 10 MB per photo, 20 photos and 80 MB per upload queue, 20 typed responses, and 8,000 characters per typed response. Programmatic API clients must send `Content-Length` for request bodies.
 
@@ -111,7 +122,7 @@ These categories describe observable error patterns, not hidden or fixed beliefs
 
 ## Student Model and Prediction Lab
 
-A Student Model is a versioned, testable hypothesis about the strategy visible in a student's work. Predictions are stored against future assignment items before actual answers arrive and are evaluated with their denominator and coverage visible. If older work is imported after a prediction was locked, that prediction is retained but invalidated and excluded from accuracy. The product does not present these models as fixed beliefs, ability labels, grades, or placement decisions.
+A Student Model is a versioned, testable hypothesis about the strategy visible in a student's work. Phase 4 creates the first provisional version as part of targeted-practice generation and ties it directly to diagnosis evidence. Phase 5 surfaces these hypotheses in Prediction Lab. Predictions are stored against future assignment items before actual answers arrive and are evaluated with their denominator and coverage visible. If older work is imported after a prediction was locked, that prediction is retained but invalidated and excluded from accuracy. The product does not present these models as fixed beliefs, ability labels, grades, or placement decisions.
 
 ## Privacy
 
