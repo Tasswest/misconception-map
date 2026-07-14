@@ -165,6 +165,7 @@ function verifyDatabase() {
       ["trigger", "worksheet_items_are_immutable"],
       ["trigger", "teaching_brief_evidence_is_immutable"],
       ["trigger", "live_prediction_lock_is_current"],
+      ["trigger", "model_supersession_invalidates_predictions"],
       ["trigger", "predictions_cannot_be_deleted_directly"],
       ["trigger", "predictions_reject_any_preexisting_answer"],
       ["trigger", "diagnoses_match_run_target"],
@@ -1386,6 +1387,21 @@ function verifyDatabase() {
       lockedAt: liveLock,
       createdAt: liveLock,
     });
+    const liveSupersededAt = new Date().toISOString();
+    db.prepare(
+      "UPDATE student_model_versions SET superseded_at = ? WHERE id = ?",
+    ).run(liveSupersededAt, "model_live");
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT reason, invalidated_at FROM prediction_invalidations WHERE prediction_id = ?",
+        )
+        .get("prediction_live"),
+      {
+        reason: "MODEL_UPDATED",
+        invalidated_at: liveSupersededAt,
+      },
+    );
     expectConstraint(
       () =>
         insertPrediction.run({

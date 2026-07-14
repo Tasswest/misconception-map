@@ -110,6 +110,7 @@ try {
     "late_prior_work_invalidates_prediction",
     "live_diagnosis_timestamp_is_current",
     "live_prediction_lock_is_current",
+    "model_supersession_invalidates_predictions",
     "live_student_model_evidence_timestamp_is_current",
     "live_student_model_timestamp_is_current",
     "prediction_ai_run_is_scoped",
