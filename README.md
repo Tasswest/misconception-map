@@ -1,6 +1,6 @@
 # Misconception Map
 
-Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. Through Phase 4, the app implements worksheet-aware assignment setup, local work intake, live diagnosis, a recoverable diagnosis queue, a clustered class misconception heatmap, targeted micro-practice, and a Teach This Tomorrow brief.
+Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. Through Phase 4, the app implements worksheet-aware assignment setup, local work intake, live diagnosis, a recoverable diagnosis queue, a clustered class misconception heatmap, targeted micro-practice, a Teach This Tomorrow brief, and the complete Prediction Lab signature flow.
 
 The project is being built for the Education category of OpenAI Build Week. It is intentionally local-first: the web app and SQLite database run on one machine, while live diagnosis and generation use the OpenAI API.
 
@@ -37,10 +37,10 @@ MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
 - **npm start** — migrate the local database and serve a completed production build on loopback.
 - **npm run db:migrate** — apply pending SQL migrations.
 - **npm run db:check** — verify database integrity and required bootstrap tables.
-- **npm run verify:phase1** — test taxonomy invariants, schema constraints, model versioning, and frozen-prediction behavior in an isolated temporary database.
+- **npm run verify:phase1** — test taxonomy invariants, schema constraints, model versioning, frozen predictions, outcome matching, and model-update invalidation in an isolated temporary database.
 - **npm run verify:phase2** — test the strict model-facing schema plus evidence grounding, domain, confidence, and abstention policies without calling the API.
 - **npm run verify:images** — verify the exact handwriting regression fixture and the earlier algebra/fraction samples retain their complete, high-detail ink regions.
-- **npm run verify:phase4** — verify provisional Student Model output, the exact five-problem difficulty ramp, discrepant answers, and the one-paragraph brief contract without calling the API.
+- **npm run verify:phase4** — verify Student Model output, the exact five-problem difficulty ramp, discrepant answers, the one-paragraph brief, final-answer extraction, and prediction/abstention contracts without calling the API.
 - **npm run lint** — run ESLint.
 - **npm run typecheck** — run TypeScript without emitting files.
 - **npm run build** — create a production build.
@@ -122,7 +122,21 @@ These categories describe observable error patterns, not hidden or fixed beliefs
 
 ## Student Model and Prediction Lab
 
-A Student Model is a versioned, testable hypothesis about the strategy visible in a student's work. Phase 4 creates the first provisional version as part of targeted-practice generation and ties it directly to diagnosis evidence. Phase 5 surfaces these hypotheses in Prediction Lab. Predictions are stored against future assignment items before actual answers arrive and are evaluated with their denominator and coverage visible. If older work is imported after a prediction was locked, that prediction is retained but invalidated and excluded from accuracy. The product does not present these models as fixed beliefs, ability labels, grades, or placement decisions.
+A Student Model is a versioned, testable hypothesis about the strategy visible in a student's work. The first diagnosed response creates a provisional version tied to exact evidence. A model becomes `SUPPORTED` only after the database can link at least two responses on two distinct problem fingerprints with no contradiction. The Prediction Lab then applies that exact version to unseen problem content. The OpenAI request receives the formal flawed rule and target problem, but not the student name or correct answer.
+
+Every prediction is locked and timestamped before student work exists. It freezes the Student Model version, target problem, predicted answer or explicit abstention, confidence, an auditable transformation trace, and AI provenance. Once held-out work is diagnosed, the app extracts the student's grounded final step locally and appends a deterministic outcome version. The visible score is stated as `3 of 4 matched`; accuracy uses only current, observed `MATCH`/`MISMATCH` trials. Coverage is rule-applied predictions divided by all current valid locks, so abstentions remain visible rather than disappearing from the denominator.
+
+Predictions and outcomes are append-only. A later answer correction creates a new outcome version. Prior work discovered after locking, a withdrawn target, teacher invalidation, or a Student Model update keeps the original claim in history but marks it invalid and excludes it from accuracy and coverage. Superseding a model automatically invalidates every lock tied to the older version; trials never migrate silently to the new hypothesis.
+
+### Test the Prediction Lab
+
+1. Open [http://localhost:3000/prediction-lab](http://localhost:3000/prediction-lab) and select a class. A diagnosed misconception is listed as a candidate. Build or refresh its Student Model; prediction controls unlock only after two distinct supporting problems make it `SUPPORTED`.
+2. Choose an unseen assignment problem, or expand **Create a typed held-out probe**. Enter the problem and expected answer, then click **Predict and lock** or **Create, predict, and lock**. The new history card shows its model version and lock time before any actual work is present.
+3. Follow **Collect work on…**, enter or upload that student's held-out response, and run diagnosis. Return to Prediction Lab and click **Compare new work** if the automatic post-diagnosis reconciliation has not already refreshed the page. The card shows predicted, actual, and correct answers together; the student header shows `N of M matched`.
+4. Create an out-of-scope probe to test abstention. It remains a valid locked trial, increases the abstention count, and lowers coverage without affecting accuracy.
+5. Diagnose later work that adds evidence for the same misconception, then click **Check for model updates**. A new Student Model version is created. Every older lock remains visible as **Invalidated · excluded**, the reason is `model updated`, and current metrics reset until the new version has its own trials.
+
+Matching is intentionally conservative and syntactic rather than computer-algebra-based. Whitespace, Unicode minus signs, and common multiplication/division glyphs normalize deterministically; nonidentical equivalent forms stay visible for later teacher review instead of being silently counted as matches. The product does not present Student Models as fixed beliefs, ability labels, grades, or placement decisions.
 
 ## Privacy
 
