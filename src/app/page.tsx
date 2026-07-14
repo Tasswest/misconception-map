@@ -42,9 +42,9 @@ export default function Home() {
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <a
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--sidebar)] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#244b42]"
-                href="#workspace"
+                href="/diagnose"
               >
-                Set up your first class
+                Diagnose student work
                 <ArrowIcon className="size-4" />
               </a>
               <a

@@ -4,11 +4,14 @@ import {
 } from "@/domain/misconception-taxonomy.mjs";
 import { isOpenAIConfigured, OPENAI_MODEL } from "@/lib/config";
 import { getDatabase } from "@/lib/db";
+import { guardLocalApiRequest } from "@/server/http/local-request-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const guard = guardLocalApiRequest(request);
+  if (guard) return guard;
   try {
     const database = getDatabase();
     const application = database
