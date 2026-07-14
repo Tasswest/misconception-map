@@ -21,7 +21,7 @@ const navigation = [
     key: "Prediction Lab",
     label: "Prediction Lab",
     icon: SparkIcon,
-    href: "/#prediction-lab",
+    href: "/prediction-lab",
     protected: true,
   },
 ] as const;
