@@ -155,6 +155,7 @@ function verifyDatabase() {
 
     const requiredObjects = [
       ["table", "student_model_finalizations"],
+      ["table", "diagnosis_run_targets"],
       ["table", "prediction_invalidations"],
       ["view", "student_prediction_metrics"],
       ["trigger", "student_model_finalization_is_evidence_backed"],
@@ -166,6 +167,11 @@ function verifyDatabase() {
       ["trigger", "live_prediction_lock_is_current"],
       ["trigger", "predictions_cannot_be_deleted_directly"],
       ["trigger", "predictions_reject_any_preexisting_answer"],
+      ["trigger", "diagnoses_match_run_target"],
+      ["trigger", "diagnosis_run_targets_are_scoped"],
+      ["trigger", "diagnosis_run_targets_are_immutable"],
+      ["trigger", "diagnosis_run_targets_cannot_be_deleted_directly"],
+      ["trigger", "targeted_diagnosis_runs_cannot_be_deleted_directly"],
       ["index", "one_prediction_per_student_problem"],
     ];
     const findObject = db.prepare(
@@ -583,6 +589,14 @@ function verifyDatabase() {
       "-x+4",
       "2025-01-01T09:01:00.004Z",
     );
+    insertAnswerVersion.run(
+      "answer_version_future_recorded_v1",
+      "answer_future_recorded",
+      1,
+      "−5q + 6",
+      "-5q+6",
+      time.postAnswer,
+    );
     expectConstraint(
       () =>
         db
@@ -597,7 +611,7 @@ function verifyDatabase() {
       [
         "INSERT INTO ai_runs",
         "(id, class_id, purpose, status, model_name, prompt_version, schema_version, created_at)",
-        "VALUES (?, ?, ?, 'SUCCEEDED', 'gpt-5.6', ?, ?, ?)",
+        "VALUES (?, ?, ?, 'RUNNING', 'gpt-5.6', ?, ?, ?)",
       ].join(" "),
     );
     insertAiRun.run(
@@ -616,6 +630,75 @@ function verifyDatabase() {
       "diagnosis-schema-v1",
       time.diagnosis,
     );
+    const insertDiagnosisRunTarget = db.prepare(
+      "INSERT INTO diagnosis_run_targets (ai_run_id, submission_id) VALUES (?, ?)",
+    );
+    insertDiagnosisRunTarget.run("run_diag_a", "submission_a");
+    insertDiagnosisRunTarget.run("run_diag_b", "submission_b");
+    expectConstraint(
+      () =>
+        db
+          .prepare(
+            "UPDATE diagnosis_run_targets SET submission_id = ? WHERE ai_run_id = ?",
+          )
+          .run("submission_a_future_recorded", "run_diag_a"),
+      /diagnosis run targets are immutable/,
+    );
+    expectConstraint(
+      () =>
+        db
+          .prepare(
+            "DELETE FROM diagnosis_run_targets WHERE ai_run_id = ?",
+          )
+          .run("run_diag_a"),
+      /diagnosis run targets cannot be deleted directly/,
+    );
+    expectConstraint(
+      () =>
+        db.prepare("DELETE FROM ai_runs WHERE id = ?").run("run_diag_a"),
+      /targeted diagnosis runs cannot be deleted directly/,
+    );
+    insertAiRun.run(
+      "run_cross_class_target",
+      "class_a",
+      "DIAGNOSIS",
+      "diagnosis-v1",
+      "diagnosis-schema-v1",
+      time.diagnosis,
+    );
+    expectConstraint(
+      () =>
+        insertDiagnosisRunTarget.run(
+          "run_cross_class_target",
+          "submission_b",
+        ),
+      /active diagnosis run to a same-class submission/,
+    );
+    insertAiRun.run(
+      "run_wrong_purpose_target",
+      "class_a",
+      "PRACTICE",
+      "diagnosis-v1",
+      "diagnosis-schema-v1",
+      time.diagnosis,
+    );
+    expectConstraint(
+      () =>
+        insertDiagnosisRunTarget.run(
+          "run_wrong_purpose_target",
+          "submission_a",
+        ),
+      /active diagnosis run to a same-class submission/,
+    );
+    insertAiRun.run(
+      "run_diag_a_retry",
+      "class_a",
+      "DIAGNOSIS",
+      "diagnosis-v1",
+      "diagnosis-schema-v1",
+      time.diagnosis,
+    );
+    insertDiagnosisRunTarget.run("run_diag_a_retry", "submission_a");
     expectConstraint(
       () =>
         db
@@ -623,6 +706,9 @@ function verifyDatabase() {
           .run("class_b", "run_diag_a"),
       /AI run provenance is immutable/,
     );
+    db.prepare(
+      "UPDATE ai_runs SET status = 'SUCCEEDED' WHERE id IN (?, ?)",
+    ).run("run_diag_a", "run_diag_b");
 
     const diagnosisSql = db.prepare(
       [
@@ -682,7 +768,16 @@ function verifyDatabase() {
           answerVersionId: "answer_version_a2_v4",
           runId: "run_diag_b",
         }),
-      /same-class diagnosis run/,
+      /same-class diagnosis run|exact submission answer/,
+    );
+    expectConstraint(
+      () =>
+        diagnosisSql.run({
+          ...diagnosisBase,
+          id: "diagnosis_same_class_wrong_submission",
+          answerVersionId: "answer_version_future_recorded_v1",
+        }),
+      /exact submission answer/,
     );
     diagnosisSql.run({
       ...diagnosisBase,
@@ -1805,6 +1900,7 @@ try {
           "taxonomy invariants and citation caveats",
           "fresh and idempotent migrations",
           "immutable identity and AI provenance",
+          "exact immutable diagnosis-run submission targets",
           "low-confidence diagnosis abstention",
           "append-only evidence-backed Student Model finalization",
           "live timestamp integrity with deterministic demo exemptions",

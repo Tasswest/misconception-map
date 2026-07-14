@@ -11,13 +11,27 @@ type DatabaseGlobal = typeof globalThis & {
 const databaseGlobal = globalThis as DatabaseGlobal;
 
 function createDatabase() {
-  const databasePath = path.join(
-    process.cwd(),
-    "data",
-    "misconception-map.db",
-  );
+  const configuredPath = process.env.MISCONCEPTION_MAP_DB_PATH?.trim();
+  const databasePath = configuredPath
+    ? path.resolve(
+        /* turbopackIgnore: true */ process.cwd(),
+        configuredPath,
+      )
+    : path.join(
+        /* turbopackIgnore: true */ process.cwd(),
+        "data",
+        "misconception-map.db",
+      );
 
-  fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+  // The roster and student work are sensitive local data. A private process
+  // umask also covers SQLite WAL/SHM sidecars created after startup.
+  process.umask(0o077);
+
+  const databaseDirectory = path.dirname(databasePath);
+  fs.mkdirSync(databaseDirectory, { recursive: true, mode: 0o700 });
+  if (!configuredPath) {
+    fs.chmodSync(databaseDirectory, 0o700);
+  }
 
   const database = new Database(databasePath);
   database.pragma("journal_mode = WAL");

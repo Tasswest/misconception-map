@@ -11,12 +11,21 @@ const databasePath = process.env.MISCONCEPTION_MAP_DB_PATH?.trim()
   : path.join(root, "data", "misconception-map.db");
 const migrationsPath = path.join(root, "db", "migrations");
 
-fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+process.umask(0o077);
+const databaseDirectory = path.dirname(databasePath);
+fs.mkdirSync(databaseDirectory, { recursive: true, mode: 0o700 });
+if (!process.env.MISCONCEPTION_MAP_DB_PATH?.trim()) {
+  fs.chmodSync(databaseDirectory, 0o700);
+}
 
 const db = new Database(databasePath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 db.pragma("busy_timeout = 5000");
+for (const suffix of ["", "-wal", "-shm"]) {
+  const filePath = `${databasePath}${suffix}`;
+  if (fs.existsSync(filePath)) fs.chmodSync(filePath, 0o600);
+}
 db.exec(
   [
     "CREATE TABLE IF NOT EXISTS schema_migrations (",

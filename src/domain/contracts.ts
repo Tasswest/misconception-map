@@ -1,11 +1,12 @@
 import { z } from "zod";
 
+import { LOW_CONFIDENCE_REVIEW_THRESHOLD } from "./diagnosis-policy.mjs";
 import {
   MISCONCEPTION_IDS,
   misconceptionIdSchema,
 } from "./misconception-taxonomy.mjs";
 
-export const LOW_CONFIDENCE_REVIEW_THRESHOLD = 0.72;
+export { LOW_CONFIDENCE_REVIEW_THRESHOLD };
 
 export const assignmentDomainSchema = z.enum([
   "ALGEBRA",
