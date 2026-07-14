@@ -1,6 +1,6 @@
 # Misconception Map
 
-Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. It turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers.
+Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. Phase 2 implements class and assignment setup, local work intake, live diagnosis, and the recoverable diagnosis queue.
 
 The project is being built for the Education category of OpenAI Build Week. It is intentionally local-first: the web app and SQLite database run on one machine, while live diagnosis and generation use the OpenAI API.
 
@@ -23,29 +23,54 @@ Add your API key to .env.local:
 OPENAI_API_KEY=your_key_here
 ~~~
 
-The development command applies local SQLite migrations before starting the app. Open [http://localhost:3000](http://localhost:3000).
+The development command applies local SQLite migrations before starting the app. Open [http://localhost:3000](http://localhost:3000). Development and production servers bind to `127.0.0.1`; page and API boundaries also reject non-loopback `Host` headers, and state-changing API requests reject cross-origin browser calls. This phase has no user accounts because it is a single-teacher, single-machine workspace—do not expose it through a LAN binding or public reverse proxy.
+
+For an isolated database, provide `MISCONCEPTION_MAP_DB_PATH` in the shell so both migration scripts and Next.js receive it; the standalone migration scripts do not load that override from `.env.local`:
+
+~~~bash
+MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
+~~~
 
 ## Commands
 
 - **npm run dev** — migrate the local database and start development mode.
+- **npm start** — migrate the local database and serve a completed production build on loopback.
 - **npm run db:migrate** — apply pending SQL migrations.
 - **npm run db:check** — verify database integrity and required bootstrap tables.
 - **npm run verify:phase1** — test taxonomy invariants, schema constraints, model versioning, and frozen-prediction behavior in an isolated temporary database.
+- **npm run verify:phase2** — test the strict model-facing schema plus evidence grounding, domain, confidence, and abstention policies without calling the API.
 - **npm run lint** — run ESLint.
 - **npm run typecheck** — run TypeScript without emitting files.
 - **npm run build** — create a production build.
-- **npm run check** — run lint, typecheck, and the production build.
+- **npm run check** — run lint, typecheck, both phase verifiers, and the production build.
 
-The npm run seed command will be added with the deterministic demo dataset and synthetic student-work images.
+The `npm run seed` command and synthetic `sample-work/` images arrive in Phase 5; they are not part of this handoff yet.
 
 ## Architecture
 
 - Next.js App Router and React Server Components for database-backed pages.
-- Small client-side islands for uploads, progress, interactive heatmap cells, and print controls.
+- Small client-side islands for the Phase 2 upload queue and progress; later phases add interactive heatmap cells and print controls.
 - SQLite through better-sqlite3, with versioned SQL migrations stored in db/migrations.
 - Node.js Route Handlers for local file processing and OpenAI calls.
 - OpenAI Responses API with gpt-5.6, vision inputs, and strict structured outputs.
-- Local seeded content remains usable without an API key; live AI actions report configuration status explicitly.
+- Class and assignment setup remain usable without an API key; live AI actions report configuration status explicitly. Phase 5 adds offline seeded content.
+
+### Live diagnosis path
+
+1. A teacher creates a class, roster, and assignment-scoped diagnostic problem, including the expected answer.
+2. Each photo or typed response requires an explicit teacher confirmation that names in the work content were removed or covered, then is saved locally as its own work item. Multi-file queues are tracked as one batch, while diagnosis jobs run at concurrency two.
+3. Images are auto-oriented, resized, converted to WebP, stripped of metadata, and stored under `uploads/` with private local permissions.
+4. The server sends only the assignment context and selected work—not the roster name or local filename—to `gpt-5.6` through the Responses API with `store: false`.
+5. A strict root-object schema captures the transcription, observable steps, evidence quote, misconception candidate, confidence, severity, and review signals. A separate deterministic policy rejects ungrounded quotes, cross-domain labels, poor transcriptions, and definitive diagnoses below `0.72`.
+6. The successful API run, exact submission target, immutable answer version, diagnosis, steps, ranked candidates, hashes, token use, and latency are committed atomically. Transport failures retain the local work in a safe retry state.
+
+Saved queue items reload after navigation or refresh. In-flight jobs are polled by submission ID every two seconds, and runs left stale for three minutes become explicitly retryable. OpenAI calls time out after 85 seconds with no hidden SDK retry. Exact image re-uploads or repeated diagnosis requests replay the persisted result instead of creating duplicate work or duplicate API calls.
+
+A wrong final answer alone never earns a misconception label. A definitive label requires an exact evidence quote, a transcription-grounded incorrect step, a distinct observed transformation tied to that step, and confidence of at least `0.72`; ambiguous, illegible, weakly grounded, or conflicting work is saved for teacher review instead.
+
+Intake accepts JPEG, PNG, and WebP images. Limits are 10 MB per photo, 20 photos and 80 MB per upload queue, 20 typed responses, and 8,000 characters per typed response. Programmatic API clients must send `Content-Length` for request bodies.
+
+The implementation follows OpenAI's official [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs) and [image input](https://developers.openai.com/api/docs/guides/images-vision) guidance. The model-facing schema is deliberately a strict object rather than the app's discriminated union because Structured Outputs requires an object root and required fields.
 
 The SQLite model is intentionally append-oriented. Answer corrections, diagnoses, Student Models, and prediction outcomes create new versions instead of rewriting prior evidence. A Student Model starts provisional and becomes supported only through an append-only finalization that snapshots linked evidence from at least two distinct problems. A prediction is then tied to that exact supported model version and a specific future assignment item before the student responds.
 
@@ -53,7 +78,7 @@ The main data graph covers rosters, reusable problems, assignments, upload batch
 
 ## Misconception taxonomy
 
-The taxonomy is limited to recurring middle-school algebra and fraction misconceptions. Each stable identifier includes diagnostic signals, counter-evidence, a repair move, a discriminating prediction probe, and a verified citation-style source note. Diagnosis states such as `CORRECT`, `NEEDS_REVIEW`, and `INSUFFICIENT_EVIDENCE` are deliberately kept separate from misconception identity.
+The taxonomy is limited to recurring middle-school algebra and fraction misconceptions. Each stable identifier includes diagnostic signals, counter-evidence, a repair move, a discriminating prediction probe, and a citation-style source note. Source records have verified bibliographic metadata; taxonomy mappings explicitly label indirect or conceptual support where direct evidence was not verified. Diagnosis states such as `CORRECT`, `NEEDS_REVIEW`, and `INSUFFICIENT_EVIDENCE` are deliberately kept separate from misconception identity.
 
 | Domain | Stable identifier | Diagnostic distinction | Research anchors |
 | --- | --- | --- | --- |
@@ -84,7 +109,9 @@ A Student Model is a versioned, testable hypothesis about the strategy visible i
 
 ## Privacy
 
-Seed data and sample work are synthetic. Student display names remain in the local database and are not sent in OpenAI prompts. Teachers must de-identify live work before sending it for diagnosis. This hackathon build is not a substitute for an institution's student-data, consent, retention, or child-safety compliance review.
+The Phase 5 seed data and sample work will be synthetic. Student display names remain in the local database and are not sent in OpenAI prompts. Teachers must de-identify live work before saving it for diagnosis, and the server requires that confirmation for both typed and photographed work. At diagnosis time, assignment context and typed responses are also blocked if they contain an exact roster name or a roster-name component of two or more characters. This roster check is not general personal-data detection. This hackathon build is not a substitute for an institution's student-data, consent, retention, or child-safety compliance review.
+
+Roster labels and original filenames are used only to organize local work. They are excluded from request hashes and OpenAI payloads. De-identification is teacher-attested, not automatic: this phase strips image metadata but does not OCR, detect, blur, or redact names inside image pixels. Anything visible in a submitted photo is sent to OpenAI, so the upload screen requires the teacher to cover or remove names first. The local SQLite database, filenames, and normalized uploads persist on disk; the app does not encrypt or automatically purge them. Live diagnosis sends the teacher-attested work and assignment context to the OpenAI API with response storage disabled.
 
 ## How Codex and GPT-5.6 were used
 
