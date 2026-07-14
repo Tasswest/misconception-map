@@ -117,6 +117,7 @@ try {
     "predictions_are_immutable",
     "predictions_cannot_be_deleted_directly",
     "predictions_match_model_student",
+    "predictions_reject_any_preexisting_answer",
     "predictions_reject_duplicate_problem_content",
     "problems_are_immutable",
     "student_model_ai_run_is_scoped",

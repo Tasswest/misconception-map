@@ -165,6 +165,7 @@ function verifyDatabase() {
       ["trigger", "teaching_brief_evidence_is_immutable"],
       ["trigger", "live_prediction_lock_is_current"],
       ["trigger", "predictions_cannot_be_deleted_directly"],
+      ["trigger", "predictions_reject_any_preexisting_answer"],
       ["index", "one_prediction_per_student_problem"],
     ];
     const findObject = db.prepare(
@@ -283,6 +284,16 @@ function verifyDatabase() {
         contentHash: "1".repeat(64),
       },
       {
+        id: "problem_future_recorded",
+        classId: "class_a",
+        domain: "ALGEBRA",
+        prompt: "Expand −(5q + 6).",
+        answerFormat: "EXPRESSION",
+        correctAnswer: "−5q − 6",
+        canonicalCorrectAnswer: "-5q-6",
+        contentHash: "9".repeat(64),
+      },
+      {
         id: "problem_b1",
         classId: "class_b",
         domain: "FRACTIONS",
@@ -376,6 +387,14 @@ function verifyDatabase() {
       time.item,
     );
     insertItem.run(
+      "item_future_recorded",
+      "class_a",
+      "assignment_a",
+      "problem_future_recorded",
+      7,
+      time.item,
+    );
+    insertItem.run(
       "item_b1",
       "class_b",
       "assignment_b",
@@ -415,6 +434,14 @@ function verifyDatabase() {
       "membership_b",
       1,
       time.oldSubmission,
+    );
+    insertSubmission.run(
+      "submission_a_future_recorded",
+      "class_a",
+      "assignment_a",
+      "membership_a",
+      3,
+      time.postSubmission,
     );
     expectConstraint(
       () =>
@@ -474,6 +501,14 @@ function verifyDatabase() {
       "class_a",
       "item_a1_clone",
       3,
+    );
+    insertAnswer.run(
+      "answer_future_recorded",
+      "submission_a_future_recorded",
+      "assignment_a",
+      "class_a",
+      "item_future_recorded",
+      1,
     );
     expectConstraint(
       () =>
@@ -1246,6 +1281,20 @@ function verifyDatabase() {
       () =>
         insertPrediction.run({
           ...predictionA3,
+          id: "prediction_future_dated_existing_work",
+          problemId: "problem_future_recorded",
+          targetItemId: "item_future_recorded",
+          predictedAnswer: "−5q + 6",
+          canonicalPredictedAnswer: "-5q+6",
+          correctAnswer: "−5q − 6",
+          canonicalCorrectAnswer: "-5q-6",
+        }),
+      /already has recorded work/,
+    );
+    expectConstraint(
+      () =>
+        insertPrediction.run({
+          ...predictionA3,
           id: "prediction_forged_truth",
           correctAnswer: "−2x + 7",
         }),
@@ -1263,7 +1312,7 @@ function verifyDatabase() {
           correctAnswer: "−x − 4",
           canonicalCorrectAnswer: "-x-4",
         }),
-      /must be unseen/,
+      /must be unseen|already has recorded work/,
     );
     expectConstraint(
       () =>
@@ -1319,7 +1368,7 @@ function verifyDatabase() {
           correctAnswer: "5/6",
           canonicalCorrectAnswer: "5/6",
         }),
-      /same student|supported model/,
+      /same student|supported model|already has recorded work/,
     );
     expectConstraint(
       () =>
@@ -1760,7 +1809,7 @@ try {
           "append-only evidence-backed Student Model finalization",
           "live timestamp integrity with deterministic demo exemptions",
           "distinct-content evidence and prediction trials",
-          "held-out prediction targets and late-import invalidations",
+          "held-out targets, preexisting-work guards, and late-import invalidations",
           "truthful prediction outcomes and denominator-aware metrics",
           "append-only prediction and outcome history",
           "immutable worksheet and teaching-brief scope",
