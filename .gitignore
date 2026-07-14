@@ -1,0 +1,22 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+coverage/
+
+# Environment and secrets
+.env*
+!.env.example
+
+# Local data and uploaded student work
+data/*.db
+data/*.db-*
+data/*.sqlite
+data/*.sqlite-*
+uploads/
+
+# Logs and local tooling
+*.log
+.DS_Store
+.vercel/
+*.tsbuildinfo
