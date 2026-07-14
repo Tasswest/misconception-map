@@ -83,6 +83,7 @@ type DiagnosisContextRow = {
 export type StudentModelRecord = {
   id: string;
   hypothesisId: string;
+  version: number;
   status: "PROVISIONAL" | "SUPPORTED";
   ruleStatement: string;
   formalPattern: Record<string, string>;
@@ -90,6 +91,7 @@ export type StudentModelRecord = {
   confidence: number;
   taxonomyVersion: string;
   misconceptionId: MisconceptionId;
+  createdAt: string;
 };
 
 export class InstructionalRepositoryError extends Error {
@@ -210,6 +212,7 @@ export function getPracticeDiagnosisContext(input: {
 function mapStudentModel(row: {
   id: string;
   hypothesis_id: string;
+  version: number;
   status: "PROVISIONAL" | "SUPPORTED";
   rule_statement: string;
   formal_pattern_json: string;
@@ -217,10 +220,12 @@ function mapStudentModel(row: {
   confidence: number;
   taxonomy_version: string;
   misconception_id: MisconceptionId;
+  created_at: string;
 }): StudentModelRecord {
   return {
     id: row.id,
     hypothesisId: row.hypothesis_id,
+    version: row.version,
     status: row.status,
     ruleStatement: row.rule_statement,
     formalPattern: JSON.parse(row.formal_pattern_json) as Record<string, string>,
@@ -228,16 +233,47 @@ function mapStudentModel(row: {
     confidence: row.confidence,
     taxonomyVersion: row.taxonomy_version,
     misconceptionId: row.misconception_id,
+    createdAt: row.created_at,
   };
+}
+
+function getStudentModelById(modelId: string) {
+  const row = getDatabase()
+    .prepare(
+      [
+        "SELECT model.id, model.hypothesis_id, model.version, model.status, model.rule_statement,",
+        "model.formal_pattern_json, model.scope_limits_json, model.confidence,",
+        "hypothesis.taxonomy_version, hypothesis.misconception_id, model.created_at",
+        "FROM student_model_versions AS model",
+        "JOIN student_model_hypotheses AS hypothesis ON hypothesis.id = model.hypothesis_id",
+        "WHERE model.id = ?",
+      ].join(" "),
+    )
+    .get(modelId) as
+    | {
+        id: string;
+        hypothesis_id: string;
+        version: number;
+        status: "PROVISIONAL" | "SUPPORTED";
+        rule_statement: string;
+        formal_pattern_json: string;
+        scope_limits_json: string;
+        confidence: number;
+        taxonomy_version: string;
+        misconception_id: MisconceptionId;
+        created_at: string;
+      }
+    | undefined;
+  return row ? mapStudentModel(row) : null;
 }
 
 export function findReusableStudentModel(context: DiagnosisContextRow) {
   const row = getDatabase()
     .prepare(
       [
-        "SELECT model.id, model.hypothesis_id, model.status, model.rule_statement,",
+        "SELECT model.id, model.hypothesis_id, model.version, model.status, model.rule_statement,",
         "model.formal_pattern_json, model.scope_limits_json, model.confidence,",
-        "hypothesis.taxonomy_version, hypothesis.misconception_id",
+        "hypothesis.taxonomy_version, hypothesis.misconception_id, model.created_at",
         "FROM student_model_versions AS model",
         "JOIN student_model_hypotheses AS hypothesis ON hypothesis.id = model.hypothesis_id",
         "WHERE hypothesis.class_id = ? AND hypothesis.membership_id = ?",
@@ -256,6 +292,7 @@ export function findReusableStudentModel(context: DiagnosisContextRow) {
     | {
         id: string;
         hypothesis_id: string;
+        version: number;
         status: "PROVISIONAL" | "SUPPORTED";
         rule_statement: string;
         formal_pattern_json: string;
@@ -263,6 +300,7 @@ export function findReusableStudentModel(context: DiagnosisContextRow) {
         confidence: number;
         taxonomy_version: string;
         misconception_id: MisconceptionId;
+        created_at: string;
       }
     | undefined;
   return row ? mapStudentModel(row) : null;
@@ -305,6 +343,7 @@ export function persistStudentModel(input: {
 }) {
   const database = getDatabase();
   let result: StudentModelRecord | null = null;
+  const createdAt = new Date().toISOString();
   database.transaction(() => {
     const reusable = findReusableStudentModel(input.context);
     if (reusable) {
@@ -343,8 +382,8 @@ export function persistStudentModel(input: {
         [
           "INSERT INTO student_model_versions",
           "(id, hypothesis_id, version, status, rule_statement, formal_pattern_json, scope_limits_json, confidence,",
-          "support_count, contradiction_count, ai_run_id, model_name, prompt_version, schema_version)",
-          "VALUES (?, ?, 1, 'PROVISIONAL', ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)",
+          "support_count, contradiction_count, ai_run_id, model_name, prompt_version, schema_version, created_at)",
+          "VALUES (?, ?, 1, 'PROVISIONAL', ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)",
         ].join(" "),
       )
       .run(
@@ -358,6 +397,7 @@ export function persistStudentModel(input: {
         input.run.modelName,
         input.run.promptVersion,
         input.run.schemaVersion,
+        createdAt,
       );
     database
       .prepare(
@@ -376,6 +416,7 @@ export function persistStudentModel(input: {
     result = {
       id: modelId,
       hypothesisId,
+      version: 1,
       status: "PROVISIONAL",
       ruleStatement: input.run.result.ruleStatement,
       formalPattern: input.run.result.formalPattern,
@@ -383,6 +424,7 @@ export function persistStudentModel(input: {
       confidence: input.run.result.confidence,
       taxonomyVersion: input.context.taxonomy_version,
       misconceptionId: input.context.misconception_id,
+      createdAt,
     };
   })();
   if (!result) {
@@ -392,6 +434,244 @@ export function persistStudentModel(input: {
     );
   }
   return result;
+}
+
+export function getStudentModelRevisionContext(input: {
+  context: DiagnosisContextRow;
+  model: StudentModelRecord;
+}) {
+  const row = getDatabase()
+    .prepare(
+      [
+        "SELECT diagnosis.id AS diagnosis_id, submission.class_id, submission.assignment_id, submission.membership_id,",
+        "problem.domain, diagnosis.taxonomy_version, diagnosis.misconception_id, diagnosis.confidence,",
+        "diagnosis.transcription, diagnosis.observed_transformation, diagnosis.evidence_quote,",
+        "problem.prompt AS problem_prompt, problem.correct_answer",
+        "FROM submissions AS submission",
+        "JOIN submission_answers AS answer ON answer.submission_id = submission.id",
+        "JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id",
+        "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id",
+        "JOIN assignment_items AS item ON item.id = answer.assignment_item_id",
+        "JOIN problems AS problem ON problem.id = item.problem_id",
+        "WHERE submission.class_id = ? AND submission.membership_id = ?",
+        "AND diagnosis.outcome = 'MISCONCEPTION' AND diagnosis.taxonomy_version = ?",
+        "AND diagnosis.misconception_id = ? AND julianday(diagnosis.created_at) > julianday(?)",
+        "AND diagnosis.id = (",
+        "SELECT latest.id FROM diagnoses AS latest",
+        "JOIN answer_versions AS latest_version ON latest_version.id = latest.answer_version_id",
+        "JOIN submission_answers AS latest_answer ON latest_answer.id = latest_version.submission_answer_id",
+        "WHERE latest_answer.submission_id = submission.id",
+        "ORDER BY latest.created_at DESC, latest.version DESC, latest.id DESC LIMIT 1",
+        ")",
+        "ORDER BY diagnosis.created_at DESC, diagnosis.id DESC LIMIT 1",
+      ].join(" "),
+    )
+    .get(
+      input.context.class_id,
+      input.context.membership_id,
+      input.model.taxonomyVersion,
+      input.model.misconceptionId,
+      input.model.createdAt,
+    ) as DiagnosisContextRow | undefined;
+  if (!row?.evidence_quote) return null;
+  const taxonomy = MISCONCEPTION_BY_ID.get(input.model.misconceptionId);
+  return taxonomy && taxonomy.domain === row.domain ? { row, taxonomy } : null;
+}
+
+export function persistRevisedStudentModel(input: {
+  context: DiagnosisContextRow;
+  previous: StudentModelRecord;
+  run: GenerationRun<StudentModelResult>;
+}) {
+  const database = getDatabase();
+  const modelId = randomUUID();
+  const runId = randomUUID();
+  const createdAt = new Date().toISOString();
+
+  try {
+    database.transaction(() => {
+      const update = database
+        .prepare(
+          "UPDATE student_model_versions SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL",
+        )
+        .run(createdAt, input.previous.id);
+      if (update.changes !== 1) {
+        throw new InstructionalRepositoryError(
+          "PERSISTENCE_ERROR",
+          "The Student Model changed before its new version could be saved.",
+        );
+      }
+      insertSucceededRun({
+        id: runId,
+        classId: input.context.class_id,
+        purpose: "STUDENT_MODEL",
+        run: input.run,
+      });
+      database
+        .prepare(
+          [
+            "INSERT INTO student_model_versions",
+            "(id, hypothesis_id, version, status, rule_statement, formal_pattern_json, scope_limits_json, confidence,",
+            "support_count, contradiction_count, ai_run_id, model_name, prompt_version, schema_version, created_at)",
+            "VALUES (?, ?, ?, 'PROVISIONAL', ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)",
+          ].join(" "),
+        )
+        .run(
+          modelId,
+          input.previous.hypothesisId,
+          input.previous.version + 1,
+          input.run.result.ruleStatement,
+          JSON.stringify(input.run.result.formalPattern),
+          JSON.stringify(input.run.result.scopeLimits),
+          input.run.result.confidence,
+          runId,
+          input.run.modelName,
+          input.run.promptVersion,
+          input.run.schemaVersion,
+          createdAt,
+        );
+      database
+        .prepare(
+          [
+            "INSERT INTO student_model_evidence",
+            "(student_model_version_id, diagnosis_id, role, weight, rationale)",
+            "VALUES (?, ?, 'SUPPORTS', ?, ?)",
+          ].join(" "),
+        )
+        .run(
+          modelId,
+          input.context.diagnosis_id,
+          input.context.confidence,
+          input.run.result.evidenceConnection,
+        );
+    })();
+  } catch (error) {
+    if (error instanceof InstructionalRepositoryError) throw error;
+    throw new InstructionalRepositoryError(
+      "PERSISTENCE_ERROR",
+      "The revised Student Model version could not be saved.",
+      { cause: error },
+    );
+  }
+
+  const result = getStudentModelById(modelId);
+  if (!result) {
+    throw new InstructionalRepositoryError(
+      "PERSISTENCE_ERROR",
+      "The revised Student Model could not be read back.",
+    );
+  }
+  return result;
+}
+
+export function synchronizeStudentModelEvidence(input: {
+  context: DiagnosisContextRow;
+  model: StudentModelRecord;
+}) {
+  if (input.model.status !== "PROVISIONAL") return input.model;
+  const database = getDatabase();
+
+  database.transaction(() => {
+    const supportingDiagnoses = database
+      .prepare(
+        [
+          "SELECT diagnosis.id, diagnosis.confidence, diagnosis.evidence_quote",
+          "FROM submissions AS submission",
+          "JOIN submission_answers AS answer ON answer.submission_id = submission.id",
+          "JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id",
+          "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id",
+          "WHERE submission.class_id = ? AND submission.membership_id = ?",
+          "AND diagnosis.outcome = 'MISCONCEPTION'",
+          "AND diagnosis.taxonomy_version = ? AND diagnosis.misconception_id = ?",
+          "AND julianday(diagnosis.created_at) <= julianday(?)",
+          "AND diagnosis.id = (",
+          "SELECT latest.id FROM diagnoses AS latest",
+          "JOIN answer_versions AS latest_version ON latest_version.id = latest.answer_version_id",
+          "JOIN submission_answers AS latest_answer ON latest_answer.id = latest_version.submission_answer_id",
+          "WHERE latest_answer.submission_id = submission.id",
+          "ORDER BY latest.created_at DESC, latest.version DESC, latest.id DESC LIMIT 1",
+          ")",
+          "ORDER BY diagnosis.created_at, diagnosis.id",
+        ].join(" "),
+      )
+      .all(
+        input.context.class_id,
+        input.context.membership_id,
+        input.model.taxonomyVersion,
+        input.model.misconceptionId,
+        input.model.createdAt,
+      ) as Array<{
+      id: string;
+      confidence: number;
+      evidence_quote: string | null;
+    }>;
+
+    const insertEvidence = database.prepare(
+      [
+        "INSERT OR IGNORE INTO student_model_evidence",
+        "(student_model_version_id, diagnosis_id, role, weight, rationale)",
+        "VALUES (?, ?, 'SUPPORTS', ?, ?)",
+      ].join(" "),
+    );
+    for (const diagnosis of supportingDiagnoses) {
+      insertEvidence.run(
+        input.model.id,
+        diagnosis.id,
+        diagnosis.confidence,
+        diagnosis.evidence_quote
+          ? `The same observable rule pattern recurs in: ${diagnosis.evidence_quote}`
+          : "The same taxonomy-grounded transformation recurs in this response.",
+      );
+    }
+
+    const counts = database
+      .prepare(
+        [
+          "SELECT",
+          "count(DISTINCT CASE WHEN evidence.role = 'SUPPORTS' THEN answer_version.submission_answer_id END) AS support_count,",
+          "count(DISTINCT CASE WHEN evidence.role = 'CONTRADICTS' THEN answer_version.submission_answer_id END) AS contradiction_count,",
+          "count(DISTINCT CASE WHEN evidence.role = 'AMBIGUOUS' THEN answer_version.submission_answer_id END) AS ambiguous_count,",
+          "count(DISTINCT CASE WHEN evidence.role = 'SUPPORTS' THEN problem.content_hash END) AS distinct_support_content",
+          "FROM student_model_evidence AS evidence",
+          "JOIN diagnoses AS diagnosis ON diagnosis.id = evidence.diagnosis_id",
+          "JOIN answer_versions AS answer_version ON answer_version.id = diagnosis.answer_version_id",
+          "JOIN submission_answers AS answer ON answer.id = answer_version.submission_answer_id",
+          "JOIN assignment_items AS item ON item.id = answer.assignment_item_id",
+          "JOIN problems AS problem ON problem.id = item.problem_id",
+          "WHERE evidence.student_model_version_id = ?",
+        ].join(" "),
+      )
+      .get(input.model.id) as {
+      support_count: number;
+      contradiction_count: number;
+      ambiguous_count: number;
+      distinct_support_content: number;
+    };
+
+    if (
+      counts.support_count >= 2 &&
+      counts.distinct_support_content >= 2 &&
+      counts.contradiction_count === 0
+    ) {
+      database
+        .prepare(
+          [
+            "INSERT INTO student_model_finalizations",
+            "(student_model_version_id, final_status, support_count, contradiction_count, ambiguous_count, finalizer_type, note)",
+            "VALUES (?, 'SUPPORTED', ?, ?, ?, 'SYSTEM', ?)",
+          ].join(" "),
+        )
+        .run(
+          input.model.id,
+          counts.support_count,
+          counts.contradiction_count,
+          counts.ambiguous_count,
+          "Repeated diagnosis evidence across two structurally distinct problems supports this falsifiable rule hypothesis.",
+        );
+    }
+  })();
+
+  return getStudentModelById(input.model.id) ?? input.model;
 }
 
 function findPreviousWorksheet(input: {

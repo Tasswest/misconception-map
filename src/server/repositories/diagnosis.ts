@@ -9,6 +9,8 @@ import {
   type StructuredDiagnosis,
   type SubmissionInputKind,
 } from "@/domain/contracts";
+import { canonicalizeMathAnswer } from "@/domain/math-normalization.mjs";
+import { extractStudentFinalAnswer } from "@/domain/student-final-answer.mjs";
 import {
   MISCONCEPTION_BY_ID,
   MISCONCEPTION_IDS,
@@ -862,10 +864,15 @@ export function createTypedSubmissions(input: {
           [
             "INSERT INTO answer_versions",
             "(id, submission_answer_id, version, response_text, normalized_answer, source, confidence, creator_type)",
-            "VALUES (?, ?, 1, ?, NULL, 'TYPED', 1, 'TEACHER')",
+            "VALUES (?, ?, 1, ?, ?, 'TYPED', 1, 'TEACHER')",
           ].join(" "),
         )
-        .run(randomUUID(), answerId, item.responseText);
+        .run(
+          randomUUID(),
+          answerId,
+          item.responseText,
+          canonicalizeMathAnswer(item.responseText),
+        );
 
       createdItems.push({
         clientId: item.clientId,
@@ -1113,6 +1120,7 @@ type RunAndSubmissionRow = {
   assignment_item_id: string;
   input_kind: SubmissionInputKind;
   upload_batch_id: string | null;
+  correct_answer: string;
 };
 
 function getRunAndSubmission(runId: string, submissionId: string) {
@@ -1121,12 +1129,13 @@ function getRunAndSubmission(runId: string, submissionId: string) {
       [
         "SELECT run.id AS run_id, run.model_name, run.prompt_version, run.schema_version,",
         "submission.class_id, submission.assignment_id, item.id AS assignment_item_id,",
-        "submission.input_kind, submission.upload_batch_id",
+        "submission.input_kind, submission.upload_batch_id, problem.correct_answer",
         "FROM ai_runs AS run",
         "JOIN diagnosis_run_targets AS target ON target.ai_run_id = run.id",
         "JOIN submissions AS submission ON submission.id = target.submission_id AND submission.class_id = run.class_id",
         "JOIN assignment_items AS item ON item.id = submission.assignment_item_id",
         "AND item.assignment_id = submission.assignment_id AND item.class_id = submission.class_id",
+        "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
         "WHERE run.id = ? AND target.submission_id = ? AND run.purpose = 'DIAGNOSIS'",
       ].join(" "),
     )
@@ -1196,11 +1205,17 @@ export function completeDiagnosisRun(input: {
       );
     }
 
+    const result = completion.result;
+    const studentFinalAnswer = extractStudentFinalAnswer({
+      steps: result.diagnosis.steps,
+      transcription: result.diagnosis.transcription,
+      studentAnswer: result.studentAnswer,
+      correctAnswer: scope.correct_answer,
+    });
     let answerVersionId: string;
     if (scope.input_kind === "IMAGE") {
       const answerId = randomUUID();
       answerVersionId = randomUUID();
-      const result = completion.result;
 
       database
         .prepare(
@@ -1230,21 +1245,32 @@ export function completeDiagnosisRun(input: {
         .run(
           answerVersionId,
           answerId,
-          result.studentAnswer ?? result.diagnosis.transcription,
-          result.normalizedAnswer,
+          studentFinalAnswer?.display ??
+            result.studentAnswer ??
+            result.diagnosis.transcription,
+          studentFinalAnswer?.canonical ?? null,
           result.diagnosis.transcriptionConfidence,
         );
     } else {
       const answerVersion = database
         .prepare(
           [
-            "SELECT answer_version.id",
+            "SELECT answer_version.id, answer_version.submission_answer_id, answer_version.version,",
+            "answer_version.response_text, answer_version.normalized_answer",
             "FROM answer_versions AS answer_version",
             "JOIN submission_answers AS answer ON answer.id = answer_version.submission_answer_id",
             "WHERE answer.submission_id = ? ORDER BY answer_version.version DESC LIMIT 1",
           ].join(" "),
         )
-        .get(input.submissionId) as { id: string } | undefined;
+        .get(input.submissionId) as
+        | {
+            id: string;
+            submission_answer_id: string;
+            version: number;
+            response_text: string;
+            normalized_answer: string | null;
+          }
+        | undefined;
 
       if (!answerVersion) {
         throw new DiagnosisRepositoryError(
@@ -1252,10 +1278,34 @@ export function completeDiagnosisRun(input: {
           "The typed answer version could not be found.",
         );
       }
-      answerVersionId = answerVersion.id;
+      if (
+        studentFinalAnswer &&
+        (answerVersion.normalized_answer !== studentFinalAnswer.canonical ||
+          answerVersion.response_text !== studentFinalAnswer.display)
+      ) {
+        answerVersionId = randomUUID();
+        database
+          .prepare(
+            [
+              "INSERT INTO answer_versions",
+              "(id, submission_answer_id, version, response_text, normalized_answer, source, confidence, creator_type, change_reason)",
+              "VALUES (?, ?, ?, ?, ?, 'TYPED', ?, 'AI', ?)",
+            ].join(" "),
+          )
+          .run(
+            answerVersionId,
+            answerVersion.submission_answer_id,
+            answerVersion.version + 1,
+            studentFinalAnswer.display,
+            studentFinalAnswer.canonical,
+            result.diagnosis.transcriptionConfidence,
+            "Problem-aware diagnosis extracted the final mathematical answer from the typed work.",
+          );
+      } else {
+        answerVersionId = answerVersion.id;
+      }
     }
 
-    const result = completion.result;
     const diagnosis = result.diagnosis;
     diagnosisId = randomUUID();
     const reviewReasons = Array.from(

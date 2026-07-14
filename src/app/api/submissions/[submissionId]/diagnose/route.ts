@@ -19,6 +19,7 @@ import {
   getPersistedDiagnosisSummaryForSubmission,
   getSubmissionDiagnosisContext,
 } from "@/server/repositories/diagnosis";
+import { synchronizePredictionOutcomesForClass } from "@/server/repositories/prediction-lab";
 import { resolveStoredStudentWorkAsset } from "@/server/storage/submission-assets";
 
 export const runtime = "nodejs";
@@ -179,6 +180,12 @@ export async function POST(
       runId,
       completion,
     });
+    try {
+      synchronizePredictionOutcomesForClass(prepared.classId);
+    } catch {
+      // The diagnosis is already durably saved. Prediction Lab also provides
+      // an explicit reconciliation action if a later outcome needs attention.
+    }
     return NextResponse.json(summary);
   } catch (error) {
     if (runId) {

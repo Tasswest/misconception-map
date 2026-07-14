@@ -7,7 +7,7 @@ import {
 } from "@/domain/misconception-taxonomy.mjs";
 import { DIAGNOSIS_REVIEW_REASON_CODES } from "@/domain/diagnosis-ai-output.mjs";
 
-export const DIAGNOSIS_PROMPT_VERSION = "1.1.0";
+export const DIAGNOSIS_PROMPT_VERSION = "1.2.0";
 
 type DiagnosisPromptInput = {
   assignmentDomain: AssignmentDomain;
@@ -58,7 +58,8 @@ export function buildDiagnosisPrompt(input: DiagnosisPromptInput) {
     "Do not repair the student's mathematics to match the correctAnswer. Problem context may disambiguate glyphs, but transcription must still preserve the student's actual value and sign.",
     "For every step, set stepKind to EQUATION, EXPRESSION, ANSWER, ANNOTATION, or UNPARSEABLE. Use UNPARSEABLE with a concise parseIssue whenever a visible line cannot be interpreted as an equation, expression, answer, annotation, or plausible next step for observedPrompt. For all other steps parseIssue must be null.",
     "A final algebra line that should state a solved equation but is transcribed as a variable-containing fragment such as `4-x` is not a plausible answer. Mark it UNPARSEABLE or EXPRESSION, lower transcriptionConfidence below 0.72, and request review instead of diagnosing it.",
-    "Copy observedPrompt exactly from the reference payload. For typed work, copy studentAnswer and transcription exactly from typedResponse. For image work, studentAnswer must be an exact contiguous excerpt of transcription or null.",
+    "Copy observedPrompt exactly from the reference payload. For typed work, copy transcription exactly from typedResponse. For every input kind, studentAnswer must be the student's final claimed answer as an exact contiguous excerpt of transcription, or null when no final answer is visible.",
+    "normalizedAnswer must normalize studentAnswer only. Never put correctAnswer, a repaired answer, or an answer inferred from the answer key in studentAnswer or normalizedAnswer.",
     "Every non-null evidenceQuote, including step and candidate quotes, must be an exact contiguous substring of transcription. Never paraphrase evidence.",
     "Use the supplied correctAnswer only as a correctness reference; never present it as student evidence.",
     "Classify the first observable invalid step. A wrong final answer alone is insufficient evidence of a misconception.",

@@ -1,17 +1,11 @@
 import { z } from "zod";
 
+import { canonicalizeMathAnswer } from "./math-normalization.mjs";
+
 export const STUDENT_MODEL_SCHEMA_VERSION = "1.0.0";
 export const PRACTICE_SCHEMA_VERSION = "1.0.0";
 export const TEACHING_BRIEF_SCHEMA_VERSION = "1.0.0";
-
-/** @param {string} value */
-function canonicalMath(value) {
-  return value
-    .normalize("NFKC")
-    .replace(/[−–—]/gu, "-")
-    .replace(/\s+/gu, "")
-    .toLocaleLowerCase("en-US");
-}
+export const PREDICTION_SCHEMA_VERSION = "1.0.0";
 
 export const studentModelSynthesisSchema = z
   .object({
@@ -51,8 +45,8 @@ const practiceItemSchema = z
   .strict()
   .superRefine((item, context) => {
     if (
-      canonicalMath(item.correctAnswer) ===
-      canonicalMath(item.misconceptionPredictedAnswer)
+      canonicalizeMathAnswer(item.correctAnswer) ===
+      canonicalizeMathAnswer(item.misconceptionPredictedAnswer)
     ) {
       context.addIssue({
         code: "custom",
@@ -87,7 +81,7 @@ export const practiceWorksheetOutputSchema = z
           path: ["items", index, "difficulty"],
         });
       }
-      const prompt = canonicalMath(item.problemPrompt);
+      const prompt = canonicalizeMathAnswer(item.problemPrompt);
       if (prompts.has(prompt)) {
         context.addIssue({
           code: "custom",
@@ -117,3 +111,59 @@ export const teachingBriefOutputSchema = z
       .strict(),
   })
   .strict();
+
+export const predictionOutputSchema = z
+  .object({
+    ruleApplied: z.boolean(),
+    predictedAnswer: z.string().trim().min(1).max(700).nullable(),
+    confidence: z.number().min(0).max(1),
+    abstentionReason: z.string().trim().min(1).max(500).nullable(),
+    trace: z
+      .object({
+        inputFormMatched: z.string().trim().min(1).max(500),
+        appliedTransformation: z.string().trim().min(1).max(700),
+        predictedResult: z.string().trim().min(1).max(700).nullable(),
+        scopeCheck: z.string().trim().min(1).max(500),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((prediction, context) => {
+    if (
+      prediction.ruleApplied &&
+      (prediction.predictedAnswer === null || prediction.abstentionReason !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Applied rules require a predicted answer and no abstention.",
+        path: ["predictedAnswer"],
+      });
+    }
+    if (
+      !prediction.ruleApplied &&
+      (prediction.predictedAnswer !== null || prediction.abstentionReason === null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Abstentions require a reason and no predicted answer.",
+        path: ["abstentionReason"],
+      });
+    }
+    if (
+      prediction.ruleApplied &&
+      prediction.trace.predictedResult !== prediction.predictedAnswer
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "The trace must snapshot the exact predicted answer.",
+        path: ["trace", "predictedResult"],
+      });
+    }
+    if (!prediction.ruleApplied && prediction.trace.predictedResult !== null) {
+      context.addIssue({
+        code: "custom",
+        message: "An abstention cannot claim a predicted result.",
+        path: ["trace", "predictedResult"],
+      });
+    }
+  });

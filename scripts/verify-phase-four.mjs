@@ -2,9 +2,33 @@ import assert from "node:assert/strict";
 
 import {
   practiceWorksheetOutputSchema,
+  predictionOutputSchema,
   studentModelSynthesisSchema,
   teachingBriefOutputSchema,
 } from "../src/domain/generation-output.mjs";
+import { extractStudentFinalAnswer } from "../src/domain/student-final-answer.mjs";
+
+assert.deepEqual(
+  extractStudentFinalAnswer({
+    steps: [
+      {
+        step: "−(4y + 7) = −4y + 7",
+        stepKind: "EQUATION",
+      },
+    ],
+    transcription: "−(4y + 7) = −4y + 7",
+    studentAnswer: "−4y + 7",
+    correctAnswer: "−4y − 7",
+  }),
+  { display: "−4y + 7", canonical: "-4y+7" },
+);
+assert.deepEqual(
+  extractStudentFinalAnswer({
+    steps: [{ step: "x = 4", stepKind: "EQUATION" }],
+    correctAnswer: "x = −4",
+  }),
+  { display: "x = 4", canonical: "x=4" },
+);
 
 const studentModel = studentModelSynthesisSchema.parse({
   ruleStatement:
@@ -57,6 +81,41 @@ assert.equal(
   }).success,
   false,
 );
+
+const prediction = predictionOutputSchema.parse({
+  ruleApplied: true,
+  predictedAnswer: "−4x + 3",
+  confidence: 0.91,
+  abstentionReason: null,
+  trace: {
+    inputFormMatched: "A leading negative multiplies a two-term sum.",
+    appliedTransformation: "Negate the first term and preserve the second sign.",
+    predictedResult: "−4x + 3",
+    scopeCheck: "The target is inside the supported two-term distribution scope.",
+  },
+});
+assert.equal(prediction.ruleApplied, true);
+assert.equal(
+  predictionOutputSchema.safeParse({
+    ...prediction,
+    predictedAnswer: null,
+  }).success,
+  false,
+);
+
+const abstention = predictionOutputSchema.parse({
+  ruleApplied: false,
+  predictedAnswer: null,
+  confidence: 0.86,
+  abstentionReason: "The target is fraction division, outside this algebra rule's scope.",
+  trace: {
+    inputFormMatched: "No supported input form matched.",
+    appliedTransformation: "No transformation was applied.",
+    predictedResult: null,
+    scopeCheck: "Outside the versioned model scope.",
+  },
+});
+assert.equal(abstention.ruleApplied, false);
 assert.equal(
   practiceWorksheetOutputSchema.safeParse({
     ...practice,
@@ -83,5 +142,5 @@ assert.equal(
 );
 
 console.log(
-  "Phase 4 output verification passed: provisional rule, five-step difficulty ramp, discrepant answers, and one-paragraph teaching brief.",
+  "Phase 4 output verification passed: provisional rule, five-step difficulty ramp, discrepant answers, one-paragraph teaching brief, and prediction abstention contract.",
 );

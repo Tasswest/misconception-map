@@ -11,11 +11,30 @@ import {
   getLargestClusterContext,
   getPracticeDiagnosisContext,
   persistPracticeWorksheet,
+  getStudentModelRevisionContext,
+  persistRevisedStudentModel,
   persistStudentModel,
   persistTeachingBrief,
+  synchronizeStudentModelEvidence,
 } from "@/server/repositories/instructional-support";
 
-export async function generatePracticeForStudent(input: {
+async function synthesizeModelForContext(
+  context: ReturnType<typeof getPracticeDiagnosisContext>,
+) {
+  return synthesizeStudentModel({
+    domain: context.row.domain,
+    misconceptionId: context.row.misconception_id,
+    misconceptionLabel: context.taxonomy.label,
+    misconceptionDefinition: context.taxonomy.definition,
+    problemPrompt: context.row.problem_prompt,
+    correctAnswer: context.row.correct_answer,
+    transcription: context.row.transcription,
+    observedTransformation: context.row.observed_transformation,
+    evidenceQuote: context.row.evidence_quote,
+  });
+}
+
+export async function prepareStudentModel(input: {
   assignmentId: string;
   membershipId: string;
   misconceptionId: string;
@@ -25,19 +44,34 @@ export async function generatePracticeForStudent(input: {
   let model = findReusableStudentModel(context.row);
 
   if (!model) {
-    const modelRun = await synthesizeStudentModel({
-      domain: context.row.domain,
-      misconceptionId,
-      misconceptionLabel: context.taxonomy.label,
-      misconceptionDefinition: context.taxonomy.definition,
-      problemPrompt: context.row.problem_prompt,
-      correctAnswer: context.row.correct_answer,
-      transcription: context.row.transcription,
-      observedTransformation: context.row.observed_transformation,
-      evidenceQuote: context.row.evidence_quote,
-    });
+    const modelRun = await synthesizeModelForContext(context);
     model = persistStudentModel({ context: context.row, run: modelRun });
+  } else {
+    const revisionContext = getStudentModelRevisionContext({
+      context: context.row,
+      model,
+    });
+    if (revisionContext) {
+      const modelRun = await synthesizeModelForContext(revisionContext);
+      model = persistRevisedStudentModel({
+        context: revisionContext.row,
+        previous: model,
+        run: modelRun,
+      });
+    }
   }
+
+  model = synchronizeStudentModelEvidence({ context: context.row, model });
+  return { context, model };
+}
+
+export async function generatePracticeForStudent(input: {
+  assignmentId: string;
+  membershipId: string;
+  misconceptionId: string;
+}) {
+  const { context, model } = await prepareStudentModel(input);
+  const misconceptionId = model.misconceptionId;
 
   const practiceRun = await generatePracticeWorksheet({
     domain: context.row.domain,

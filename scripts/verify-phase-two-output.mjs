@@ -470,8 +470,8 @@ const typed = normalizeDiagnosisAIOutput({
         evidenceQuote: "x = 4",
       },
     ],
-    studentAnswer: "model-rewritten answer",
-    normalizedAnswer: "x = 4",
+    studentAnswer: "x = 4",
+    normalizedAnswer: "x = -4",
     misconceptionId: null,
     severity: 0,
     imageQuality: "GOOD",
@@ -490,6 +490,7 @@ const typed = normalizeDiagnosisAIOutput({
 assert.equal(typed.coreDiagnosis.outcome, "CORRECT");
 assert.equal(typed.coreDiagnosis.transcription, "x = 4");
 assert.equal(typed.studentAnswer, "x = 4");
+assert.equal(typed.normalizedAnswer, "x=4");
 assert.equal(typed.imageQuality, "NOT_APPLICABLE");
 assert.equal(typed.coreDiagnosis.transcriptionConfidence, 1);
 

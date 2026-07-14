@@ -3,6 +3,7 @@ import {
   diagnosisAIOutputSchema,
 } from "./diagnosis-ai-output.mjs";
 import { MISCONCEPTION_BY_ID } from "./misconception-taxonomy.mjs";
+import { canonicalizeMathAnswer } from "./math-normalization.mjs";
 
 export const LOW_CONFIDENCE_REVIEW_THRESHOLD = 0.72;
 
@@ -202,12 +203,8 @@ export function normalizeDiagnosisAIOutput(input) {
     transcriptionConfidence,
   );
 
-  let studentAnswer =
-    input.inputKind === "TYPED"
-      ? /** @type {string} */ (input.typedResponse)
-      : normalizeNullableText(parsed.studentAnswer);
+  let studentAnswer = normalizeNullableText(parsed.studentAnswer);
   if (
-    input.inputKind === "IMAGE" &&
     studentAnswer !== null &&
     !transcription.includes(studentAnswer)
   ) {
@@ -525,7 +522,10 @@ export function normalizeDiagnosisAIOutput(input) {
     },
     observedPrompt: input.observedPrompt,
     studentAnswer,
-    normalizedAnswer: normalizeNullableText(parsed.normalizedAnswer),
+    // Only grounded student text is canonicalized. The model also sees the
+    // answer key, so its normalization field cannot be an evidence boundary.
+    normalizedAnswer:
+      studentAnswer === null ? null : canonicalizeMathAnswer(studentAnswer),
     imageQuality,
     observedTransformation,
     strategyVariant: normalizeNullableText(parsed.strategyVariant),
