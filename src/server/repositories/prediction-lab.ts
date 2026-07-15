@@ -474,7 +474,7 @@ export function getPredictionLabData(classIdInput: string) {
         "SELECT latest.id FROM diagnoses AS latest",
         "JOIN answer_versions AS latest_version ON latest_version.id = latest.answer_version_id",
         "JOIN submission_answers AS latest_answer ON latest_answer.id = latest_version.submission_answer_id",
-        "WHERE latest_answer.submission_id = submission.id",
+        "WHERE latest_answer.id = answer.id",
         "ORDER BY latest.created_at DESC, latest.version DESC, latest.id DESC LIMIT 1",
         ")",
         "GROUP BY submission.membership_id, diagnosis.taxonomy_version, diagnosis.misconception_id",

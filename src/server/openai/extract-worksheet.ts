@@ -117,7 +117,7 @@ export async function extractWorksheet(rawInput: ExtractWorksheetInput) {
           {
             type: "input_image" as const,
             image_url: `data:${input.imageMediaType};base64,${Buffer.from(input.imageBytes).toString("base64")}`,
-            detail: "high" as const,
+            detail: "original" as const,
           },
         ]
       : [{ type: "input_text" as const, text: sourcePayload }];

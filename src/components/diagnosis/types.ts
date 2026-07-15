@@ -29,6 +29,7 @@ export type DiagnosisStep = {
   parseIssue?: string | null;
   correctness?: "CORRECT" | "INCORRECT" | "UNCLEAR";
   correct?: boolean;
+  correctNote?: string | null;
   errorNote?: string | null;
   evidenceQuote?: string | null;
 };
@@ -52,12 +53,14 @@ export type DiagnosisSummary = {
   transcription: string;
   evidenceQuote?: string | null;
   steps: DiagnosisStep[];
+  segmentedProblemCount?: number;
 };
 
 export type PersistedDiagnosisQueueItem = {
   submissionId: string;
   membershipId: string;
-  assignmentItemId: string;
+  scopeKind: "SINGLE_PROBLEM" | "FULL_PAGE";
+  assignmentItemId: string | null;
   inputKind: "IMAGE" | "TYPED";
   status:
     | "UPLOADED"

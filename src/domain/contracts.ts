@@ -42,6 +42,7 @@ export const diagnosisStepSchema = z.object({
   ]),
   parseIssue: z.string().min(1).nullable(),
   correctness: z.enum(["CORRECT", "INCORRECT", "UNCLEAR"]),
+  correctNote: z.string().min(1).nullable(),
   errorNote: z.string().min(1).nullable(),
   evidenceQuote: z.string().min(1).nullable(),
 });

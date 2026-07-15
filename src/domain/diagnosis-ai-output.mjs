@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { misconceptionIdSchema } from "./misconception-taxonomy.mjs";
 
-export const DIAGNOSIS_SCHEMA_VERSION = "1.1.0";
+export const DIAGNOSIS_SCHEMA_VERSION = "1.2.0";
 
 export const DIAGNOSIS_REVIEW_REASON_CODES = /** @type {const} */ ([
   "MODEL_REQUESTED_REVIEW",
@@ -55,6 +55,7 @@ const diagnosisStepAIOutputSchema = z
     ]),
     parseIssue: z.string().min(1).nullable(),
     correctness: z.enum(["CORRECT", "INCORRECT", "UNCLEAR"]),
+    correctNote: z.string().min(1).nullable(),
     errorNote: z.string().min(1).nullable(),
     evidenceQuote: z.string().min(1).nullable(),
   })

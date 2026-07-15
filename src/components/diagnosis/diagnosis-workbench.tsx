@@ -65,7 +65,8 @@ type QueueStatus =
 type QueueBase = {
   clientId: string;
   membershipId: string;
-  assignmentItemId: string;
+  scopeKind: "SINGLE_PROBLEM" | "FULL_PAGE";
+  assignmentItemId: string | null;
   status: QueueStatus;
   createdAt: number;
   submissionId?: string;
@@ -158,7 +159,7 @@ export function DiagnosisWorkbench({
     (item) => !item.membershipId,
   );
   const readyWithMissingProblem = actionableItems.some(
-    (item) => !item.assignmentItemId,
+    (item) => item.scopeKind === "SINGLE_PROBLEM" && !item.assignmentItemId,
   );
   const workAttestationMissing =
     unsavedActionableItems.length > 0 && !workDeidentificationConfirmed;
@@ -307,8 +308,10 @@ export function DiagnosisWorkbench({
         previewUrl,
         byteSize: file.size,
         membershipId: students.length === 1 ? students[0].membershipId : "",
+        scopeKind:
+          assignment.items.length > 1 ? "FULL_PAGE" : "SINGLE_PROBLEM",
         assignmentItemId:
-          assignment.items.length === 1 ? assignment.items[0].id : "",
+          assignment.items.length === 1 ? assignment.items[0].id : null,
         status: "READY",
         createdAt: queueSequence.current,
       });
@@ -356,6 +359,7 @@ export function DiagnosisWorkbench({
         kind: "TYPED",
         responseText: cleanResponse,
         membershipId: typedStudentId,
+        scopeKind: "SINGLE_PROBLEM",
         assignmentItemId: typedAssignmentItemId,
         status: "READY",
         createdAt: queueSequence.current,
@@ -414,6 +418,7 @@ export function DiagnosisWorkbench({
           items: uploadableItems.map((item) => ({
             clientId: item.clientId,
             membershipId: item.membershipId,
+            scopeKind: item.scopeKind,
             assignmentItemId: item.assignmentItemId,
           })),
         }),
@@ -529,7 +534,13 @@ export function DiagnosisWorkbench({
 
   async function persistAndDiagnose(items: QueueItem[]) {
     if (!liveAiReady || items.length === 0) return;
-    if (items.some((item) => !item.membershipId || !item.assignmentItemId)) {
+    if (
+      items.some(
+        (item) =>
+          !item.membershipId ||
+          (item.scopeKind === "SINGLE_PROBLEM" && !item.assignmentItemId),
+      )
+    ) {
       setRunError(
         "Choose a student and worksheet problem for every queued item before diagnosing.",
       );
@@ -841,7 +852,7 @@ export function DiagnosisWorkbench({
                   </span>
                   <p className="mt-3 text-sm font-semibold">No student work queued</p>
                   <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                    Add photos or typed responses above. Each becomes its own diagnosis.
+                    Add one full worksheet page per student, or add typed responses by problem.
                   </p>
                 </div>
               </div>
@@ -854,8 +865,16 @@ export function DiagnosisWorkbench({
                     onMembershipChange={(membershipId) =>
                       updateItem(item.clientId, { membershipId })
                     }
-                    onProblemChange={(assignmentItemId) =>
-                      updateItem(item.clientId, { assignmentItemId })
+                    onProblemChange={(selection) =>
+                      updateItem(
+                        item.clientId,
+                        selection === "__FULL_PAGE__"
+                          ? { scopeKind: "FULL_PAGE", assignmentItemId: null }
+                          : {
+                              scopeKind: "SINGLE_PROBLEM",
+                              assignmentItemId: selection || null,
+                            },
+                      )
                     }
                     onRemove={() => removeItem(item)}
                     onResponseChange={(responseText) =>
@@ -1121,15 +1140,24 @@ function QueueCard({
               </select>
             </label>
             <label className="block">
-              <span className="sr-only">Worksheet problem for this submission</span>
+              <span className="sr-only">Worksheet scope for this submission</span>
               <select
                 aria-label={`Worksheet problem for ${item.kind === "PHOTO" ? item.filename : "typed response"}`}
                 className={selectClass}
                 disabled={!canEdit || processing}
                 onChange={(event) => onProblemChange(event.target.value)}
-                value={item.assignmentItemId}
+                value={
+                  item.scopeKind === "FULL_PAGE"
+                    ? "__FULL_PAGE__"
+                    : item.assignmentItemId ?? ""
+                }
               >
                 <option value="">Choose problem</option>
+                {item.kind === "PHOTO" && problems.length > 1 ? (
+                  <option value="__FULL_PAGE__">
+                    Full worksheet page · auto-detect problems
+                  </option>
+                ) : null}
                 {problems.map((problem) => (
                   <option key={problem.id} value={problem.id}>
                     Problem {problem.position}: {problem.prompt}
@@ -1227,6 +1255,11 @@ function DiagnosisResult({
           </div>
         </div>
         <div className="flex shrink-0 gap-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">
+          {typeof result.segmentedProblemCount === "number" ? (
+            <span className="rounded-full border border-black/[0.07] bg-white/55 px-2.5 py-1">
+              {result.segmentedProblemCount} problems found
+            </span>
+          ) : null}
           <span className="rounded-full border border-black/[0.07] bg-white/55 px-2.5 py-1">
             {Math.round(result.confidence * 100)}% confidence
           </span>
@@ -1263,6 +1296,9 @@ function DiagnosisResult({
                   <span className="font-mono">{step.step}</span>
                   {step.errorNote ? (
                     <span className="mt-1 block text-[#8e402d]">{step.errorNote}</span>
+                  ) : null}
+                  {step.correctNote ? (
+                    <span className="mt-1 block text-[#426d5b]">{step.correctNote}</span>
                   ) : null}
                 </li>
               ))}
@@ -1427,8 +1463,10 @@ function queueItemFromPersisted(item: PersistedDiagnosisQueueItem): QueueItem {
       if (!result) error = "The saved diagnosis could not be loaded.";
       break;
     case "NEEDS_REVIEW":
-      status = result ? "REVIEW" : "FAILED";
-      if (!result) error = "The saved review result could not be loaded.";
+      status = "REVIEW";
+      if (!result) {
+        error ||= "No problem block could be matched safely; inspect the page manually.";
+      }
       break;
     default:
       status = "FAILED";
@@ -1441,6 +1479,7 @@ function queueItemFromPersisted(item: PersistedDiagnosisQueueItem): QueueItem {
     clientId: item.submissionId,
     submissionId: item.submissionId,
     membershipId: item.membershipId,
+    scopeKind: item.scopeKind,
     assignmentItemId: item.assignmentItemId,
     status,
     createdAt: Number.isFinite(parsedCreatedAt) ? parsedCreatedAt : Date.now(),
@@ -1540,14 +1579,17 @@ function parsePersistedQueueItems(
     if (!isRecord(value)) return [];
     const submissionId = readString(value, "submissionId");
     const membershipId = readString(value, "membershipId");
-    const assignmentItemId = readString(value, "assignmentItemId");
+    const assignmentItemId = readString(value, "assignmentItemId") || null;
+    const scopeKindValue = readString(value, "scopeKind");
+    const scopeKind =
+      scopeKindValue === "FULL_PAGE" ? "FULL_PAGE" : "SINGLE_PROBLEM";
     const inputKind = readString(value, "inputKind");
     const status = readString(value, "status");
     const createdAt = readString(value, "createdAt");
     if (
       !submissionId ||
       !membershipId ||
-      !assignmentItemId ||
+      (scopeKind === "SINGLE_PROBLEM" && !assignmentItemId) ||
       (inputKind !== "IMAGE" && inputKind !== "TYPED") ||
       ![
         "UPLOADED",
@@ -1565,6 +1607,7 @@ function parsePersistedQueueItems(
       {
         submissionId,
         membershipId,
+        scopeKind,
         assignmentItemId,
         inputKind,
         status: status as PersistedDiagnosisQueueItem["status"],
@@ -1652,6 +1695,10 @@ function parseDiagnosis(payload: ApiRecord, fallbackSubmissionId: string): Diagn
       readString(record, "evidence_quote") ||
       null,
     steps: rawSteps.flatMap(parseDiagnosisStep),
+    segmentedProblemCount:
+      typeof record.segmentedProblemCount === "number"
+        ? record.segmentedProblemCount
+        : undefined,
   };
 }
 
@@ -1681,6 +1728,7 @@ function parseDiagnosisStep(value: unknown, index: number): DiagnosisStep[] {
         ? correctness
         : undefined,
     correct: typeof value.correct === "boolean" ? value.correct : undefined,
+    correctNote: readString(value, "correctNote") || null,
     errorNote: readString(value, "errorNote") || null,
     evidenceQuote: readString(value, "evidenceQuote") || null,
   }];

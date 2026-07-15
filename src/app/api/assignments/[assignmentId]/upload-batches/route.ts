@@ -37,9 +37,24 @@ const metadataSchema = z
           .object({
             clientId: z.string().uuid(),
             membershipId: z.string().uuid(),
-            assignmentItemId: z.string().uuid(),
+            scopeKind: z.enum(["SINGLE_PROBLEM", "FULL_PAGE"]),
+            assignmentItemId: z.string().uuid().nullable(),
           })
-          .strict(),
+          .strict()
+          .superRefine((item, context) => {
+            if (
+              (item.scopeKind === "SINGLE_PROBLEM" &&
+                item.assignmentItemId === null) ||
+              (item.scopeKind === "FULL_PAGE" &&
+                item.assignmentItemId !== null)
+            ) {
+              context.addIssue({
+                code: "custom",
+                message: "Choose one problem or use full-page auto-detection.",
+                path: ["assignmentItemId"],
+              });
+            }
+          }),
       )
       .min(1)
       .max(MAX_FILES_PER_UPLOAD)
@@ -185,6 +200,7 @@ export async function POST(
       assignmentId,
       targets: metadata.map((item) => ({
         membershipId: item.membershipId,
+        scopeKind: item.scopeKind,
         assignmentItemId: item.assignmentItemId,
       })),
     });
@@ -198,6 +214,7 @@ export async function POST(
           claimedMediaType: file.type,
           originalFilename: file.name,
           submissionId: metadata[index].clientId,
+          scopeKind: metadata[index].scopeKind,
         }),
       );
     }
@@ -221,7 +238,7 @@ export async function POST(
 
     for (const asset of preparedAssets) {
       await writePreparedStudentWorkAsset(asset);
-      storedKeys.push(asset.storageKey);
+      storedKeys.push(asset.storageKey, asset.fallbackStorageKey);
     }
 
     const batch = createImageUploadBatch({

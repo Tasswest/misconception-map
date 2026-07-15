@@ -35,9 +35,22 @@ export const imageUploadItemSchema = z
     clientId: clientIdSchema,
     membershipId: idSchema,
     submissionId: idSchema,
-    assignmentItemId: idSchema,
+    scopeKind: z.enum(["SINGLE_PROBLEM", "FULL_PAGE"]),
+    assignmentItemId: idSchema.nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((item, context) => {
+    if (
+      (item.scopeKind === "SINGLE_PROBLEM" && item.assignmentItemId === null) ||
+      (item.scopeKind === "FULL_PAGE" && item.assignmentItemId !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "The image scope does not match its worksheet problem selection.",
+        path: ["assignmentItemId"],
+      });
+    }
+  });
 
 export const typedSubmissionItemSchema = z
   .object({
@@ -103,6 +116,30 @@ const persistableDiagnosisResultSchema = z
     });
   });
 
+const diagnosisImageAttemptSchema = z
+  .object({
+    rendition: z.enum(["NORMALIZED", "ORIGINAL_FALLBACK"]),
+    selected: z.boolean(),
+    inputHash: sha256Schema,
+    outputHash: sha256Schema,
+    responseId: z.string().min(1).max(240),
+    visibleProblemCount: z.number().int().nonnegative(),
+    minimumTranscriptionConfidence: z.number().min(0).max(1).nullable(),
+    inputTokens: z.number().int().nonnegative().nullable(),
+    outputTokens: z.number().int().nonnegative().nullable(),
+    latencyMs: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const diagnosisAttemptsSchema = z
+  .array(diagnosisImageAttemptSchema)
+  .min(1)
+  .max(2)
+  .refine(
+    (attempts) => attempts.filter((attempt) => attempt.selected).length === 1,
+    "Exactly one image attempt must be selected.",
+  );
+
 const diagnosisRunCompletionSchema = z.object({
   responseId: z.string().min(1).max(240),
   modelName: z.string().min(1).max(120),
@@ -112,8 +149,42 @@ const diagnosisRunCompletionSchema = z.object({
   inputTokens: z.number().int().nonnegative().nullable(),
   outputTokens: z.number().int().nonnegative().nullable(),
   latencyMs: z.number().int().nonnegative(),
+  attempts: diagnosisAttemptsSchema.optional(),
   result: persistableDiagnosisResultSchema,
 });
+
+const studentPageRunCompletionSchema = z
+  .object({
+    responseId: z.string().min(1).max(240),
+    modelName: z.string().min(1).max(120),
+    promptVersion: z.string().min(1).max(120),
+    schemaVersion: z.string().min(1).max(120),
+    outputHash: sha256Schema,
+    inputTokens: z.number().int().nonnegative().nullable(),
+    outputTokens: z.number().int().nonnegative().nullable(),
+    latencyMs: z.number().int().nonnegative(),
+    attempts: diagnosisAttemptsSchema,
+    result: z
+      .object({
+        pageTranscriptionConfidence: z.number().min(0).max(1),
+        imageQuality: z.enum(["GOOD", "USABLE", "POOR"]),
+        segmentationReviewNote: z.string().min(1).max(4_000).nullable(),
+        results: z
+          .array(
+            z
+              .object({
+                assignmentItemId: idSchema,
+                position: z.number().int().positive(),
+                correctAnswer: z.string().min(1).max(12_000),
+                result: persistableDiagnosisResultSchema,
+              })
+              .strict(),
+          )
+          .max(30),
+      })
+      .strict(),
+  })
+  .strict();
 
 export const DIAGNOSIS_FAILURE_CODES = [
   "INVALID_DIAGNOSIS_INPUT",
@@ -222,6 +293,9 @@ export type SubmissionDiagnosisContext = {
   storageKey: string | null;
   mediaType: string | null;
   assetSha256: string | null;
+  fallbackStorageKey: string | null;
+  fallbackMediaType: string | null;
+  fallbackSha256: string | null;
   typedResponse: string | null;
 };
 
@@ -232,6 +306,38 @@ export type PersistableDiagnosisResult = z.infer<
 export type DiagnosisRunCompletion = z.infer<
   typeof diagnosisRunCompletionSchema
 >;
+
+function insertDiagnosisImageAttempts(
+  runId: string,
+  attempts: DiagnosisRunCompletion["attempts"],
+) {
+  if (!attempts || attempts.length === 0) return;
+  const insert = getDatabase().prepare(
+    [
+      "INSERT INTO diagnosis_image_attempts",
+      "(id, ai_run_id, ordinal, rendition, selected, input_hash, output_hash, openai_response_id,",
+      "visible_problem_count, minimum_transcription_confidence, input_tokens, output_tokens, latency_ms)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ].join(" "),
+  );
+  attempts.forEach((attempt, index) => {
+    insert.run(
+      randomUUID(),
+      runId,
+      index + 1,
+      attempt.rendition,
+      attempt.selected ? 1 : 0,
+      attempt.inputHash,
+      attempt.outputHash,
+      attempt.responseId,
+      attempt.visibleProblemCount,
+      attempt.minimumTranscriptionConfidence,
+      attempt.inputTokens,
+      attempt.outputTokens,
+      attempt.latencyMs,
+    );
+  });
+}
 
 export class DiagnosisRepositoryError extends Error {
   readonly code:
@@ -329,7 +435,11 @@ function getAssignmentDiagnosisRow(
 
 export function validateDiagnosisTargets(input: {
   assignmentId: string;
-  targets: Array<{ membershipId: string; assignmentItemId: string }>;
+  targets: Array<{
+    membershipId: string;
+    scopeKind: "SINGLE_PROBLEM" | "FULL_PAGE";
+    assignmentItemId: string | null;
+  }>;
 }) {
   const parsed = z
     .object({
@@ -339,7 +449,8 @@ export function validateDiagnosisTargets(input: {
           z
             .object({
               membershipId: idSchema,
-              assignmentItemId: idSchema,
+              scopeKind: z.enum(["SINGLE_PROBLEM", "FULL_PAGE"]),
+              assignmentItemId: idSchema.nullable(),
             })
             .strict(),
         )
@@ -348,8 +459,14 @@ export function validateDiagnosisTargets(input: {
     })
     .strict()
     .parse(input);
+  const allAssignmentRows = getAssignmentDiagnosisRows(parsed.assignmentId);
   const assignments = parsed.targets.map((target) =>
-    getAssignmentDiagnosisRow(parsed.assignmentId, target.assignmentItemId),
+    target.scopeKind === "FULL_PAGE"
+      ? allAssignmentRows[0]
+      : getAssignmentDiagnosisRow(
+          parsed.assignmentId,
+          target.assignmentItemId ?? undefined,
+        ),
   );
   const assignment = assignments[0];
   requireMembershipsInClass(
@@ -358,7 +475,7 @@ export function validateDiagnosisTargets(input: {
   );
   requireNoRosterNamesInText(
     assignment.class_id,
-    assignments.flatMap((target) => [target.prompt, target.correct_answer]),
+    allAssignmentRows.flatMap((target) => [target.prompt, target.correct_answer]),
   );
 
   return {
@@ -468,7 +585,8 @@ type ImageUploadBatchInput = {
   items: Array<{
     clientId: string;
     membershipId: string;
-    assignmentItemId: string;
+    scopeKind: "SINGLE_PROBLEM" | "FULL_PAGE";
+    assignmentItemId: string | null;
     submissionId: string;
     asset: PreparedStudentWorkAsset;
   }>;
@@ -490,9 +608,11 @@ type ExistingImageSubmissionRow = {
   class_id: string;
   membership_id: string;
   assignment_item_id: string | null;
+  scope_kind: "SINGLE_PROBLEM" | "FULL_PAGE";
   upload_batch_id: string | null;
   input_kind: SubmissionInputKind;
   sha256: string | null;
+  fallback_sha256: string | null;
   original_filename: string | null;
 };
 
@@ -509,6 +629,7 @@ function parseImageUploadItems(input: ImageUploadBatchInput) {
     const parsed = imageUploadItemSchema.parse({
       clientId: item.clientId,
       membershipId: item.membershipId,
+      scopeKind: item.scopeKind,
       assignmentItemId: item.assignmentItemId,
       submissionId: item.submissionId,
     });
@@ -536,8 +657,8 @@ function findImageUploadReplay(
   const findExisting = getDatabase().prepare(
     [
       "SELECT submission.id, submission.assignment_id, submission.class_id,",
-      "submission.membership_id, submission.assignment_item_id, submission.upload_batch_id, submission.input_kind,",
-      "asset.sha256, asset.original_filename",
+      "submission.membership_id, submission.assignment_item_id, submission.scope_kind, submission.upload_batch_id, submission.input_kind,",
+      "asset.sha256, asset.fallback_sha256, asset.original_filename",
       "FROM submissions AS submission",
       "LEFT JOIN submission_assets AS asset",
       "ON asset.submission_id = submission.id AND asset.page_position = 1",
@@ -564,8 +685,10 @@ function findImageUploadReplay(
       existing.class_id !== classId ||
       existing.membership_id !== item.membershipId ||
       existing.assignment_item_id !== item.assignmentItemId ||
+      existing.scope_kind !== item.scopeKind ||
       existing.input_kind !== "IMAGE" ||
       existing.sha256 !== item.asset.sha256 ||
+      existing.fallback_sha256 !== item.asset.fallbackSha256 ||
       existing.original_filename === null ||
       existing.upload_batch_id === null
     ) {
@@ -612,8 +735,14 @@ function findImageUploadReplay(
 
 export function preflightImageUploadBatch(input: ImageUploadBatchInput) {
   const items = parseImageUploadItems(input);
+  const assignmentRows = getAssignmentDiagnosisRows(input.assignmentId);
   const targets = items.map((item) =>
-    getAssignmentDiagnosisRow(input.assignmentId, item.assignmentItemId),
+    item.scopeKind === "FULL_PAGE"
+      ? assignmentRows[0]
+      : getAssignmentDiagnosisRow(
+          input.assignmentId,
+          item.assignmentItemId ?? undefined,
+        ),
   );
   const assignment = targets[0];
   requireMembershipsInClass(
@@ -621,7 +750,7 @@ export function preflightImageUploadBatch(input: ImageUploadBatchInput) {
     items.map((item) => item.membershipId),
   );
   requireNoRosterNamesInText(assignment.class_id, [
-    ...targets.flatMap((target) => [target.prompt, target.correct_answer]),
+    ...assignmentRows.flatMap((target) => [target.prompt, target.correct_answer]),
   ]);
   return findImageUploadReplay(assignment.id, assignment.class_id, items);
 }
@@ -635,8 +764,14 @@ export function createImageUploadBatch(
   let result: ImageUploadBatchResult | null = null;
 
   database.transaction(() => {
+    const assignmentRows = getAssignmentDiagnosisRows(input.assignmentId);
     const targets = items.map((item) =>
-      getAssignmentDiagnosisRow(input.assignmentId, item.assignmentItemId),
+      item.scopeKind === "FULL_PAGE"
+        ? assignmentRows[0]
+        : getAssignmentDiagnosisRow(
+            input.assignmentId,
+            item.assignmentItemId ?? undefined,
+          ),
     );
     const assignment = targets[0];
     requireMembershipsInClass(
@@ -644,7 +779,7 @@ export function createImageUploadBatch(
       items.map((item) => item.membershipId),
     );
     requireNoRosterNamesInText(assignment.class_id, [
-      ...targets.flatMap((target) => [target.prompt, target.correct_answer]),
+      ...assignmentRows.flatMap((target) => [target.prompt, target.correct_answer]),
     ]);
     const replay = findImageUploadReplay(assignment.id, assignment.class_id, items);
     if (replay) {
@@ -667,8 +802,8 @@ export function createImageUploadBatch(
         .prepare(
           [
             "INSERT INTO submissions",
-            "(id, class_id, assignment_id, assignment_item_id, membership_id, upload_batch_id, attempt_number, input_kind, status)",
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 'IMAGE', 'UPLOADED')",
+            "(id, class_id, assignment_id, assignment_item_id, scope_kind, membership_id, upload_batch_id, attempt_number, input_kind, status)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'IMAGE', 'UPLOADED')",
           ].join(" "),
         )
         .run(
@@ -676,6 +811,7 @@ export function createImageUploadBatch(
           assignment.class_id,
           assignment.id,
           item.assignmentItemId,
+          item.scopeKind,
           item.membershipId,
           batchId,
           nextAttemptNumber(assignment.id, item.membershipId),
@@ -686,8 +822,9 @@ export function createImageUploadBatch(
           [
             "INSERT INTO submission_assets",
             "(id, submission_id, page_position, storage_key, original_filename, media_type, byte_size, sha256, width, height,",
-            "source_width, source_height, crop_left, crop_top, crop_width, crop_height, preprocessing_version)",
-            "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "source_width, source_height, crop_left, crop_top, crop_width, crop_height, preprocessing_version,",
+            "fallback_storage_key, fallback_media_type, fallback_byte_size, fallback_sha256, fallback_width, fallback_height, fallback_preprocessing_version)",
+            "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           ].join(" "),
         )
         .run(
@@ -707,6 +844,13 @@ export function createImageUploadBatch(
           item.asset.cropWidth,
           item.asset.cropHeight,
           item.asset.preprocessingVersion,
+          item.asset.fallbackStorageKey,
+          item.asset.fallbackMediaType,
+          item.asset.fallbackByteSize,
+          item.asset.fallbackSha256,
+          item.asset.fallbackWidth,
+          item.asset.fallbackHeight,
+          item.asset.fallbackPreprocessingVersion,
         );
     }
 
@@ -899,6 +1043,9 @@ type SubmissionDiagnosisRow = {
   storage_key: string | null;
   media_type: string | null;
   asset_sha256: string | null;
+  fallback_storage_key: string | null;
+  fallback_media_type: string | null;
+  fallback_sha256: string | null;
   typed_response: string | null;
 };
 
@@ -912,6 +1059,7 @@ export function getSubmissionDiagnosisContext(
         "submission.membership_id, submission.input_kind, assignment.domain,",
         "item.id AS assignment_item_id, problem.prompt, problem.correct_answer, problem.answer_format,",
         "asset.storage_key, asset.media_type, asset.sha256 AS asset_sha256,",
+        "asset.fallback_storage_key, asset.fallback_media_type, asset.fallback_sha256,",
         "CASE WHEN submission.input_kind = 'TYPED' THEN answer_version.response_text ELSE NULL END AS typed_response",
         "FROM submissions AS submission",
         "JOIN assignments AS assignment ON assignment.id = submission.assignment_id",
@@ -969,7 +1117,123 @@ export function getSubmissionDiagnosisContext(
     storageKey: row.storage_key,
     mediaType: row.media_type,
     assetSha256: row.asset_sha256,
+    fallbackStorageKey: row.fallback_storage_key,
+    fallbackMediaType: row.fallback_media_type,
+    fallbackSha256: row.fallback_sha256,
     typedResponse: row.typed_response,
+  };
+}
+
+export type StudentPageDiagnosisContext = {
+  submissionId: string;
+  classId: string;
+  assignmentId: string;
+  membershipId: string;
+  domain: "ALGEBRA" | "FRACTIONS" | "MIXED";
+  storageKey: string;
+  mediaType: string;
+  assetSha256: string;
+  fallbackStorageKey: string;
+  fallbackMediaType: string;
+  fallbackSha256: string;
+  problems: Array<{
+    assignmentItemId: string;
+    position: number;
+    prompt: string;
+    correctAnswer: string;
+    answerFormat: string;
+  }>;
+};
+
+export function getSubmissionScopeKind(submissionId: string) {
+  const row = getDatabase()
+    .prepare("SELECT scope_kind FROM submissions WHERE id = ?")
+    .get(submissionId) as
+    | { scope_kind: "SINGLE_PROBLEM" | "FULL_PAGE" }
+    | undefined;
+  if (!row) {
+    throw new DiagnosisRepositoryError(
+      "SUBMISSION_NOT_FOUND",
+      "That submission could not be found.",
+    );
+  }
+  return row.scope_kind;
+}
+
+export function getStudentPageDiagnosisContext(
+  submissionId: string,
+): StudentPageDiagnosisContext {
+  const row = getDatabase()
+    .prepare(
+      [
+        "SELECT submission.id AS submission_id, submission.class_id, submission.assignment_id, submission.membership_id,",
+        "assignment.domain, asset.storage_key, asset.media_type, asset.sha256 AS asset_sha256,",
+        "asset.fallback_storage_key, asset.fallback_media_type, asset.fallback_sha256",
+        "FROM submissions AS submission",
+        "JOIN assignments AS assignment ON assignment.id = submission.assignment_id",
+        "AND assignment.class_id = submission.class_id AND assignment.status = 'READY' AND assignment.archived_at IS NULL",
+        "JOIN classes AS class ON class.id = submission.class_id AND class.archived_at IS NULL",
+        "JOIN submission_assets AS asset ON asset.submission_id = submission.id AND asset.page_position = 1 AND asset.purged_at IS NULL",
+        "WHERE submission.id = ? AND submission.input_kind = 'IMAGE' AND submission.scope_kind = 'FULL_PAGE'",
+      ].join(" "),
+    )
+    .get(submissionId) as
+    | {
+        submission_id: string;
+        class_id: string;
+        assignment_id: string;
+        membership_id: string;
+        domain: "ALGEBRA" | "FRACTIONS" | "MIXED";
+        storage_key: string | null;
+        media_type: string | null;
+        asset_sha256: string | null;
+        fallback_storage_key: string | null;
+        fallback_media_type: string | null;
+        fallback_sha256: string | null;
+      }
+    | undefined;
+  if (
+    !row ||
+    !row.storage_key ||
+    !row.media_type ||
+    !row.asset_sha256 ||
+    !row.fallback_storage_key ||
+    !row.fallback_media_type ||
+    !row.fallback_sha256
+  ) {
+    throw new DiagnosisRepositoryError(
+      row ? "SUBMISSION_NOT_READY" : "SUBMISSION_NOT_FOUND",
+      row
+        ? "This full-page submission is missing an OCR rendition."
+        : "That full-page submission could not be found.",
+    );
+  }
+  const problems = getAssignmentDiagnosisRows(row.assignment_id).map(
+    (problem, index) => ({
+      assignmentItemId: problem.assignment_item_id,
+      position: index + 1,
+      prompt: problem.prompt,
+      correctAnswer: problem.correct_answer,
+      answerFormat: problem.answer_format,
+    }),
+  );
+  requireNoRosterNamesInText(
+    row.class_id,
+    problems.flatMap((problem) => [problem.prompt, problem.correctAnswer]),
+  );
+  return {
+    submissionId: row.submission_id,
+    classId: row.class_id,
+    assignmentId: row.assignment_id,
+    membershipId: row.membership_id,
+    domain: row.domain,
+    storageKey: row.storage_key,
+    mediaType: row.media_type,
+    assetSha256: row.asset_sha256,
+    fallbackStorageKey: row.fallback_storage_key,
+    fallbackMediaType: row.fallback_media_type,
+    fallbackSha256: row.fallback_sha256,
+    problems,
   };
 }
 
@@ -1117,10 +1381,10 @@ type RunAndSubmissionRow = {
   schema_version: string;
   class_id: string;
   assignment_id: string;
-  assignment_item_id: string;
+  assignment_item_id: string | null;
   input_kind: SubmissionInputKind;
   upload_batch_id: string | null;
-  correct_answer: string;
+  correct_answer: string | null;
 };
 
 function getRunAndSubmission(runId: string, submissionId: string) {
@@ -1133,9 +1397,9 @@ function getRunAndSubmission(runId: string, submissionId: string) {
         "FROM ai_runs AS run",
         "JOIN diagnosis_run_targets AS target ON target.ai_run_id = run.id",
         "JOIN submissions AS submission ON submission.id = target.submission_id AND submission.class_id = run.class_id",
-        "JOIN assignment_items AS item ON item.id = submission.assignment_item_id",
+        "LEFT JOIN assignment_items AS item ON item.id = submission.assignment_item_id",
         "AND item.assignment_id = submission.assignment_id AND item.class_id = submission.class_id",
-        "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
+        "LEFT JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
         "WHERE run.id = ? AND target.submission_id = ? AND run.purpose = 'DIAGNOSIS'",
       ].join(" "),
     )
@@ -1179,6 +1443,12 @@ export function completeDiagnosisRun(input: {
         "The diagnosis provenance did not match its claimed run.",
       );
     }
+    if (!scope.assignment_item_id || !scope.correct_answer) {
+      throw new DiagnosisRepositoryError(
+        "PERSISTENCE_ERROR",
+        "A single-problem diagnosis cannot be saved for a full-page submission.",
+      );
+    }
 
     const runUpdate = database
       .prepare(
@@ -1204,6 +1474,8 @@ export function completeDiagnosisRun(input: {
         "This diagnosis run is no longer active.",
       );
     }
+
+    insertDiagnosisImageAttempts(input.runId, completion.attempts);
 
     const result = completion.result;
     const studentFinalAnswer = extractStudentFinalAnswer({
@@ -1359,8 +1631,8 @@ export function completeDiagnosisRun(input: {
     const insertStep = database.prepare(
       [
         "INSERT INTO diagnosis_steps",
-        "(id, diagnosis_id, position, step_text, normalized_math, step_kind, parse_issue, correctness, error_note, evidence_quote)",
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "(id, diagnosis_id, position, step_text, normalized_math, step_kind, parse_issue, correctness, correct_note, error_note, evidence_quote)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ].join(" "),
     );
     for (const step of diagnosis.steps) {
@@ -1373,6 +1645,7 @@ export function completeDiagnosisRun(input: {
         step.stepKind,
         step.parseIssue,
         step.correctness,
+        step.correctNote,
         step.errorNote,
         step.evidenceQuote,
       );
@@ -1421,6 +1694,285 @@ export function completeDiagnosisRun(input: {
   })();
 
   return getDiagnosisSummary(diagnosisId);
+}
+
+export type StudentPageRunCompletion = z.infer<
+  typeof studentPageRunCompletionSchema
+>;
+
+export function completeStudentPageDiagnosisRun(input: {
+  submissionId: string;
+  runId: string;
+  completion: StudentPageRunCompletion;
+}) {
+  const database = getDatabase();
+  let completion: StudentPageRunCompletion;
+  try {
+    completion = studentPageRunCompletionSchema.parse(input.completion);
+  } catch (error) {
+    throw new DiagnosisRepositoryError(
+      "PERSISTENCE_ERROR",
+      "The full-page diagnosis did not match the persistence contract.",
+      { cause: error },
+    );
+  }
+  const diagnosisIds: string[] = [];
+
+  database.transaction(() => {
+    const scope = getRunAndSubmission(input.runId, input.submissionId);
+    if (!scope || scope.input_kind !== "IMAGE" || scope.assignment_item_id !== null) {
+      throw new DiagnosisRepositoryError(
+        "PERSISTENCE_ERROR",
+        "The diagnosis run no longer matches this full-page submission.",
+      );
+    }
+    if (
+      completion.modelName !== scope.model_name ||
+      completion.promptVersion !== scope.prompt_version ||
+      completion.schemaVersion !== scope.schema_version
+    ) {
+      throw new DiagnosisRepositoryError(
+        "PERSISTENCE_ERROR",
+        "The full-page diagnosis provenance did not match its claimed run.",
+      );
+    }
+
+    const selectedAttempt = completion.attempts.find((attempt) => attempt.selected);
+    if (!selectedAttempt || selectedAttempt.responseId !== completion.responseId) {
+      throw new DiagnosisRepositoryError(
+        "PERSISTENCE_ERROR",
+        "The selected OCR attempt did not match the saved page result.",
+      );
+    }
+
+    const runUpdate = database
+      .prepare(
+        [
+          "UPDATE ai_runs SET status = 'SUCCEEDED', output_hash = ?, openai_response_id = ?,",
+          "input_tokens = ?, output_tokens = ?, latency_ms = ?, error_code = NULL,",
+          `completed_at = (${nowSql})`,
+          "WHERE id = ? AND status = 'RUNNING'",
+        ].join(" "),
+      )
+      .run(
+        completion.outputHash,
+        completion.responseId,
+        completion.inputTokens,
+        completion.outputTokens,
+        completion.latencyMs,
+        input.runId,
+      );
+    if (runUpdate.changes !== 1) {
+      throw new DiagnosisRepositoryError(
+        "SUBMISSION_NOT_READY",
+        "This full-page diagnosis run is no longer active.",
+      );
+    }
+    insertDiagnosisImageAttempts(input.runId, completion.attempts);
+
+    const findTarget = database.prepare(
+      [
+        "SELECT item.position, problem.prompt, problem.correct_answer",
+        "FROM assignment_items AS item",
+        "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
+        "WHERE item.id = ? AND item.assignment_id = ? AND item.class_id = ?",
+      ].join(" "),
+    );
+    const insertAnswer = database.prepare(
+      [
+        "INSERT INTO submission_answers",
+        "(id, submission_id, assignment_id, class_id, assignment_item_id, position, observed_prompt)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ].join(" "),
+    );
+    const insertAnswerVersion = database.prepare(
+      [
+        "INSERT INTO answer_versions",
+        "(id, submission_answer_id, version, response_text, normalized_answer, source, confidence, creator_type)",
+        "VALUES (?, ?, 1, ?, ?, 'IMAGE_TRANSCRIPTION', ?, 'AI')",
+      ].join(" "),
+    );
+    const insertDiagnosis = database.prepare(
+      [
+        "INSERT INTO diagnoses",
+        "(id, answer_version_id, version, source, ai_run_id, outcome, taxonomy_version, misconception_id,",
+        "confidence, severity, transcription, observed_transformation, strategy_variant, evidence_quote,",
+        "transcription_confidence, reasoning_confidence, image_quality, review_reasons_json,",
+        "model_name, prompt_version, schema_version, openai_response_id)",
+        "VALUES (?, ?, 1, 'AI', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ].join(" "),
+    );
+    const insertStep = database.prepare(
+      [
+        "INSERT INTO diagnosis_steps",
+        "(id, diagnosis_id, position, step_text, normalized_math, step_kind, parse_issue, correctness, correct_note, error_note, evidence_quote)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ].join(" "),
+    );
+    const insertCandidate = database.prepare(
+      [
+        "INSERT INTO diagnosis_candidates",
+        "(diagnosis_id, rank, taxonomy_version, misconception_id, confidence, evidence_note)",
+        "VALUES (?, ?, ?, ?, ?, ?)",
+      ].join(" "),
+    );
+    const seenItems = new Set<string>();
+
+    for (const pageResult of completion.result.results) {
+      if (seenItems.has(pageResult.assignmentItemId)) {
+        throw new DiagnosisRepositoryError(
+          "PERSISTENCE_ERROR",
+          "A full page cannot contain two diagnoses for the same problem.",
+        );
+      }
+      seenItems.add(pageResult.assignmentItemId);
+      const target = findTarget.get(
+        pageResult.assignmentItemId,
+        scope.assignment_id,
+        scope.class_id,
+      ) as
+        | { position: number; prompt: string; correct_answer: string }
+        | undefined;
+      if (
+        !target ||
+        target.position !== pageResult.position ||
+        target.correct_answer !== pageResult.correctAnswer
+      ) {
+        throw new DiagnosisRepositoryError(
+          "PERSISTENCE_ERROR",
+          "A segmented result did not match the assignment problem list.",
+        );
+      }
+
+      const result = pageResult.result;
+      const studentFinalAnswer = extractStudentFinalAnswer({
+        steps: result.diagnosis.steps,
+        transcription: result.diagnosis.transcription,
+        studentAnswer: result.studentAnswer,
+        correctAnswer: target.correct_answer,
+      });
+      const answerId = randomUUID();
+      const answerVersionId = randomUUID();
+      insertAnswer.run(
+        answerId,
+        input.submissionId,
+        scope.assignment_id,
+        scope.class_id,
+        pageResult.assignmentItemId,
+        pageResult.position,
+        result.observedPrompt ?? target.prompt,
+      );
+      insertAnswerVersion.run(
+        answerVersionId,
+        answerId,
+        studentFinalAnswer?.display ??
+          result.studentAnswer ??
+          result.diagnosis.transcription,
+        studentFinalAnswer?.canonical ?? null,
+        result.diagnosis.transcriptionConfidence,
+      );
+
+      const diagnosis = result.diagnosis;
+      const diagnosisId = randomUUID();
+      diagnosisIds.push(diagnosisId);
+      const reviewReasons = Array.from(
+        new Set(
+          result.reviewReasons.length > 0
+            ? result.reviewReasons
+            : diagnosis.reviewReason
+              ? [diagnosis.reviewReason]
+              : [],
+        ),
+      );
+      insertDiagnosis.run(
+        diagnosisId,
+        answerVersionId,
+        input.runId,
+        diagnosis.outcome,
+        diagnosis.outcome === "MISCONCEPTION" ? TAXONOMY_VERSION : null,
+        diagnosis.outcome === "MISCONCEPTION"
+          ? diagnosis.misconceptionId
+          : null,
+        diagnosis.confidence,
+        diagnosis.severity,
+        diagnosis.transcription,
+        result.observedTransformation
+          ? JSON.stringify(result.observedTransformation)
+          : null,
+        result.strategyVariant,
+        diagnosis.evidenceQuote,
+        diagnosis.transcriptionConfidence,
+        diagnosis.reasoningConfidence,
+        result.imageQuality,
+        JSON.stringify(reviewReasons),
+        scope.model_name,
+        scope.prompt_version,
+        scope.schema_version,
+        completion.responseId,
+      );
+      for (const step of diagnosis.steps) {
+        insertStep.run(
+          randomUUID(),
+          diagnosisId,
+          step.position,
+          step.step,
+          step.normalizedMath,
+          step.stepKind,
+          step.parseIssue,
+          step.correctness,
+          step.correctNote,
+          step.errorNote,
+          step.evidenceQuote,
+        );
+      }
+      result.candidates.forEach((candidate, index) => {
+        insertCandidate.run(
+          diagnosisId,
+          index + 1,
+          TAXONOMY_VERSION,
+          candidate.misconceptionId,
+          candidate.confidence,
+          candidate.evidenceNote,
+        );
+      });
+    }
+
+    const needsReview =
+      completion.result.results.length === 0 ||
+      completion.result.segmentationReviewNote !== null ||
+      completion.result.results.some(
+        (item) =>
+          item.result.diagnosis.outcome !== "CORRECT" &&
+          item.result.diagnosis.outcome !== "MISCONCEPTION",
+      );
+    const submissionUpdate = database
+      .prepare(
+        [
+          "UPDATE submissions SET status = ?, sanitized_error_code = NULL, sanitized_error_message = ?,",
+          `processed_at = (${nowSql}), updated_at = (${nowSql})`,
+          "WHERE id = ? AND status = 'PROCESSING'",
+        ].join(" "),
+      )
+      .run(
+        needsReview ? "NEEDS_REVIEW" : "DIAGNOSED",
+        completion.result.segmentationReviewNote,
+        input.submissionId,
+      );
+    if (submissionUpdate.changes !== 1) {
+      throw new DiagnosisRepositoryError(
+        "SUBMISSION_NOT_READY",
+        "The full-page submission changed while its diagnoses were saved.",
+      );
+    }
+    refreshUploadBatchState(scope.upload_batch_id);
+  })();
+
+  return {
+    submissionId: input.submissionId,
+    segmentedProblemCount: diagnosisIds.length,
+    segmentationReviewNote: completion.result.segmentationReviewNote,
+    diagnoses: diagnosisIds.map((diagnosisId) => getDiagnosisSummary(diagnosisId)),
+  };
 }
 
 export function failDiagnosisRun(input: {
@@ -1496,7 +2048,8 @@ type DiagnosisSummaryRow = {
 type AssignmentDiagnosisQueueRow = {
   submission_id: string;
   membership_id: string;
-  assignment_item_id: string;
+  assignment_item_id: string | null;
+  scope_kind: "SINGLE_PROBLEM" | "FULL_PAGE";
   input_kind: "IMAGE" | "TYPED";
   status:
     | "UPLOADED"
@@ -1544,7 +2097,7 @@ export function getDiagnosisSummary(diagnosisId: string) {
   const steps = getDatabase()
     .prepare(
       [
-        "SELECT position, step_text, normalized_math, step_kind, parse_issue, correctness, error_note, evidence_quote",
+        "SELECT position, step_text, normalized_math, step_kind, parse_issue, correctness, correct_note, error_note, evidence_quote",
         "FROM diagnosis_steps WHERE diagnosis_id = ? ORDER BY position",
       ].join(" "),
     )
@@ -1555,6 +2108,7 @@ export function getDiagnosisSummary(diagnosisId: string) {
     step_kind: "EQUATION" | "EXPRESSION" | "ANSWER" | "ANNOTATION" | "UNPARSEABLE";
     parse_issue: string | null;
     correctness: "CORRECT" | "INCORRECT" | "UNCLEAR";
+    correct_note: string | null;
     error_note: string | null;
     evidence_quote: string | null;
   }>;
@@ -1583,6 +2137,7 @@ export function getDiagnosisSummary(diagnosisId: string) {
       stepKind: step.step_kind,
       parseIssue: step.parse_issue,
       correctness: step.correctness,
+      correctNote: step.correct_note,
       errorNote: step.error_note,
       evidenceQuote: step.evidence_quote,
     })),
@@ -1632,7 +2187,7 @@ export function listAssignmentDiagnosisQueue(assignmentId: string) {
   const rows = database
     .prepare(
       [
-        "SELECT submission.id AS submission_id, submission.membership_id, submission.assignment_item_id,",
+        "SELECT submission.id AS submission_id, submission.membership_id, submission.assignment_item_id, submission.scope_kind,",
         "submission.input_kind, submission.status,",
         "CASE WHEN submission.input_kind = 'IMAGE' THEN asset.original_filename ELSE NULL END AS filename,",
         "CASE WHEN submission.input_kind = 'TYPED' THEN input_version.response_text ELSE NULL END AS response_text,",
@@ -1674,6 +2229,7 @@ export function listAssignmentDiagnosisQueue(assignmentId: string) {
     submissionId: row.submission_id,
     membershipId: row.membership_id,
     assignmentItemId: row.assignment_item_id,
+    scopeKind: row.scope_kind,
     inputKind: row.input_kind,
     status: row.status,
     filename: row.filename,

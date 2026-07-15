@@ -44,6 +44,7 @@ type StepRow = {
   position: number;
   step_text: string;
   correctness: "CORRECT" | "INCORRECT" | "UNCLEAR";
+  correct_note: string | null;
   error_note: string | null;
   evidence_quote: string | null;
 };
@@ -64,6 +65,7 @@ export type HeatmapDiagnosisDetail = {
     position: number;
     step: string;
     correctness: StepRow["correctness"];
+    correctNote: string | null;
     errorNote: string | null;
     evidenceQuote: string | null;
   }>;
@@ -149,9 +151,10 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
         "diagnosis.transcription, diagnosis.evidence_quote, diagnosis.review_reasons_json, diagnosis.created_at,",
         "item.position AS problem_position, problem.prompt AS problem_prompt",
         "FROM submissions AS submission",
-        "JOIN assignment_items AS item ON item.id = submission.assignment_item_id",
-        "JOIN problems AS problem ON problem.id = item.problem_id",
         "JOIN submission_answers AS answer ON answer.submission_id = submission.id",
+        "JOIN assignment_items AS item ON item.id = answer.assignment_item_id",
+        "AND item.assignment_id = answer.assignment_id AND item.class_id = answer.class_id",
+        "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
         "JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id",
         "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id",
         "WHERE submission.assignment_id = ? AND submission.class_id = ?",
@@ -159,7 +162,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
         "SELECT latest.id FROM diagnoses AS latest",
         "JOIN answer_versions AS latest_version ON latest_version.id = latest.answer_version_id",
         "JOIN submission_answers AS latest_answer ON latest_answer.id = latest_version.submission_answer_id",
-        "WHERE latest_answer.submission_id = submission.id",
+        "WHERE latest_answer.id = answer.id",
         "ORDER BY latest.created_at DESC, latest.version DESC, latest.id DESC LIMIT 1",
         ")",
         "ORDER BY diagnosis.created_at DESC",
@@ -172,7 +175,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
     ? (database
         .prepare(
           [
-            "SELECT diagnosis_id, position, step_text, correctness, error_note, evidence_quote",
+            "SELECT diagnosis_id, position, step_text, correctness, correct_note, error_note, evidence_quote",
             `FROM diagnosis_steps WHERE diagnosis_id IN (${diagnosisIds.map(() => "?").join(",")})`,
             "ORDER BY diagnosis_id, position",
           ].join(" "),
@@ -186,6 +189,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
       position: step.position,
       step: step.step_text,
       correctness: step.correctness,
+      correctNote: step.correct_note,
       errorNote: step.error_note,
       evidenceQuote: step.evidence_quote,
     });

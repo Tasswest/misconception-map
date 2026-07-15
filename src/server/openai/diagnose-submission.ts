@@ -12,15 +12,28 @@ import {
   diagnosisAIOutputSchema,
 } from "@/domain/diagnosis-ai-output.mjs";
 import { normalizeDiagnosisAIOutput } from "@/domain/diagnosis-policy.mjs";
+import {
+  STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION,
+  studentPageDiagnosisAIOutputSchema,
+} from "@/domain/student-page-diagnosis-ai-output.mjs";
 import { OPENAI_MODEL } from "@/lib/config";
 import {
   DIAGNOSIS_PROMPT_VERSION,
   buildDiagnosisPrompt,
 } from "@/server/openai/diagnosis-prompt";
+import {
+  buildStudentPageDiagnosisPrompt,
+  STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION,
+} from "@/server/openai/student-page-diagnosis-prompt";
 
 export { DIAGNOSIS_PROMPT_VERSION, DIAGNOSIS_SCHEMA_VERSION };
 
 export const DIAGNOSIS_MODEL = OPENAI_MODEL;
+export const DIAGNOSIS_RETRY_POLICY_VERSION = "1.0.0";
+export {
+  STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION,
+  STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION,
+};
 
 const normalizedTextSchema = z
   .string()
@@ -59,6 +72,29 @@ const imageDiagnosisInputSchema = z
   })
   .strict();
 
+const pageProblemSchema = z
+  .object({
+    assignmentItemId: z.string().uuid(),
+    position: z.number().int().positive(),
+    prompt: normalizedTextSchema,
+    correctAnswer: normalizedTextSchema,
+    answerFormat: normalizedTextSchema,
+  })
+  .strict();
+
+const studentPageDiagnosisInputSchema = z
+  .object({
+    assignmentDomain: assignmentDomainSchema,
+    problems: z.array(pageProblemSchema).min(1).max(30),
+    imageBytes: z.instanceof(Uint8Array).refine((value) => value.byteLength > 0),
+    imageMediaType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    imageSha256: z
+      .string()
+      .regex(/^[a-fA-F0-9]{64}$/)
+      .transform((value) => value.toLowerCase()),
+  })
+  .strict();
+
 export const diagnoseSubmissionInputSchema = z.discriminatedUnion(
   "inputKind",
   [typedDiagnosisInputSchema, imageDiagnosisInputSchema],
@@ -66,6 +102,9 @@ export const diagnoseSubmissionInputSchema = z.discriminatedUnion(
 
 export type DiagnoseSubmissionInput = z.input<
   typeof diagnoseSubmissionInputSchema
+>;
+export type DiagnoseStudentPageInput = z.input<
+  typeof studentPageDiagnosisInputSchema
 >;
 type PreparedDiagnosisInput = z.output<typeof diagnoseSubmissionInputSchema>;
 
@@ -251,6 +290,27 @@ export function createDiagnosisInputHash(input: DiagnoseSubmissionInput) {
   return createPreparedDiagnosisInputHash(parseDiagnosisInput(input));
 }
 
+export function createStudentPageDiagnosisInputHash(
+  input: DiagnoseStudentPageInput,
+) {
+  const parsed = studentPageDiagnosisInputSchema.parse(input);
+  const actualSha256 = createHash("sha256").update(parsed.imageBytes).digest("hex");
+  if (actualSha256 !== parsed.imageSha256) {
+    throw new DiagnosisServiceError("IMAGE_HASH_MISMATCH");
+  }
+  return sha256(
+    stableStringify({
+      model: DIAGNOSIS_MODEL,
+      promptVersion: STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION,
+      schemaVersion: STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION,
+      assignmentDomain: parsed.assignmentDomain,
+      problems: parsed.problems,
+      imageMediaType: parsed.imageMediaType,
+      imageSha256: parsed.imageSha256,
+    }),
+  );
+}
+
 let openAIClient: OpenAI | null = null;
 
 function getOpenAIClient(inputHash: string) {
@@ -308,7 +368,7 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
             image_url: `data:${prepared.imageMediaType};base64,${Buffer.from(
               prepared.imageBytes,
             ).toString("base64")}`,
-            detail: "high" as const,
+            detail: "original" as const,
           },
         ]
       : [{ type: "input_text" as const, text: prompt.inputText }];
@@ -439,4 +499,236 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
     }
     throw new DiagnosisServiceError("OPENAI_REQUEST_FAILED", metadata);
   }
+}
+
+const OCR_RETRY_REASONS = new Set([
+  "LOW_TRANSCRIPTION_CONFIDENCE",
+  "POOR_IMAGE_QUALITY",
+  "UNREADABLE_TRANSCRIPTION",
+  "IMPLAUSIBLE_TRANSCRIPTION_STEP",
+  "UNGROUNDED_EVIDENCE",
+]);
+
+export function shouldRetryDiagnosisWithOriginal(input: {
+  result: { reviewReasons: string[]; diagnosis: { transcriptionConfidence: number } };
+}) {
+  return (
+    input.result.diagnosis.transcriptionConfidence < 0.72 ||
+    input.result.reviewReasons.some((reason) => OCR_RETRY_REASONS.has(reason))
+  );
+}
+
+export function chooseBetterDiagnosisAttempt<T extends {
+  result: { reviewReasons: string[]; diagnosis: { transcriptionConfidence: number; outcome: string } };
+}>(primary: T, fallback: T) {
+  const score = (attempt: T) =>
+    attempt.result.diagnosis.transcriptionConfidence * 100 +
+    (attempt.result.diagnosis.outcome === "CORRECT" ||
+    attempt.result.diagnosis.outcome === "MISCONCEPTION"
+      ? 15
+      : 0) -
+    attempt.result.reviewReasons.length * 2;
+  return score(fallback) > score(primary) ? fallback : primary;
+}
+
+export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
+  let prepared: z.output<typeof studentPageDiagnosisInputSchema>;
+  try {
+    prepared = studentPageDiagnosisInputSchema.parse(input);
+  } catch (error) {
+    throw new DiagnosisServiceError("INVALID_DIAGNOSIS_INPUT", { cause: error });
+  }
+  const inputHash = createStudentPageDiagnosisInputHash(prepared);
+  const prompt = buildStudentPageDiagnosisPrompt({
+    assignmentDomain: prepared.assignmentDomain,
+    problems: prepared.problems.map((problem) => ({
+      position: problem.position,
+      prompt: problem.prompt,
+      correctAnswer: problem.correctAnswer,
+      answerFormat: problem.answerFormat,
+    })),
+  });
+  const startedAt = performance.now();
+
+  try {
+    const response = await getOpenAIClient(inputHash).responses.parse({
+      model: DIAGNOSIS_MODEL,
+      store: false,
+      reasoning: { effort: "medium" },
+      instructions: prompt.instructions,
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text" as const, text: prompt.inputText },
+            {
+              type: "input_image" as const,
+              image_url: `data:${prepared.imageMediaType};base64,${Buffer.from(
+                prepared.imageBytes,
+              ).toString("base64")}`,
+              detail: "original" as const,
+            },
+          ],
+        },
+      ],
+      text: {
+        format: zodTextFormat(
+          studentPageDiagnosisAIOutputSchema,
+          "student_page_diagnosis",
+          {
+            description:
+              "Visible-problem segmentation and evidence-grounded diagnoses for one deidentified student page.",
+          },
+        ),
+      },
+      max_output_tokens: 20_000,
+    });
+    const latencyMs = elapsedMilliseconds(startedAt);
+    const errorMetadata = { inputHash, responseId: response.id, latencyMs };
+    if (response.error !== null) {
+      throw new DiagnosisServiceError("OPENAI_RESPONSE_FAILED", errorMetadata);
+    }
+    if (response.status === "incomplete") {
+      throw new DiagnosisServiceError(
+        response.incomplete_details?.reason === "max_output_tokens"
+          ? "OPENAI_RESPONSE_INCOMPLETE_MAX_TOKENS"
+          : "OPENAI_RESPONSE_INCOMPLETE_CONTENT_FILTER",
+        errorMetadata,
+      );
+    }
+    if (response.status && response.status !== "completed") {
+      throw new DiagnosisServiceError("OPENAI_RESPONSE_NOT_COMPLETED", errorMetadata);
+    }
+    for (const item of response.output) {
+      if (item.type !== "message") continue;
+      for (const part of item.content) {
+        if (part.type === "refusal") {
+          throw new DiagnosisServiceError("OPENAI_REFUSAL", errorMetadata);
+        }
+      }
+    }
+    if (response.output_parsed === null) {
+      throw new DiagnosisServiceError("OPENAI_OUTPUT_MISSING", errorMetadata);
+    }
+
+    const parsedOutput = studentPageDiagnosisAIOutputSchema.parse(
+      response.output_parsed,
+    );
+    const seenPositions = new Set<number>();
+    const problemsByPosition = new Map(
+      prepared.problems.map((problem) => [problem.position, problem]),
+    );
+    const results = parsedOutput.visibleProblems.map((visible) => {
+      const problem = problemsByPosition.get(visible.problemPosition);
+      if (!problem || seenPositions.has(visible.problemPosition)) {
+        throw new TypeError("Page segmentation referenced an invalid or duplicate problem.");
+      }
+      seenPositions.add(visible.problemPosition);
+      const output =
+        parsedOutput.pageTranscriptionConfidence < 0.72
+          ? {
+              ...visible.diagnosis,
+              outcome: "INSUFFICIENT_EVIDENCE" as const,
+              misconceptionId: null,
+              transcriptionConfidence: Math.min(
+                visible.diagnosis.transcriptionConfidence,
+                parsedOutput.pageTranscriptionConfidence,
+              ),
+              reviewReasons: Array.from(
+                new Set([
+                  ...visible.diagnosis.reviewReasons,
+                  "LOW_TRANSCRIPTION_CONFIDENCE" as const,
+                ]),
+              ),
+            }
+          : visible.diagnosis;
+      const normalized = normalizeDiagnosisAIOutput({
+        output,
+        assignmentDomain: prepared.assignmentDomain,
+        inputKind: "IMAGE",
+        observedPrompt: problem.prompt,
+        correctAnswer: problem.correctAnswer,
+        typedResponse: null,
+      });
+      return {
+        assignmentItemId: problem.assignmentItemId,
+        position: problem.position,
+        correctAnswer: problem.correctAnswer,
+        result: {
+          diagnosis: structuredDiagnosisSchema.parse(normalized.coreDiagnosis),
+          observedPrompt: normalized.observedPrompt,
+          studentAnswer: normalized.studentAnswer,
+          normalizedAnswer: normalized.normalizedAnswer,
+          imageQuality: normalized.imageQuality,
+          observedTransformation: normalized.observedTransformation,
+          strategyVariant: normalized.strategyVariant,
+          reviewReasons: normalized.reviewReasons,
+          candidates: normalized.candidates.map((candidate) => ({
+            misconceptionId: candidate.misconceptionId,
+            confidence: candidate.confidence,
+            evidenceNote: candidate.evidenceNote,
+          })),
+        },
+      };
+    });
+    const result = {
+      pageTranscriptionConfidence: parsedOutput.pageTranscriptionConfidence,
+      imageQuality: parsedOutput.imageQuality,
+      segmentationReviewNote: parsedOutput.segmentationReviewNote,
+      results: results.sort((left, right) => left.position - right.position),
+    };
+
+    return {
+      inputHash,
+      outputHash: sha256(stableStringify(result)),
+      responseId: response.id,
+      modelName: DIAGNOSIS_MODEL,
+      promptVersion: STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION,
+      schemaVersion: STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION,
+      inputTokens: response.usage?.input_tokens ?? null,
+      outputTokens: response.usage?.output_tokens ?? null,
+      totalTokens: response.usage?.total_tokens ?? null,
+      latencyMs,
+      result,
+    };
+  } catch (error) {
+    if (error instanceof DiagnosisServiceError) throw error;
+    const metadata = {
+      inputHash,
+      latencyMs: elapsedMilliseconds(startedAt),
+      cause: error,
+    };
+    if (error instanceof APIError) {
+      throw new DiagnosisServiceError(mapAPIError(error), metadata);
+    }
+    if (error instanceof z.ZodError || error instanceof TypeError) {
+      throw new DiagnosisServiceError("OPENAI_OUTPUT_INVALID", metadata);
+    }
+    throw new DiagnosisServiceError("OPENAI_REQUEST_FAILED", metadata);
+  }
+}
+
+export function shouldRetryStudentPageWithOriginal(input: Awaited<
+  ReturnType<typeof diagnoseStudentPage>
+>) {
+  return (
+    input.result.pageTranscriptionConfidence < 0.72 ||
+    input.result.results.length === 0 ||
+    input.result.results.some((item) =>
+      shouldRetryDiagnosisWithOriginal(item),
+    )
+  );
+}
+
+export function chooseBetterStudentPageAttempt<
+  T extends Awaited<ReturnType<typeof diagnoseStudentPage>>,
+>(primary: T, fallback: T) {
+  const score = (attempt: T) =>
+    attempt.result.results.length * 25 +
+    attempt.result.pageTranscriptionConfidence * 100 +
+    attempt.result.results.reduce(
+      (total, item) => total + item.result.diagnosis.transcriptionConfidence,
+      0,
+    ) * 10;
+  return score(fallback) > score(primary) ? fallback : primary;
 }

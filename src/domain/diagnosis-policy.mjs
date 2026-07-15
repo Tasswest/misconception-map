@@ -161,6 +161,17 @@ export function normalizeDiagnosisAIOutput(input) {
       policyReasons.add("UNGROUNDED_EVIDENCE");
     }
 
+    const correctNote = normalizeNullableText(step.correctNote);
+    const errorNote = normalizeNullableText(step.errorNote);
+    if (
+      (step.correctness === "CORRECT" && correctNote === null) ||
+      (step.correctness !== "CORRECT" && correctNote !== null) ||
+      (step.correctness === "INCORRECT" && errorNote === null) ||
+      (step.correctness === "CORRECT" && errorNote !== null)
+    ) {
+      policyReasons.add("INCONSISTENT_OUTPUT");
+    }
+
     return {
       position,
       step: normalizedStep,
@@ -168,7 +179,8 @@ export function normalizeDiagnosisAIOutput(input) {
       stepKind: step.stepKind,
       parseIssue,
       correctness: step.correctness,
-      errorNote: normalizeNullableText(step.errorNote),
+      correctNote: step.correctness === "CORRECT" ? correctNote : null,
+      errorNote: step.correctness === "CORRECT" ? null : errorNote,
       evidenceQuote: normalizeGroundedQuote(
         step.evidenceQuote,
         transcription,
