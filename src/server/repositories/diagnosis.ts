@@ -140,20 +140,22 @@ const diagnosisAttemptsSchema = z
     "Exactly one image attempt must be selected.",
   );
 
-const diagnosisRunCompletionSchema = z.object({
-  responseId: z.string().min(1).max(240),
-  modelName: z.string().min(1).max(120),
-  promptVersion: z.string().min(1).max(120),
-  schemaVersion: z.string().min(1).max(120),
-  outputHash: sha256Schema,
-  inputTokens: z.number().int().nonnegative().nullable(),
-  outputTokens: z.number().int().nonnegative().nullable(),
-  latencyMs: z.number().int().nonnegative(),
-  attempts: diagnosisAttemptsSchema.optional(),
-  result: persistableDiagnosisResultSchema,
-});
+export const diagnosisRunCompletionSchema = z
+  .object({
+    responseId: z.string().min(1).max(240),
+    modelName: z.string().min(1).max(120),
+    promptVersion: z.string().min(1).max(120),
+    schemaVersion: z.string().min(1).max(120),
+    outputHash: sha256Schema,
+    inputTokens: z.number().int().nonnegative().nullable(),
+    outputTokens: z.number().int().nonnegative().nullable(),
+    latencyMs: z.number().int().nonnegative(),
+    attempts: diagnosisAttemptsSchema.optional(),
+    result: persistableDiagnosisResultSchema,
+  })
+  .strict();
 
-const studentPageRunCompletionSchema = z
+export const studentPageRunCompletionSchema = z
   .object({
     responseId: z.string().min(1).max(240),
     modelName: z.string().min(1).max(120),
@@ -307,6 +309,10 @@ export type DiagnosisRunCompletion = z.infer<
   typeof diagnosisRunCompletionSchema
 >;
 
+export type DiagnosisRunCompletionInput = z.input<
+  typeof diagnosisRunCompletionSchema
+>;
+
 function insertDiagnosisImageAttempts(
   runId: string,
   attempts: DiagnosisRunCompletion["attempts"],
@@ -360,6 +366,32 @@ export class DiagnosisRepositoryError extends Error {
     this.name = "DiagnosisRepositoryError";
     this.code = code;
   }
+}
+
+function logPersistenceContractIssues(
+  scope: "SINGLE_PROBLEM" | "FULL_PAGE",
+  error: unknown,
+) {
+  if (!(error instanceof z.ZodError)) return;
+
+  // Paths and issue codes identify contract drift without logging prompts,
+  // transcriptions, answers, student names, or any other student data.
+  console.error(
+    "[diagnosis:persistence-contract]",
+    JSON.stringify({
+      scope,
+      issues: error.issues.map((issue) => ({
+        path:
+          issue.path.length === 0
+            ? "<root>"
+            : issue.path.map((part) => String(part)).join("."),
+        code: issue.code,
+        ...(issue.code === "unrecognized_keys"
+          ? { unexpectedKeys: [...issue.keys].sort() }
+          : {}),
+      })),
+    }),
+  );
 }
 
 function getAssignmentDiagnosisRows(assignmentId: string) {
@@ -1409,7 +1441,7 @@ function getRunAndSubmission(runId: string, submissionId: string) {
 export function completeDiagnosisRun(input: {
   submissionId: string;
   runId: string;
-  completion: DiagnosisRunCompletion;
+  completion: DiagnosisRunCompletionInput;
 }) {
   const database = getDatabase();
   let diagnosisId = "";
@@ -1417,6 +1449,7 @@ export function completeDiagnosisRun(input: {
   try {
     completion = diagnosisRunCompletionSchema.parse(input.completion);
   } catch (error) {
+    logPersistenceContractIssues("SINGLE_PROBLEM", error);
     throw new DiagnosisRepositoryError(
       "PERSISTENCE_ERROR",
       "The diagnosis result did not match the persistence contract.",
@@ -1700,16 +1733,21 @@ export type StudentPageRunCompletion = z.infer<
   typeof studentPageRunCompletionSchema
 >;
 
+export type StudentPageRunCompletionInput = z.input<
+  typeof studentPageRunCompletionSchema
+>;
+
 export function completeStudentPageDiagnosisRun(input: {
   submissionId: string;
   runId: string;
-  completion: StudentPageRunCompletion;
+  completion: StudentPageRunCompletionInput;
 }) {
   const database = getDatabase();
   let completion: StudentPageRunCompletion;
   try {
     completion = studentPageRunCompletionSchema.parse(input.completion);
   } catch (error) {
+    logPersistenceContractIssues("FULL_PAGE", error);
     throw new DiagnosisRepositoryError(
       "PERSISTENCE_ERROR",
       "The full-page diagnosis did not match the persistence contract.",

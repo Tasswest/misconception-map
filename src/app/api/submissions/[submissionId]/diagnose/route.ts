@@ -5,6 +5,10 @@ import { NextResponse } from "next/server";
 import { isOpenAIConfigured } from "@/lib/config";
 import { guardLocalApiRequest } from "@/server/http/local-request-guard";
 import {
+  buildDiagnosisRunCompletion,
+  buildStudentPageRunCompletion,
+} from "@/server/openai/diagnosis-completion";
+import {
   chooseBetterDiagnosisAttempt,
   chooseBetterStudentPageAttempt,
   createDiagnosisInputHash,
@@ -350,8 +354,7 @@ export async function POST(
       const pageSummary = completeStudentPageDiagnosisRun({
         submissionId,
         runId,
-        completion: {
-          ...selected,
+        completion: buildStudentPageRunCompletion(selected, {
           inputTokens: sumNullable(attempts.map((attempt) => attempt.inputTokens)),
           outputTokens: sumNullable(
             attempts.map((attempt) => attempt.outputTokens),
@@ -361,7 +364,7 @@ export async function POST(
             0,
           ),
           attempts,
-        },
+        }),
       });
       const reviewDiagnosis = pageSummary.diagnoses.find(
         (diagnosis) =>
@@ -444,8 +447,7 @@ export async function POST(
       responseBody = completeDiagnosisRun({
         submissionId,
         runId,
-        completion: {
-          ...selected,
+        completion: buildDiagnosisRunCompletion(selected, {
           inputTokens: attempts
             ? sumNullable(attempts.map((attempt) => attempt.inputTokens))
             : selected.inputTokens,
@@ -456,7 +458,7 @@ export async function POST(
             ? attempts.reduce((total, attempt) => total + attempt.latencyMs, 0)
             : selected.latencyMs,
           attempts,
-        },
+        }),
       });
     }
 

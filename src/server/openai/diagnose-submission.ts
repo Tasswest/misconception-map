@@ -732,3 +732,11 @@ export function chooseBetterStudentPageAttempt<
     ) * 10;
   return score(fallback) > score(primary) ? fallback : primary;
 }
+
+export type DiagnoseSubmissionResult = Awaited<
+  ReturnType<typeof diagnoseSubmission>
+>;
+
+export type DiagnoseStudentPageResult = Awaited<
+  ReturnType<typeof diagnoseStudentPage>
+>;
