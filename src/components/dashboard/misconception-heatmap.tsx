@@ -322,6 +322,12 @@ export function MisconceptionHeatmap({
                           </button>
                         )
                       ) : null}
+                      <Link
+                        className="mt-2 ml-1 inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-[var(--ink)] transition hover:bg-[var(--canvas)]"
+                        href={`/assignments/${dashboard.assignment.id}/students/${row.membershipId}/corrected`}
+                      >
+                        Corrected exam
+                      </Link>
                     </div>
                   </div>,
                   ...row.cells.map((cell, columnIndex) => {
@@ -499,6 +505,9 @@ function DiagnosisDrawer({
                     <p className="whitespace-pre-wrap font-mono text-sm leading-6">{step.step}</p>
                     {step.errorNote ? (
                       <p className="mt-1 text-xs leading-5 text-[#8e402d]">{step.errorNote}</p>
+                    ) : null}
+                    {step.correctNote ? (
+                      <p className="mt-1 text-xs leading-5 text-[#426d5b]">{step.correctNote}</p>
                     ) : null}
                   </div>
                 </div>
