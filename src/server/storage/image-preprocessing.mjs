@@ -1,12 +1,15 @@
 import sharp from "sharp";
 
-export const MATH_IMAGE_PREPROCESSING_VERSION = "2.0.1";
-export const WORKSHEET_IMAGE_PREPROCESSING_VERSION = "1.0.0";
+export const MATH_IMAGE_PREPROCESSING_VERSION = "2.1.0";
+export const STUDENT_PAGE_PREPROCESSING_VERSION = "1.0.0";
+export const ORIGINAL_IMAGE_FALLBACK_VERSION = "1.0.0";
+export const WORKSHEET_IMAGE_PREPROCESSING_VERSION = "1.1.0";
 
 const MAX_INPUT_PIXELS = 40_000_000;
 const ANALYSIS_LONG_EDGE = 1_800;
 const OUTPUT_MIN_LONG_EDGE = 1_800;
 const OUTPUT_MAX_LONG_EDGE = 3_200;
+const PAGE_OUTPUT_MAX_LONG_EDGE = 4_000;
 
 /**
  * @param {number} value
@@ -15,6 +18,116 @@ const OUTPUT_MAX_LONG_EDGE = 3_200;
  */
 function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+/**
+ * @param {Uint32Array} histogram
+ * @param {number} total
+ * @param {number} quantile
+ */
+function histogramPercentile(histogram, total, quantile) {
+  const target = Math.max(1, Math.ceil(total * quantile));
+  let seen = 0;
+  for (let value = 0; value < histogram.length; value += 1) {
+    seen += histogram[value];
+    if (seen >= target) return value;
+  }
+  return histogram.length - 1;
+}
+
+/**
+ * Removes gradual paper shadows while retaining faint pencil strokes. The old
+ * fixed -38 floor could erase a light equals stroke completely. This version
+ * estimates the local paper noise, applies a soft knee below that floor, and
+ * chooses gain from the page's own high-contrast tail.
+ *
+ * @param {Buffer} pixels
+ * @param {number} width
+ * @param {number} height
+ */
+async function normalizeLocalInk(pixels, width, height) {
+  const localBackground = await sharp(pixels, {
+    raw: { width, height, channels: 1 },
+  })
+    .blur(Math.max(10, Math.min(30, width / 45)))
+    .raw()
+    .toBuffer();
+  const contrastHistogram = new Uint32Array(256);
+  for (let index = 0; index < pixels.length; index += 1) {
+    const contrast = clamp(localBackground[index] - pixels[index], 0, 255);
+    contrastHistogram[contrast] += 1;
+  }
+
+  const paperNoise = histogramPercentile(
+    contrastHistogram,
+    pixels.length,
+    0.82,
+  );
+  const contrastP99 = histogramPercentile(
+    contrastHistogram,
+    pixels.length,
+    0.995,
+  );
+  const noiseFloor = clamp(paperNoise + 3, 5, 24);
+  const usefulContrast = Math.max(24, contrastP99 - noiseFloor);
+  const gain = clamp(190 / usefulContrast, 2.1, 5.5);
+  const normalizedPixels = Buffer.allocUnsafe(pixels.length);
+
+  for (let index = 0; index < pixels.length; index += 1) {
+    const contrast = Math.max(0, localBackground[index] - pixels[index]);
+    // The quadratic shoulder suppresses paper texture without making pixels
+    // below the estimated floor disappear. That is important for the second,
+    // often faint, stroke of a handwritten equals sign.
+    const adjusted =
+      contrast <= noiseFloor
+        ? (contrast * contrast) / (4 * noiseFloor)
+        : contrast - noiseFloor * 0.75;
+    normalizedPixels[index] = Math.round(
+      255 - Math.min(242, adjusted * gain),
+    );
+  }
+
+  return {
+    pixels: normalizedPixels,
+    metrics: { paperNoise, noiseFloor, contrastP99, gain },
+  };
+}
+
+/**
+ * @param {Buffer | Uint8Array} orientedBytes
+ * @param {{left: number; top: number; width: number; height: number}} crop
+ * @param {number} outputWidth
+ * @param {number} outputHeight
+ */
+async function createNormalizedRendition(
+  orientedBytes,
+  crop,
+  outputWidth,
+  outputHeight,
+) {
+  const cropped = await sharp(orientedBytes)
+    .extract(crop)
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const normalized = await normalizeLocalInk(
+    cropped.data,
+    cropped.info.width,
+    cropped.info.height,
+  );
+  const output = await sharp(normalized.pixels, {
+    raw: {
+      width: cropped.info.width,
+      height: cropped.info.height,
+      channels: 1,
+    },
+  })
+    .resize(outputWidth, outputHeight, { fit: "fill" })
+    .sharpen({ sigma: 0.65 })
+    .webp({ quality: 95, effort: 4 })
+    .toBuffer({ resolveWithObject: true });
+
+  return { output, normalization: normalized.metrics };
 }
 
 /**
@@ -284,63 +397,109 @@ export async function preprocessMathImage(inputBytes) {
   const scale = targetLongEdge / cropLongEdge;
   const outputWidth = Math.max(1, Math.round(crop.width * scale));
   const outputHeight = Math.max(1, Math.round(crop.height * scale));
-  const cropped = await sharp(orientedBytes)
-    .extract({
-      left: crop.left,
-      top: crop.top,
-      width: crop.width,
-      height: crop.height,
-    })
-    .greyscale()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  const localBackground = await sharp(cropped.data, {
-    raw: {
-      width: cropped.info.width,
-      height: cropped.info.height,
-      channels: 1,
-    },
-  })
-    .blur(Math.max(10, Math.min(26, cropped.info.width / 45)))
-    .raw()
-    .toBuffer();
-  const normalizedPixels = Buffer.allocUnsafe(cropped.data.length);
-  for (let index = 0; index < cropped.data.length; index += 1) {
-    // Ignore shallow paper texture/shadows before amplifying locally dark ink.
-    // The source fixture has horizontal fibres whose local contrast sits below
-    // this floor, while even a short handwritten equals stroke remains far
-    // above it.
-    const inkContrast = Math.max(
-      0,
-      localBackground[index] - cropped.data[index] - 38,
-    );
-    normalizedPixels[index] = Math.round(
-      255 - Math.min(255, inkContrast * 4),
-    );
-  }
-  const output = await sharp(normalizedPixels, {
-    raw: {
-      width: cropped.info.width,
-      height: cropped.info.height,
-      channels: 1,
-    },
-  })
-    .resize(outputWidth, outputHeight, { fit: "fill" })
-    .sharpen({ sigma: 0.7 })
-    .webp({ quality: 94, effort: 4 })
-    .toBuffer({ resolveWithObject: true });
+  const rendition = await createNormalizedRendition(
+    orientedBytes,
+    { left: crop.left, top: crop.top, width: crop.width, height: crop.height },
+    outputWidth,
+    outputHeight,
+  );
 
   return {
-    bytes: output.data,
+    bytes: rendition.output.data,
     mediaType: "image/webp",
-    width: output.info.width,
-    height: output.info.height,
+    width: rendition.output.info.width,
+    height: rendition.output.info.height,
     sourceWidth: metadata.width,
     sourceHeight: metadata.height,
     crop,
     scale,
     downscaled: scale < 0.999,
+    normalization: rendition.normalization,
     preprocessingVersion: MATH_IMAGE_PREPROCESSING_VERSION,
+  };
+}
+
+/**
+ * Normalizes an entire student page and deliberately skips ink-region crop.
+ * GPT receives the assignment's complete problem list and performs semantic
+ * segmentation in one request.
+ *
+ * @param {Buffer | Uint8Array} inputBytes
+ */
+export async function preprocessStudentPageImage(inputBytes) {
+  const orientedBytes = await sharp(inputBytes, {
+    failOn: "warning",
+    limitInputPixels: MAX_INPUT_PIXELS,
+  })
+    .rotate()
+    .toBuffer();
+  const metadata = await sharp(orientedBytes).metadata();
+  if (!metadata.width || !metadata.height || !metadata.format) {
+    throw new TypeError("Student page dimensions could not be read.");
+  }
+
+  const longEdge = Math.max(metadata.width, metadata.height);
+  const targetLongEdge = clamp(longEdge, OUTPUT_MIN_LONG_EDGE, PAGE_OUTPUT_MAX_LONG_EDGE);
+  const scale = targetLongEdge / longEdge;
+  const crop = {
+    left: 0,
+    top: 0,
+    width: metadata.width,
+    height: metadata.height,
+    cropApplied: false,
+    candidateCount: 0,
+  };
+  const rendition = await createNormalizedRendition(
+    orientedBytes,
+    {
+      left: crop.left,
+      top: crop.top,
+      width: crop.width,
+      height: crop.height,
+    },
+    Math.max(1, Math.round(metadata.width * scale)),
+    Math.max(1, Math.round(metadata.height * scale)),
+  );
+
+  return {
+    bytes: rendition.output.data,
+    mediaType: "image/webp",
+    width: rendition.output.info.width,
+    height: rendition.output.info.height,
+    sourceWidth: metadata.width,
+    sourceHeight: metadata.height,
+    crop,
+    scale,
+    downscaled: scale < 0.999,
+    normalization: rendition.normalization,
+    preprocessingVersion: STUDENT_PAGE_PREPROCESSING_VERSION,
+  };
+}
+
+/**
+ * Creates a full-resolution, full-frame, metadata-stripped rendition for the
+ * one permitted OCR fallback retry. It applies orientation only: no crop,
+ * greyscale conversion, contrast normalization, resize, or sharpening.
+ *
+ * @param {Buffer | Uint8Array} inputBytes
+ */
+export async function prepareOriginalImageFallback(inputBytes) {
+  const output = await sharp(inputBytes, {
+    failOn: "warning",
+    limitInputPixels: MAX_INPUT_PIXELS,
+  })
+    .rotate()
+    .webp({ quality: 98, effort: 4, smartSubsample: false })
+    .toBuffer({ resolveWithObject: true });
+  if (!output.info.width || !output.info.height) {
+    throw new TypeError("Fallback image dimensions could not be read.");
+  }
+  return {
+    bytes: output.data,
+    mediaType: "image/webp",
+    width: output.info.width,
+    height: output.info.height,
+    preprocessingVersion: ORIGINAL_IMAGE_FALLBACK_VERSION,
   };
 }
 

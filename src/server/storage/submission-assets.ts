@@ -5,7 +5,11 @@ import { chmod, mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 
-import { preprocessMathImage } from "@/server/storage/image-preprocessing.mjs";
+import {
+  prepareOriginalImageFallback,
+  preprocessMathImage,
+  preprocessStudentPageImage,
+} from "@/server/storage/image-preprocessing.mjs";
 
 export const MAX_STUDENT_WORK_BYTES = 10 * 1024 * 1024;
 export const MAX_FILES_PER_UPLOAD = 20;
@@ -54,7 +58,15 @@ export type PreparedStudentWorkAsset = {
   cropWidth: number;
   cropHeight: number;
   preprocessingVersion: string;
+  fallbackStorageKey: string;
+  fallbackMediaType: "image/webp";
+  fallbackByteSize: number;
+  fallbackSha256: string;
+  fallbackWidth: number;
+  fallbackHeight: number;
+  fallbackPreprocessingVersion: string;
   bytes: Buffer;
+  fallbackBytes: Buffer;
 };
 
 function safeOriginalFilename(filename: string) {
@@ -67,6 +79,7 @@ export async function prepareStudentWorkAsset(input: {
   claimedMediaType: string;
   originalFilename: string;
   submissionId: string;
+  scopeKind?: "SINGLE_PROBLEM" | "FULL_PAGE";
 }): Promise<PreparedStudentWorkAsset> {
   if (input.bytes.byteLength === 0) {
     throw new StudentWorkAssetError("EMPTY_FILE", "This image file is empty.");
@@ -100,7 +113,12 @@ export async function prepareStudentWorkAsset(input: {
       );
     }
 
-    const normalized = await preprocessMathImage(input.bytes);
+    const [normalized, fallback] = await Promise.all([
+      input.scopeKind === "FULL_PAGE"
+        ? preprocessStudentPageImage(input.bytes)
+        : preprocessMathImage(input.bytes),
+      prepareOriginalImageFallback(input.bytes),
+    ]);
 
     if (!normalized.width || !normalized.height) {
       throw new StudentWorkAssetError(
@@ -115,6 +133,12 @@ export async function prepareStudentWorkAsset(input: {
       "submissions",
       input.submissionId,
       `${assetId}.webp`,
+    );
+    const fallbackStorageKey = path.posix.join(
+      "uploads",
+      "submissions",
+      input.submissionId,
+      `${assetId}.original.webp`,
     );
 
     return {
@@ -134,7 +158,15 @@ export async function prepareStudentWorkAsset(input: {
       cropWidth: normalized.crop.width,
       cropHeight: normalized.crop.height,
       preprocessingVersion: normalized.preprocessingVersion,
+      fallbackStorageKey,
+      fallbackMediaType: "image/webp",
+      fallbackByteSize: fallback.bytes.byteLength,
+      fallbackSha256: createHash("sha256").update(fallback.bytes).digest("hex"),
+      fallbackWidth: fallback.width,
+      fallbackHeight: fallback.height,
+      fallbackPreprocessingVersion: fallback.preprocessingVersion,
       bytes: normalized.bytes,
+      fallbackBytes: fallback.bytes,
     };
   } catch (error) {
     if (error instanceof StudentWorkAssetError) {
@@ -203,13 +235,22 @@ function absoluteStoragePath(storageKey: string) {
 export async function writePreparedStudentWorkAsset(
   asset: PreparedStudentWorkAsset,
 ) {
-  const absolutePath = absoluteStoragePath(asset.storageKey);
-  const assetDirectory = path.dirname(absolutePath);
-  const temporaryPath = path.join(
-    assetDirectory,
-    `.${path.basename(absolutePath)}.${randomUUID()}.tmp`,
+  const renditions = [
+    { storageKey: asset.storageKey, bytes: asset.bytes },
+    { storageKey: asset.fallbackStorageKey, bytes: asset.fallbackBytes },
+  ];
+  const absolutePaths = renditions.map((rendition) =>
+    absoluteStoragePath(rendition.storageKey),
   );
-  let renamed = false;
+  const absolutePath = absolutePaths[0];
+  const assetDirectory = path.dirname(absolutePath);
+  const temporaryPaths = absolutePaths.map((renditionPath) =>
+    path.join(
+      assetDirectory,
+      `.${path.basename(renditionPath)}.${randomUUID()}.tmp`,
+    ),
+  );
+  const renamedPaths: string[] = [];
 
   try {
     const uploadRoot = getUploadRoot();
@@ -227,17 +268,19 @@ export async function writePreparedStudentWorkAsset(
       await chmod(currentDirectory, 0o700);
     }
 
-    await writeFile(temporaryPath, asset.bytes, {
-      flag: "wx",
-      mode: 0o600,
-    });
-    await rename(temporaryPath, absolutePath);
-    renamed = true;
-    await chmod(absolutePath, 0o600);
+    for (const [index, rendition] of renditions.entries()) {
+      await writeFile(temporaryPaths[index], rendition.bytes, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      await rename(temporaryPaths[index], absolutePaths[index]);
+      renamedPaths.push(absolutePaths[index]);
+      await chmod(absolutePaths[index], 0o600);
+    }
   } catch (error) {
     await Promise.allSettled([
-      unlink(temporaryPath),
-      ...(renamed ? [unlink(absolutePath)] : []),
+      ...temporaryPaths.map((temporaryPath) => unlink(temporaryPath)),
+      ...renamedPaths.map((renamedPath) => unlink(renamedPath)),
     ]);
     throw new StudentWorkAssetError(
       "STORAGE_ERROR",

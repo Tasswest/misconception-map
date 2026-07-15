@@ -6,7 +6,9 @@ import sharp from "sharp";
 
 import {
   MATH_IMAGE_PREPROCESSING_VERSION,
+  prepareOriginalImageFallback,
   preprocessMathImage,
+  preprocessStudentPageImage,
 } from "../src/server/storage/image-preprocessing.mjs";
 
 const fixturePath =
@@ -62,6 +64,9 @@ assert.ok(
   "final equation must remain visible",
 );
 assert.ok(regression.scale >= 3, "small source ink should be enlarged for vision");
+const fallback = await prepareOriginalImageFallback(fixture);
+assert.equal(fallback.width, 1600, "fallback must preserve full source width");
+assert.equal(fallback.height, 900, "fallback must preserve full source height");
 
 const distribution = await verifyPreparedImage(
   "earlier distribution sample",
@@ -83,6 +88,37 @@ assert.ok(
   "the final fraction must remain inside the fraction crop",
 );
 
+const faintSvg = Buffer.from(`
+  <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900">
+    <rect width="1400" height="900" fill="#e7e4dc"/>
+    <g fill="none" stroke="#b9b6af" stroke-width="5" stroke-linecap="round">
+      <path d="M420 300h120 M420 315h120"/>
+      <path d="M570 307h90"/>
+      <path d="M690 300h120 M690 315h120"/>
+    </g>
+  </svg>`);
+const faint = await preprocessMathImage(
+  await sharp(faintSvg).jpeg({ quality: 94 }).toBuffer(),
+);
+const faintPixels = await sharp(faint.bytes).greyscale().raw().toBuffer();
+const retainedFaintPixels = faintPixels.reduce(
+  (count, value) => count + (value < 245 ? 1 : 0),
+  0,
+);
+assert.ok(
+  retainedFaintPixels > 300,
+  "adaptive normalization must retain faint strokes below the old fixed -38 floor",
+);
+
+const fullPage = await preprocessStudentPageImage(
+  await syntheticWork(["1. x + 4 = 0", "2. 1/2 + 1/3 = 2/5"]),
+);
+assert.equal(fullPage.crop.cropApplied, false, "full student pages must skip ink crop");
+assert.equal(fullPage.crop.left, 0);
+assert.equal(fullPage.crop.top, 0);
+assert.equal(fullPage.crop.width, fullPage.sourceWidth);
+assert.equal(fullPage.crop.height, fullPage.sourceHeight);
+
 console.log(
-  "Image regression verification passed: exact live fixture plus earlier algebra and fraction samples crop, normalize, and retain high-detail ink.",
+  "Image regression verification passed: live fixture, faint-ink adaptive normalization, full-frame fallback, full-page no-crop, and earlier samples all retain OCR detail.",
 );
