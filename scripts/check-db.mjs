@@ -148,6 +148,8 @@ try {
     "student_model_versions_only_controlled_transitions",
     "student_model_versions_start_provisional",
     "submission_answers_are_immutable",
+    "submission_answer_region_is_valid_on_insert",
+    "submission_answer_region_is_valid_on_update",
     "submission_assignment_item_is_immutable",
     "submissions_require_scoped_assignment_item",
     "submissions_preserve_observed_identity",

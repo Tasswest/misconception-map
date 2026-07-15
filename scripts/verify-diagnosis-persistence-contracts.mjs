@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 
+import { normalizeProblemRegion } from "../src/domain/problem-region.mjs";
 import {
   selectDiagnosisCompletionFields,
   selectStudentPageCompletionFields,
@@ -85,6 +86,7 @@ const fullPageServiceResult = /** @satisfies {DiagnoseStudentPageResult} */ ({
         assignmentItemId: "00000000-0000-4000-8000-000000000001",
         position: 1,
         correctAnswer: "x = 4",
+        region: { x: 0.1, y: 0.2, width: 0.35, height: 0.18 },
         result: persistableResult,
       },
     ],
@@ -168,7 +170,35 @@ assert.equal("inputHash" in persistedPage, false);
 assert.equal("totalTokens" in persistedPage, false);
 assert.equal(persistedSingle.result, singleServiceResult.result);
 assert.equal(persistedPage.result, fullPageServiceResult.result);
+assert.deepEqual(normalizeProblemRegion({ x: 0.1, y: 0.2, width: 0.3, height: 0.4 }), {
+  x: 0.1,
+  y: 0.2,
+  width: 0.3,
+  height: 0.4,
+});
+assert.equal(
+  normalizeProblemRegion({ x: 0.9, y: 0.2, width: 0.2, height: 0.4 }),
+  null,
+);
+assert.equal(
+  normalizeProblemRegion({ x: 0.1, y: 0.2, width: 0.001, height: 0.4 }),
+  null,
+);
+/** @type {StudentPageRunCompletionInput} */
+const historicalPageCompletion = {
+  ...persistedPage,
+  result: {
+    ...persistedPage.result,
+    results: persistedPage.result.results.map((result) => ({
+      assignmentItemId: result.assignmentItemId,
+      position: result.position,
+      correctAnswer: result.correctAnswer,
+      result: result.result,
+    })),
+  },
+};
+assert.equal("region" in historicalPageCompletion.result.results[0], false);
 
 console.log(
-  "Diagnosis persistence contract verification passed: actual single and full-page service shapes are reduced to strict persistence fields without service-only metadata.",
+  "Diagnosis persistence contract verification passed: actual service shapes are reduced to strict persistence fields, optional page regions are backward-compatible, and invalid regions are discarded.",
 );

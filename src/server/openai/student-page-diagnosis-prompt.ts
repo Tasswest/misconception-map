@@ -1,7 +1,7 @@
 import type { AssignmentDomain } from "@/domain/contracts";
 import { buildDiagnosisPrompt } from "@/server/openai/diagnosis-prompt";
 
-export const STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION = "1.0.0";
+export const STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION = "1.1.0";
 
 type PageProblem = {
   position: number;
@@ -28,6 +28,7 @@ export function buildStudentPageDiagnosisPrompt(input: {
     "Inspect the whole page once. Identify which supplied problems have student work visibly associated with them, then return one visibleProblems entry per visible work block.",
     "Match by printed problem number, nearby printed prompt, spatial layout, and mathematical content. problemPosition must be a position from the supplied list. Never invent a problem, duplicate a position, or return work that is not visible.",
     "Printed worksheet text helps segmentation but is not student transcription. Each nested diagnosis.transcription and its steps must contain only the student's marks for that problem.",
+    "For each visible problem, return region as the smallest practical bounding rectangle around that problem's student work, using normalized page coordinates from 0 to 1 with origin at the top-left: {x, y, width, height}. If the work cannot be localized confidently, set region to null. Region is display metadata only and must never change or suppress a diagnosis.",
     "For every visible problem, copy that list entry's prompt exactly into diagnosis.observedPrompt and diagnose against that entry's correctAnswer.",
     "If a work block cannot be matched safely, omit it and explain the uncertainty in segmentationReviewNote. If nothing is readable, return visibleProblems [] and a non-null segmentationReviewNote.",
     "pageTranscriptionConfidence measures both segmentation and whole-page legibility. If it is below 0.72, every visible nested diagnosis must abstain with LOW_TRANSCRIPTION_CONFIDENCE.",

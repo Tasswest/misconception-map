@@ -12,6 +12,7 @@ import {
   diagnosisAIOutputSchema,
 } from "@/domain/diagnosis-ai-output.mjs";
 import { normalizeDiagnosisAIOutput } from "@/domain/diagnosis-policy.mjs";
+import { normalizeProblemRegion } from "@/domain/problem-region.mjs";
 import {
   STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION,
   studentPageDiagnosisAIOutputSchema,
@@ -654,6 +655,7 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
         assignmentItemId: problem.assignmentItemId,
         position: problem.position,
         correctAnswer: problem.correctAnswer,
+        region: normalizeProblemRegion(visible.region),
         result: {
           diagnosis: structuredDiagnosisSchema.parse(normalized.coreDiagnosis),
           observedPrompt: normalized.observedPrompt,

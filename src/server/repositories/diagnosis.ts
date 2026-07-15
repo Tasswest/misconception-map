@@ -10,6 +10,7 @@ import {
   type SubmissionInputKind,
 } from "@/domain/contracts";
 import { canonicalizeMathAnswer } from "@/domain/math-normalization.mjs";
+import { normalizedProblemRegionSchema } from "@/domain/problem-region.mjs";
 import { extractStudentFinalAnswer } from "@/domain/student-final-answer.mjs";
 import {
   MISCONCEPTION_BY_ID,
@@ -178,6 +179,7 @@ export const studentPageRunCompletionSchema = z
                 assignmentItemId: idSchema,
                 position: z.number().int().positive(),
                 correctAnswer: z.string().min(1).max(12_000),
+                region: normalizedProblemRegionSchema.nullable().optional(),
                 result: persistableDiagnosisResultSchema,
               })
               .strict(),
@@ -1819,8 +1821,9 @@ export function completeStudentPageDiagnosisRun(input: {
     const insertAnswer = database.prepare(
       [
         "INSERT INTO submission_answers",
-        "(id, submission_id, assignment_id, class_id, assignment_item_id, position, observed_prompt)",
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "(id, submission_id, assignment_id, class_id, assignment_item_id, position, observed_prompt,",
+        "region_x, region_y, region_width, region_height)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ].join(" "),
     );
     const insertAnswerVersion = database.prepare(
@@ -1899,6 +1902,10 @@ export function completeStudentPageDiagnosisRun(input: {
         pageResult.assignmentItemId,
         pageResult.position,
         result.observedPrompt ?? target.prompt,
+        pageResult.region?.x ?? null,
+        pageResult.region?.y ?? null,
+        pageResult.region?.width ?? null,
+        pageResult.region?.height ?? null,
       );
       insertAnswerVersion.run(
         answerVersionId,
