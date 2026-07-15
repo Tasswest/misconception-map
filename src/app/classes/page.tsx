@@ -1,7 +1,8 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { EntityActions } from "@/components/management/entity-actions";
+import { ClassActions } from "@/components/management/class-actions";
+import { MemberActions } from "@/components/management/member-actions";
 import { isOpenAIConfigured } from "@/lib/config";
 import { listManagedClasses } from "@/server/repositories/management";
 
@@ -50,10 +51,11 @@ export default function ClassesPage() {
                       {classroom.schoolYear ? ` · ${classroom.schoolYear}` : ""}
                     </p>
                   </div>
-                  <EntityActions
+                  <ClassActions
+                    classId={classroom.id}
+                    currentGradeBand={classroom.gradeBand}
                     currentName={classroom.name}
-                    entity="class"
-                    entityId={classroom.id}
+                    currentSchoolYear={classroom.schoolYear}
                   />
                 </div>
 
@@ -68,32 +70,47 @@ export default function ClassesPage() {
                   <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
                     Roster
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {classroom.students.slice(0, 10).map((student) =>
-                      classroom.latestAssignment ? (
-                        <Link
-                          className="rounded-full border border-black/[0.07] bg-white px-2.5 py-1.5 text-[10px] font-semibold text-[var(--ink)] transition hover:border-[var(--sage)]/30 hover:bg-[var(--soft-mint)]"
-                          href={`/assignments/${classroom.latestAssignment.id}/students/${student.membershipId}/corrected`}
-                          key={student.membershipId}
-                          title="Open corrected exam"
-                        >
-                          {student.displayName}
-                        </Link>
-                      ) : (
-                        <span
-                          className="rounded-full border border-black/[0.07] bg-white px-2.5 py-1.5 text-[10px] font-semibold"
+                  {classroom.students.length ? (
+                    <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {classroom.students.map((student) => (
+                        <li
+                          className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-black/[0.07] bg-white px-3 py-2"
                           key={student.membershipId}
                         >
-                          {student.displayName}
-                        </span>
-                      ),
-                    )}
-                    {classroom.studentCount > 10 ? (
-                      <span className="px-1 py-1.5 text-[10px] font-semibold text-[var(--muted)]">
-                        +{classroom.studentCount - 10} more
-                      </span>
-                    ) : null}
-                  </div>
+                          {classroom.latestAssignment ? (
+                            <Link
+                              className="min-w-0 truncate text-xs font-semibold text-[var(--ink)] transition hover:text-[var(--sage)]"
+                              href={`/assignments/${classroom.latestAssignment.id}/students/${student.membershipId}/corrected`}
+                              title="Open corrected copy"
+                            >
+                              {student.displayName}
+                            </Link>
+                          ) : (
+                            <span className="min-w-0 truncate text-xs font-semibold">
+                              {student.displayName}
+                            </span>
+                          )}
+                          <MemberActions
+                            classId={classroom.id}
+                            currentName={student.displayName}
+                            membershipId={student.membershipId}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="mt-3 flex flex-col items-start gap-2 rounded-xl border border-dashed border-black/10 bg-white/55 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs text-[var(--muted)]">
+                        No class members yet.
+                      </p>
+                      <Link
+                        className="text-xs font-semibold text-[var(--sage)] hover:text-[var(--sidebar)]"
+                        href="/diagnose"
+                      >
+                        Add class members →
+                      </Link>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-5 flex flex-wrap items-center gap-2">

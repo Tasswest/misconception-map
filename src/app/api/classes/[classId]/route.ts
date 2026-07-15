@@ -1,7 +1,7 @@
 import {
   archiveClass,
   classMutationInputSchema,
-  renameClass,
+  updateClassDetails,
 } from "@/server/repositories/management";
 import { guardLocalApiRequest } from "@/server/http/local-request-guard";
 
@@ -22,7 +22,7 @@ export async function PATCH(
     const result =
       "action" in input
         ? archiveClass(classId)
-        : renameClass(classId, input.name);
+        : updateClassDetails(classId, input);
     return Response.json({ data: result });
   } catch (error) {
     return apiErrorResponse(error);
