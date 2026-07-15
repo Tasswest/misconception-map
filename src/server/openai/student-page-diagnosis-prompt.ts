@@ -1,7 +1,7 @@
 import type { AssignmentDomain } from "@/domain/contracts";
 import { buildDiagnosisPrompt } from "@/server/openai/diagnosis-prompt";
 
-export const STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION = "1.1.0";
+export const STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION = "1.2.0";
 
 type PageProblem = {
   position: number;
@@ -24,7 +24,7 @@ export function buildStudentPageDiagnosisPrompt(input: {
   });
   const instructions = [
     base.instructions,
-    "This request contains one full student page and an ordered list of assignment problems.",
+    "This request contains one student-work image or PDF document and an ordered list of assignment problems.",
     "Inspect the whole page once. Identify which supplied problems have student work visibly associated with them, then return one visibleProblems entry per visible work block.",
     "Match by printed problem number, nearby printed prompt, spatial layout, and mathematical content. problemPosition must be a position from the supplied list. Never invent a problem, duplicate a position, or return work that is not visible.",
     "Printed worksheet text helps segmentation but is not student transcription. Each nested diagnosis.transcription and its steps must contain only the student's marks for that problem.",
@@ -38,10 +38,10 @@ export function buildStudentPageDiagnosisPrompt(input: {
     instructions,
     inputText: JSON.stringify({
       assignmentDomain: input.assignmentDomain,
-      inputKind: "FULL_PAGE_IMAGE",
+      inputKind: "FULL_PAGE_DOCUMENT",
       problems: input.problems,
       task:
-        "Segment the attached full student page against this problem list, then diagnose every visible problem.",
+        "Segment the attached student-work image or PDF against this problem list, then diagnose every visible problem.",
     }),
   };
 }

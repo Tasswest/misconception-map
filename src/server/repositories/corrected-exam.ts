@@ -31,9 +31,9 @@ type CorrectedSourcePageRow = {
   scope_kind: "SINGLE_PROBLEM" | "FULL_PAGE";
   status: "UPLOADED" | "PROCESSING" | "DIAGNOSED" | "NEEDS_REVIEW" | "FAILED";
   review_note: string | null;
-  media_type: "image/jpeg" | "image/png" | "image/webp";
-  width: number;
-  height: number;
+  media_type: "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
+  width: number | null;
+  height: number | null;
   submitted_at: string;
 };
 
@@ -232,16 +232,23 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
       width: source.width,
       height: source.height,
       label:
-        selectedSourcePages.length === 1
+        source.media_type === "application/pdf"
+          ? selectedSourcePages.length === 1
+            ? "Student's submitted PDF"
+            : `Student work PDF ${index + 1}`
+          : selectedSourcePages.length === 1
           ? "Student's submitted page"
           : `Student work image ${index + 1}`,
       src: `/api/submissions/${source.submission_id}/asset`,
-      markers: correctedItems.flatMap((item) =>
-        item.diagnosis?.sourceSubmissionId === source.submission_id &&
-        item.diagnosis.region
-          ? [{ position: item.position, region: item.diagnosis.region }]
-          : [],
-      ),
+      markers:
+        source.media_type === "application/pdf"
+          ? []
+          : correctedItems.flatMap((item) =>
+              item.diagnosis?.sourceSubmissionId === source.submission_id &&
+              item.diagnosis.region
+                ? [{ position: item.position, region: item.diagnosis.region }]
+                : [],
+            ),
     })),
     items: correctedItems,
   };
@@ -263,7 +270,11 @@ export function getCorrectedExamSourceAsset(submissionId: string) {
     .get(submissionId) ?? null) as
     | {
         storage_key: string;
-        media_type: "image/jpeg" | "image/png" | "image/webp";
+        media_type:
+          | "image/jpeg"
+          | "image/png"
+          | "image/webp"
+          | "application/pdf";
         byte_size: number;
         sha256: string;
       }

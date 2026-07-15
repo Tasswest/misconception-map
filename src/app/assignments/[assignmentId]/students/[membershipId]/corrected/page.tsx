@@ -94,7 +94,9 @@ export default async function CorrectedExamPage({
                       {source.label}
                     </figcaption>
                     <span className="rounded-full bg-[var(--canvas)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
-                      Preprocessed copy
+                      {source.mediaType === "application/pdf"
+                        ? "Protected original PDF"
+                        : "Preprocessed copy"}
                     </span>
                   </div>
                   {source.status === "FAILED" ||
@@ -108,34 +110,63 @@ export default async function CorrectedExamPage({
                           : "Automatic diagnosis needs teacher review. The submitted page is preserved here alongside any safely matched feedback.")}
                     </div>
                   ) : null}
-                  <div className="corrected-copy-image-frame relative overflow-hidden rounded-2xl border border-black/10 bg-white">
-                    <Image
-                      alt={`Submitted work for ${exam.assignmentTitle}`}
-                      className="corrected-copy-image h-auto w-full object-contain"
-                      height={source.height}
-                      priority
-                      src={source.src}
-                      unoptimized
-                      width={source.width}
-                    />
-                    {source.markers.map((marker) => (
-                      <div
-                        aria-label={`Problem ${marker.position} location on submitted page`}
-                        className="corrected-copy-marker absolute rounded-md border-2 border-[var(--coral)] bg-[var(--soft-coral)]/15"
-                        key={`${source.submissionId}-${marker.position}`}
-                        style={{
-                          left: `${marker.region.x * 100}%`,
-                          top: `${marker.region.y * 100}%`,
-                          width: `${marker.region.width * 100}%`,
-                          height: `${marker.region.height * 100}%`,
-                        }}
+                  {source.mediaType === "application/pdf" ? (
+                    <div className="corrected-copy-pdf-frame overflow-hidden rounded-2xl border border-black/10 bg-white">
+                      <object
+                        aria-label={`Submitted PDF work for ${exam.assignmentTitle}`}
+                        className="h-[70vh] min-h-[560px] w-full"
+                        data={source.src}
+                        type="application/pdf"
                       >
-                        <span className="absolute left-1 top-1 grid size-6 place-items-center rounded-full bg-[var(--coral)] text-[11px] font-bold text-white shadow-sm">
-                          {marker.position}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                        <p className="p-5 text-sm text-[var(--muted)]">
+                          PDF preview is unavailable in this browser.{" "}
+                          <a
+                            className="font-semibold text-[var(--sage)]"
+                            href={source.src}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Open the submitted PDF
+                          </a>
+                          .
+                        </p>
+                      </object>
+                      <p className="corrected-copy-pdf-print-note hidden p-4 text-xs leading-5 text-[var(--muted)]">
+                        The original multi-page PDF is preserved in the local
+                        app. Return that source PDF alongside this feedback
+                        report.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="corrected-copy-image-frame relative overflow-hidden rounded-2xl border border-black/10 bg-white">
+                      <Image
+                        alt={`Submitted work for ${exam.assignmentTitle}`}
+                        className="corrected-copy-image h-auto w-full object-contain"
+                        height={source.height ?? 1}
+                        priority
+                        src={source.src}
+                        unoptimized
+                        width={source.width ?? 1}
+                      />
+                      {source.markers.map((marker) => (
+                        <div
+                          aria-label={`Problem ${marker.position} location on submitted page`}
+                          className="corrected-copy-marker absolute rounded-md border-2 border-[var(--coral)] bg-[var(--soft-coral)]/15"
+                          key={`${source.submissionId}-${marker.position}`}
+                          style={{
+                            left: `${marker.region.x * 100}%`,
+                            top: `${marker.region.y * 100}%`,
+                            width: `${marker.region.width * 100}%`,
+                            height: `${marker.region.height * 100}%`,
+                          }}
+                        >
+                          <span className="absolute left-1 top-1 grid size-6 place-items-center rounded-full bg-[var(--coral)] text-[11px] font-bold text-white shadow-sm">
+                            {marker.position}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </figure>
               ))}
             </div>

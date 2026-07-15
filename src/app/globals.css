@@ -129,6 +129,14 @@ button {
     object-fit: contain !important;
   }
 
+  .corrected-copy-pdf-frame object {
+    display: none !important;
+  }
+
+  .corrected-copy-pdf-print-note {
+    display: block !important;
+  }
+
   .corrected-copy-feedback {
     margin-top: 0 !important;
   }

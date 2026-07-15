@@ -21,7 +21,7 @@ export async function GET(
       {
         error: {
           code: "ASSET_NOT_FOUND",
-          message: "That student-work image is no longer available.",
+          message: "That student-work file is no longer available.",
         },
       },
       { status: 404 },
@@ -37,7 +37,11 @@ export async function GET(
     return new Response(new Uint8Array(bytes), {
       headers: {
         "Cache-Control": "private, no-store, max-age=0",
-        "Content-Disposition": 'inline; filename="student-work.webp"',
+        "Content-Disposition": `inline; filename="${
+          asset.media_type === "application/pdf"
+            ? "student-work.pdf"
+            : "student-work.webp"
+        }"`,
         "Content-Length": String(bytes.byteLength),
         "Content-Type": asset.media_type,
         ETag: `"${asset.sha256}"`,
@@ -49,7 +53,7 @@ export async function GET(
       {
         error: {
           code: "ASSET_UNAVAILABLE",
-          message: "That student-work image could not be opened.",
+          message: "That student-work file could not be opened.",
         },
       },
       { status: 404 },

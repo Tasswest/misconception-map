@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
+  hasPdfSignature,
+  PDF_DIRECT_INPUT_VERSION,
+  PDF_MEDIA_TYPE,
+} from "@/domain/pdf-input.mjs";
+import {
   guardLocalApiRequest,
   LocalRequestBodyError,
   requireDeclaredBodyWithinLimit,
@@ -24,7 +29,7 @@ import { preprocessWorksheetImage } from "@/server/storage/image-preprocessing.m
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_WORKSHEET_IMAGE_BYTES = 15 * 1024 * 1024;
+const MAX_WORKSHEET_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_WORKSHEET_REQUEST_BYTES = 16 * 1024 * 1024;
 const MAX_CONFIRM_REQUEST_BYTES = 180_000;
 
@@ -88,7 +93,7 @@ function worksheetErrorResponse(error: unknown) {
     {
       error: {
         code: "WORKSHEET_FAILED",
-        message: "The worksheet could not be prepared. Try a clearer image or typed copy.",
+        message: "The worksheet could not be prepared. Try a clearer photo, PDF, or typed copy.",
       },
     },
     { status: 500 },
@@ -152,7 +157,7 @@ export async function POST(
         {
           code: "custom",
           path: ["sourceKind"],
-          message: "Choose a typed or photographed worksheet.",
+          message: "Choose typed text, a worksheet photo, or a PDF.",
         },
       ]);
     }
@@ -162,26 +167,58 @@ export async function POST(
         {
           code: "custom",
           path: ["sourceFile"],
-          message: "Choose a worksheet image.",
+          message: "Choose a worksheet photo or PDF.",
         },
       ]);
     }
     if (
-      !["image/jpeg", "image/png", "image/webp"].includes(sourceFile.type) ||
-      sourceFile.size > MAX_WORKSHEET_IMAGE_BYTES
+      !["image/jpeg", "image/png", "image/webp", PDF_MEDIA_TYPE].includes(
+        sourceFile.type,
+      ) || sourceFile.size > MAX_WORKSHEET_FILE_BYTES
     ) {
       throw new z.ZodError([
         {
           code: "custom",
           path: ["sourceFile"],
-          message: "Use one JPEG, PNG, or WebP worksheet image up to 15 MB.",
+          message: "Use one JPEG, PNG, WebP, or PDF worksheet file up to 15 MB.",
         },
       ]);
     }
 
-    const prepared = await preprocessWorksheetImage(
-      Buffer.from(await sourceFile.arrayBuffer()),
-    );
+    const sourceBytes = Buffer.from(await sourceFile.arrayBuffer());
+    if (sourceFile.type === PDF_MEDIA_TYPE) {
+      if (!hasPdfSignature(sourceBytes)) {
+        throw new z.ZodError([
+          {
+            code: "custom",
+            path: ["sourceFile"],
+            message: "The selected file does not contain a valid PDF document.",
+          },
+        ]);
+      }
+      const pdfSha256 = createHash("sha256").update(sourceBytes).digest("hex");
+      const run = await extractWorksheet({
+        sourceKind: "PDF",
+        assignmentDomain: assignment.domain,
+        pdfBytes: sourceBytes,
+        pdfSha256,
+      });
+      const saved = saveWorksheetExtraction({
+        assignmentId,
+        source: {
+          sourceKind: "PDF",
+          bytes: sourceBytes,
+          originalFilename: safeFilename(sourceFile.name),
+          mediaType: PDF_MEDIA_TYPE,
+          sha256: pdfSha256,
+          preprocessingVersion: PDF_DIRECT_INPUT_VERSION,
+        },
+        run,
+      });
+      return NextResponse.json({ data: saved }, { status: 201 });
+    }
+
+    const prepared = await preprocessWorksheetImage(sourceBytes);
     const imageSha256 = createHash("sha256")
       .update(prepared.bytes)
       .digest("hex");

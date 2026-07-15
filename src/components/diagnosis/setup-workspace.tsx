@@ -610,7 +610,9 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
                     }}
                     type="button"
                   >
-                    {kind === "TYPED" ? "Paste worksheet text" : "Upload worksheet photo"}
+                    {kind === "TYPED"
+                      ? "Paste worksheet text"
+                      : "Upload photo or PDF"}
                   </button>
                 ))}
               </div>
@@ -633,13 +635,15 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
               <label className="block rounded-2xl border-2 border-dashed border-black/10 bg-white/55 p-6 text-center text-sm font-semibold">
                 <UploadIcon className="mx-auto size-5 text-[var(--sage)]" />
                 <span className="mt-2 block">
-                  {worksheetFile ? worksheetFile.name : "Choose one worksheet image"}
+                  {worksheetFile
+                    ? worksheetFile.name
+                    : "Choose one worksheet photo or PDF"}
                 </span>
                 <span className="mt-1 block text-xs font-normal text-[var(--muted)]">
-                  JPEG, PNG, or WebP · up to 15 MB
+                  JPEG, PNG, WebP, or PDF · up to 15 MB
                 </span>
                 <input
-                  accept="image/jpeg,image/png,image/webp"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
                   className="mt-4 block w-full text-xs font-normal"
                   disabled={!selectedClass}
                   onChange={(event) => setWorksheetFile(event.target.files?.[0] ?? null)}

@@ -6,6 +6,11 @@ import path from "node:path";
 import sharp from "sharp";
 
 import {
+  hasPdfSignature,
+  PDF_DIRECT_INPUT_VERSION,
+  PDF_MEDIA_TYPE,
+} from "@/domain/pdf-input.mjs";
+import {
   prepareOriginalImageFallback,
   preprocessMathImage,
   preprocessStudentPageImage,
@@ -18,6 +23,7 @@ const allowedInputMediaTypes = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
+  PDF_MEDIA_TYPE,
 ]);
 
 const allowedDetectedFormats = new Set(["jpeg", "png", "webp"]);
@@ -46,27 +52,27 @@ export type PreparedStudentWorkAsset = {
   submissionId: string;
   storageKey: string;
   originalFilename: string;
-  mediaType: "image/webp";
+  mediaType: "image/webp" | "application/pdf";
   byteSize: number;
   sha256: string;
-  width: number;
-  height: number;
-  sourceWidth: number;
-  sourceHeight: number;
-  cropLeft: number;
-  cropTop: number;
-  cropWidth: number;
-  cropHeight: number;
+  width: number | null;
+  height: number | null;
+  sourceWidth: number | null;
+  sourceHeight: number | null;
+  cropLeft: number | null;
+  cropTop: number | null;
+  cropWidth: number | null;
+  cropHeight: number | null;
   preprocessingVersion: string;
-  fallbackStorageKey: string;
-  fallbackMediaType: "image/webp";
-  fallbackByteSize: number;
-  fallbackSha256: string;
-  fallbackWidth: number;
-  fallbackHeight: number;
-  fallbackPreprocessingVersion: string;
+  fallbackStorageKey: string | null;
+  fallbackMediaType: "image/webp" | null;
+  fallbackByteSize: number | null;
+  fallbackSha256: string | null;
+  fallbackWidth: number | null;
+  fallbackHeight: number | null;
+  fallbackPreprocessingVersion: string | null;
   bytes: Buffer;
-  fallbackBytes: Buffer;
+  fallbackBytes: Buffer | null;
 };
 
 function safeOriginalFilename(filename: string) {
@@ -82,21 +88,66 @@ export async function prepareStudentWorkAsset(input: {
   scopeKind?: "SINGLE_PROBLEM" | "FULL_PAGE";
 }): Promise<PreparedStudentWorkAsset> {
   if (input.bytes.byteLength === 0) {
-    throw new StudentWorkAssetError("EMPTY_FILE", "This image file is empty.");
+    throw new StudentWorkAssetError("EMPTY_FILE", "This student-work file is empty.");
   }
 
   if (input.bytes.byteLength > MAX_STUDENT_WORK_BYTES) {
     throw new StudentWorkAssetError(
       "FILE_TOO_LARGE",
-      "Each student-work image must be 10 MB or smaller.",
+      "Each student-work file must be 10 MB or smaller.",
     );
   }
 
   if (!allowedInputMediaTypes.has(input.claimedMediaType)) {
     throw new StudentWorkAssetError(
       "UNSUPPORTED_IMAGE",
-      "Use a JPEG, PNG, or WebP image.",
+      "Use a JPEG, PNG, WebP, or PDF file.",
     );
+  }
+
+  if (input.claimedMediaType === PDF_MEDIA_TYPE) {
+    if (!hasPdfSignature(input.bytes)) {
+      throw new StudentWorkAssetError(
+        "UNSUPPORTED_IMAGE",
+        "The selected file does not contain a valid PDF document.",
+      );
+    }
+
+    const assetId = randomUUID();
+    const storageKey = path.posix.join(
+      "uploads",
+      "submissions",
+      input.submissionId,
+      `${assetId}.pdf`,
+    );
+
+    return {
+      id: assetId,
+      submissionId: input.submissionId,
+      storageKey,
+      originalFilename: safeOriginalFilename(input.originalFilename),
+      mediaType: PDF_MEDIA_TYPE,
+      byteSize: input.bytes.byteLength,
+      sha256: createHash("sha256").update(input.bytes).digest("hex"),
+      width: null,
+      height: null,
+      sourceWidth: null,
+      sourceHeight: null,
+      cropLeft: null,
+      cropTop: null,
+      cropWidth: null,
+      cropHeight: null,
+      preprocessingVersion: PDF_DIRECT_INPUT_VERSION,
+      fallbackStorageKey: null,
+      fallbackMediaType: null,
+      fallbackByteSize: null,
+      fallbackSha256: null,
+      fallbackWidth: null,
+      fallbackHeight: null,
+      fallbackPreprocessingVersion: null,
+      bytes: input.bytes,
+      fallbackBytes: null,
+    };
   }
 
   try {
@@ -175,7 +226,7 @@ export async function prepareStudentWorkAsset(input: {
 
     throw new StudentWorkAssetError(
       "UNREADABLE_IMAGE",
-      "This image could not be opened. Try exporting it as JPEG or PNG.",
+      "This image could not be opened. Try exporting it as JPEG, PNG, or PDF.",
       { cause: error },
     );
   }
@@ -237,7 +288,9 @@ export async function writePreparedStudentWorkAsset(
 ) {
   const renditions = [
     { storageKey: asset.storageKey, bytes: asset.bytes },
-    { storageKey: asset.fallbackStorageKey, bytes: asset.fallbackBytes },
+    ...(asset.fallbackStorageKey && asset.fallbackBytes
+      ? [{ storageKey: asset.fallbackStorageKey, bytes: asset.fallbackBytes }]
+      : []),
   ];
   const absolutePaths = renditions.map((rendition) =>
     absoluteStoragePath(rendition.storageKey),
@@ -284,7 +337,7 @@ export async function writePreparedStudentWorkAsset(
     ]);
     throw new StudentWorkAssetError(
       "STORAGE_ERROR",
-      "The student-work image could not be saved locally.",
+      "The student-work file could not be saved locally.",
       { cause: error },
     );
   }

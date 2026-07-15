@@ -7,6 +7,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
 import { assignmentDomainSchema, structuredDiagnosisSchema } from "@/domain/contracts";
+import { buildPdfInputFile, PDF_MEDIA_TYPE } from "@/domain/pdf-input.mjs";
 import {
   DIAGNOSIS_SCHEMA_VERSION,
   diagnosisAIOutputSchema,
@@ -65,7 +66,12 @@ const imageDiagnosisInputSchema = z
     imageBytes: z
       .instanceof(Uint8Array)
       .refine((value) => value.byteLength > 0),
-    imageMediaType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    imageMediaType: z.enum([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      PDF_MEDIA_TYPE,
+    ]),
     imageSha256: z
       .string()
       .regex(/^[a-fA-F0-9]{64}$/)
@@ -88,7 +94,12 @@ const studentPageDiagnosisInputSchema = z
     assignmentDomain: assignmentDomainSchema,
     problems: z.array(pageProblemSchema).min(1).max(30),
     imageBytes: z.instanceof(Uint8Array).refine((value) => value.byteLength > 0),
-    imageMediaType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    imageMediaType: z.enum([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      PDF_MEDIA_TYPE,
+    ]),
     imageSha256: z
       .string()
       .regex(/^[a-fA-F0-9]{64}$/)
@@ -361,18 +372,20 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
       prepared.inputKind === "TYPED" ? prepared.typedResponse : null,
   });
   const content =
-    prepared.inputKind === "IMAGE"
-      ? [
+    prepared.inputKind === "TYPED"
+      ? [{ type: "input_text" as const, text: prompt.inputText }]
+      : [
           { type: "input_text" as const, text: prompt.inputText },
-          {
-            type: "input_image" as const,
-            image_url: `data:${prepared.imageMediaType};base64,${Buffer.from(
-              prepared.imageBytes,
-            ).toString("base64")}`,
-            detail: "original" as const,
-          },
-        ]
-      : [{ type: "input_text" as const, text: prompt.inputText }];
+          prepared.imageMediaType === PDF_MEDIA_TYPE
+            ? buildPdfInputFile(prepared.imageBytes, "student-work.pdf")
+            : {
+                type: "input_image" as const,
+                image_url: `data:${prepared.imageMediaType};base64,${Buffer.from(
+                  prepared.imageBytes,
+                ).toString("base64")}`,
+                detail: "original" as const,
+              },
+        ];
   const startedAt = performance.now();
 
   try {
@@ -562,13 +575,15 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
           role: "user",
           content: [
             { type: "input_text" as const, text: prompt.inputText },
-            {
-              type: "input_image" as const,
-              image_url: `data:${prepared.imageMediaType};base64,${Buffer.from(
-                prepared.imageBytes,
-              ).toString("base64")}`,
-              detail: "original" as const,
-            },
+            prepared.imageMediaType === PDF_MEDIA_TYPE
+              ? buildPdfInputFile(prepared.imageBytes, "student-work.pdf")
+              : {
+                  type: "input_image" as const,
+                  image_url: `data:${prepared.imageMediaType};base64,${Buffer.from(
+                    prepared.imageBytes,
+                  ).toString("base64")}`,
+                  detail: "original" as const,
+                },
           ],
         },
       ],

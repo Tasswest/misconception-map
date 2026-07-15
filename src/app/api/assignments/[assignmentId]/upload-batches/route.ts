@@ -64,7 +64,7 @@ const metadataSchema = z
           if (clientIds.has(item.clientId)) {
             context.addIssue({
               code: "custom",
-              message: "Each queued image needs a unique local identifier.",
+              message: "Each queued file needs a unique local identifier.",
               path: [index, "clientId"],
             });
           }
@@ -125,7 +125,7 @@ function errorResponse(error: unknown) {
     {
       error: {
         code: "UPLOAD_FAILED",
-        message: "The images could not be saved. Nothing was diagnosed.",
+        message: "The files could not be saved. Nothing was diagnosed.",
       },
     },
     { status: 500 },
@@ -148,7 +148,7 @@ export async function POST(
     if (typeof metadataValue !== "string") {
       throw new StudentWorkAssetError(
         "UNSUPPORTED_IMAGE",
-        "Student tags are required for every image.",
+        "Student tags are required for every uploaded file.",
       );
     }
 
@@ -158,7 +158,7 @@ export async function POST(
     } catch {
       throw new StudentWorkAssetError(
         "UNSUPPORTED_IMAGE",
-        "The image-to-student tags could not be read.",
+        "The file-to-student tags could not be read.",
       );
     }
 
@@ -171,7 +171,7 @@ export async function POST(
     ) {
       throw new StudentWorkAssetError(
         "UNSUPPORTED_IMAGE",
-        "Every queued image must have exactly one student tag.",
+        "Every queued file must have exactly one student tag.",
       );
     }
 
@@ -182,7 +182,7 @@ export async function POST(
     if (files.some((file) => file.size > MAX_STUDENT_WORK_BYTES)) {
       throw new StudentWorkAssetError(
         "FILE_TOO_LARGE",
-        "Each student-work image must be 10 MB or smaller.",
+        "Each student-work file must be 10 MB or smaller.",
       );
     }
 
@@ -195,7 +195,7 @@ export async function POST(
     }
 
     // Reject stale assignments and roster selections before decoding sensitive
-    // student-work images or writing anything to disk.
+    // student-work files or writing anything to disk.
     validateDiagnosisTargets({
       assignmentId,
       targets: metadata.map((item) => ({
@@ -222,7 +222,7 @@ export async function POST(
     if (new Set(preparedAssets.map((asset) => asset.sha256)).size !== preparedAssets.length) {
       throw new StudentWorkAssetError(
         "UNSUPPORTED_IMAGE",
-        "Remove duplicate images before diagnosing this batch.",
+        "Remove duplicate files before diagnosing this batch.",
       );
     }
 
@@ -238,7 +238,8 @@ export async function POST(
 
     for (const asset of preparedAssets) {
       await writePreparedStudentWorkAsset(asset);
-      storedKeys.push(asset.storageKey, asset.fallbackStorageKey);
+      storedKeys.push(asset.storageKey);
+      if (asset.fallbackStorageKey) storedKeys.push(asset.fallbackStorageKey);
     }
 
     const batch = createImageUploadBatch({

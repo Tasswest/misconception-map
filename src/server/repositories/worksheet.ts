@@ -111,6 +111,14 @@ type WorksheetSource =
       width: number;
       height: number;
       preprocessingVersion: string;
+    }
+  | {
+      sourceKind: "PDF";
+      bytes: Buffer;
+      originalFilename: string;
+      mediaType: "application/pdf";
+      sha256: string;
+      preprocessingVersion: string;
     };
 
 export function saveWorksheetExtraction(input: {
@@ -159,15 +167,15 @@ export function saveWorksheetExtraction(input: {
         assignment.id,
         input.source.sourceKind,
         input.source.sourceKind === "TYPED" ? input.source.sourceText : null,
-        input.source.sourceKind === "IMAGE" ? input.source.bytes : null,
-        input.source.sourceKind === "IMAGE"
+        input.source.sourceKind !== "TYPED" ? input.source.bytes : null,
+        input.source.sourceKind !== "TYPED"
           ? input.source.originalFilename
           : null,
-        input.source.sourceKind === "IMAGE" ? input.source.mediaType : null,
-        input.source.sourceKind === "IMAGE" ? input.source.sha256 : null,
+        input.source.sourceKind !== "TYPED" ? input.source.mediaType : null,
+        input.source.sourceKind !== "TYPED" ? input.source.sha256 : null,
         input.source.sourceKind === "IMAGE" ? input.source.width : null,
         input.source.sourceKind === "IMAGE" ? input.source.height : null,
-        input.source.sourceKind === "IMAGE"
+        input.source.sourceKind !== "TYPED"
           ? input.source.preprocessingVersion
           : null,
         needsReview ? "NEEDS_REVIEW" : "EXTRACTED",

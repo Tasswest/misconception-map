@@ -47,7 +47,7 @@ export const imageUploadItemSchema = z
     ) {
       context.addIssue({
         code: "custom",
-        message: "The image scope does not match its worksheet problem selection.",
+        message: "The file scope does not match its worksheet problem selection.",
         path: ["assignmentItemId"],
       });
     }
@@ -654,7 +654,7 @@ function parseImageUploadItems(input: ImageUploadBatchInput) {
   if (input.items.length < 1 || input.items.length > 20) {
     throw new DiagnosisRepositoryError(
       "PERSISTENCE_ERROR",
-      "Upload between 1 and 20 student-work images at a time.",
+      "Upload between 1 and 20 student-work files at a time.",
     );
   }
 
@@ -675,7 +675,7 @@ function parseImageUploadItems(input: ImageUploadBatchInput) {
     ) {
       throw new DiagnosisRepositoryError(
         "IDEMPOTENCY_CONFLICT",
-        "Each image needs one stable, unique request identifier.",
+        "Each file needs one stable, unique request identifier.",
       );
     }
     clientIds.add(parsed.clientId);
@@ -1167,9 +1167,9 @@ export type StudentPageDiagnosisContext = {
   storageKey: string;
   mediaType: string;
   assetSha256: string;
-  fallbackStorageKey: string;
-  fallbackMediaType: string;
-  fallbackSha256: string;
+  fallbackStorageKey: string | null;
+  fallbackMediaType: string | null;
+  fallbackSha256: string | null;
   problems: Array<{
     assignmentItemId: string;
     position: number;
@@ -1231,9 +1231,10 @@ export function getStudentPageDiagnosisContext(
     !row.storage_key ||
     !row.media_type ||
     !row.asset_sha256 ||
-    !row.fallback_storage_key ||
-    !row.fallback_media_type ||
-    !row.fallback_sha256
+    (row.media_type !== "application/pdf" &&
+      (!row.fallback_storage_key ||
+        !row.fallback_media_type ||
+        !row.fallback_sha256))
   ) {
     throw new DiagnosisRepositoryError(
       row ? "SUBMISSION_NOT_READY" : "SUBMISSION_NOT_FOUND",

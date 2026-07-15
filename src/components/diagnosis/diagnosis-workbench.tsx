@@ -27,10 +27,11 @@ const MAX_TYPED_RESPONSES = 20;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_BATCH_BYTES = 80 * 1024 * 1024;
 const REVIEW_CONFIDENCE_THRESHOLD = 0.72;
-const acceptedImageTypes = new Set([
+const acceptedWorkFileTypes = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
+  "application/pdf",
 ]);
 
 const selectClass =
@@ -270,15 +271,15 @@ export function DiagnosisWorkbench({
 
     for (const file of files) {
       if (remainingSlots <= 0) {
-        errors.push(`Only ${MAX_PHOTOS} photos can be added at once.`);
+        errors.push(`Only ${MAX_PHOTOS} files can be added at once.`);
         break;
       }
       if (file.size === 0) {
         errors.push(`${file.name || "Unnamed file"} is empty.`);
         continue;
       }
-      if (!acceptedImageTypes.has(file.type)) {
-        errors.push(`${file.name} is not a JPEG, PNG, or WebP image.`);
+      if (!acceptedWorkFileTypes.has(file.type)) {
+        errors.push(`${file.name} is not a JPEG, PNG, WebP, or PDF file.`);
         continue;
       }
       if (file.size > MAX_FILE_BYTES) {
@@ -286,7 +287,7 @@ export function DiagnosisWorkbench({
         continue;
       }
       if (queuedBytes + file.size > MAX_BATCH_BYTES) {
-        errors.push("This photo queue would exceed the 80 MB batch limit.");
+        errors.push("This file queue would exceed the 80 MB batch limit.");
         continue;
       }
 
@@ -296,8 +297,8 @@ export function DiagnosisWorkbench({
         continue;
       }
 
-      const previewUrl = URL.createObjectURL(file);
-      previewUrls.current.add(previewUrl);
+      const previewUrl = file.type === "application/pdf" ? null : URL.createObjectURL(file);
+      if (previewUrl) previewUrls.current.add(previewUrl);
       knownSignatures.add(signature);
       queueSequence.current += 1;
       additions.push({
@@ -397,7 +398,7 @@ export function DiagnosisWorkbench({
       items.forEach((item) =>
         updateItem(item.clientId, {
           status: "FAILED",
-          error: "This saved photo could not be prepared for upload.",
+          error: "This saved file could not be prepared for upload.",
         }),
       );
       return [];
@@ -438,7 +439,7 @@ export function DiagnosisWorkbench({
         if (!saved) {
           updateItem(item.clientId, {
             status: "FAILED",
-            error: "The photo was not returned by the local save step.",
+            error: "The file was not returned by the local save step.",
           });
           return [];
         }
@@ -664,7 +665,7 @@ export function DiagnosisWorkbench({
               <TabButton
                 active={activeTab === "PHOTOS"}
                 icon={<ImageIcon className="size-4" />}
-                label="Photos"
+                label="Files & photos"
                 onClick={() => setActiveTab("PHOTOS")}
               />
               <TabButton
@@ -696,7 +697,7 @@ export function DiagnosisWorkbench({
                   onDrop={onDrop}
                 >
                   <input
-                    accept="image/jpeg,image/png,image/webp"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
                     className="sr-only"
                     disabled={processing || queuedPhotoCount >= MAX_PHOTOS}
                     id="student-work-files"
@@ -711,19 +712,19 @@ export function DiagnosisWorkbench({
                     </span>
                     <h2 className="mt-4 text-base font-semibold">
                       {queuedPhotoCount >= MAX_PHOTOS
-                        ? "Photo limit reached"
+                        ? "File limit reached"
                         : dragging
-                          ? "Drop photos here"
+                          ? "Drop files here"
                           : "Drop handwritten work here"}
                     </h2>
                     <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">
-                      JPEG, PNG, or WebP · up to 10 MB each · {MAX_PHOTOS} photos per queue
+                      JPEG, PNG, WebP, or PDF · up to 10 MB each · {MAX_PHOTOS} files per queue
                     </p>
                     <label
                       className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm font-semibold shadow-sm transition hover:bg-[var(--canvas)]"
                       htmlFor="student-work-files"
                     >
-                      <PlusIcon className="size-4" /> Choose photos
+                      <PlusIcon className="size-4" /> Choose files
                     </label>
                   </div>
                 </div>
@@ -922,7 +923,7 @@ export function DiagnosisWorkbench({
                 />
                 <span>
                   I checked this work and removed or covered every student name
-                  in the response content.
+                  in the visible content and, for PDFs, the document properties.
                 </span>
               </label>
             ) : null}
@@ -996,10 +997,10 @@ export function DiagnosisWorkbench({
               <CheckIcon className="size-4" /> Local-first intake
             </div>
             <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
-              Work is saved locally first. Roster names and filenames are never
-              sent to OpenAI, and image metadata is removed. Every upload and
-              typed response requires an explicit check that names in the work
-              content were removed or covered.
+              Work is saved locally first. Roster names and local filenames are
+              never sent to OpenAI, and image metadata is removed. PDF inputs
+              use a generated API filename. Every upload and typed response
+              requires an explicit check that names in the work were removed.
             </p>
           </article>
         </aside>
@@ -1074,6 +1075,14 @@ function QueueCard({
             role="img"
             style={{ backgroundImage: `url(${JSON.stringify(item.previewUrl)})` }}
           />
+        ) : item.kind === "PHOTO" && isPdfFilename(item.filename) ? (
+          <span
+            aria-label={`Saved PDF ${item.filename}`}
+            className="grid size-16 place-items-center rounded-xl border border-black/[0.06] bg-[var(--soft-mint)] text-[var(--sidebar)]"
+            role="img"
+          >
+            <FileTextIcon className="size-6" />
+          </span>
         ) : item.kind === "PHOTO" ? (
           <span
             aria-label={`Saved photo ${item.filename}`}
@@ -1348,7 +1357,7 @@ function statusPresentation(item: QueueItem): {
     case "SAVING":
       return {
         label: "Saving",
-        copy: item.kind === "PHOTO" ? "Saving photo locally…" : "Saving response locally…",
+        copy: item.kind === "PHOTO" ? "Saving file locally…" : "Saving response locally…",
         tone: "working",
         textClass: "text-[var(--sage)]",
       };
@@ -1443,7 +1452,7 @@ function queueProgressCopy(counts: ReturnType<typeof summarizeQueue>) {
   if (counts.ready > 0) {
     return `${counts.ready} ready. Work is saved locally before live diagnosis begins.`;
   }
-  return "Add photos or typed responses to begin.";
+  return "Add files or typed responses to begin.";
 }
 
 function queueItemFromPersisted(item: PersistedDiagnosisQueueItem): QueueItem {
@@ -1491,7 +1500,7 @@ function queueItemFromPersisted(item: PersistedDiagnosisQueueItem): QueueItem {
     return {
       ...base,
       kind: "PHOTO",
-      filename: item.filename ?? "Saved photo",
+      filename: item.filename ?? "Saved work file",
       file: null,
       previewUrl: null,
       byteSize: null,
@@ -1798,6 +1807,10 @@ async function runWithConcurrency<T>(
 
 function fileSignature(file: File) {
   return `${file.name.toLocaleLowerCase()}:${file.size}:${file.lastModified}`;
+}
+
+function isPdfFilename(filename: string) {
+  return filename.toLocaleLowerCase().endsWith(".pdf");
 }
 
 function createClientId() {

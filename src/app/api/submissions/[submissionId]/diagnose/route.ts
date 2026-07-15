@@ -85,11 +85,18 @@ function errorResponse(error: unknown) {
   );
 }
 
-type ImageMediaType = "image/jpeg" | "image/png" | "image/webp";
+type VisualMediaType =
+  | "image/jpeg"
+  | "image/png"
+  | "image/webp"
+  | "application/pdf";
 
-function isImageMediaType(value: string | null): value is ImageMediaType {
+function isVisualMediaType(value: string | null): value is VisualMediaType {
   return (
-    value === "image/jpeg" || value === "image/png" || value === "image/webp"
+    value === "image/jpeg" ||
+    value === "image/png" ||
+    value === "image/webp" ||
+    value === "application/pdf"
   );
 }
 
@@ -123,7 +130,7 @@ async function buildSingleDiagnosisInput(
     context.inputKind === "IMAGE" &&
     context.storageKey &&
     context.assetSha256 &&
-    isImageMediaType(context.mediaType)
+    isVisualMediaType(context.mediaType)
   ) {
     const imageBytes = await readFile(
       /* turbopackIgnore: true */ resolveStoredStudentWorkAsset(
@@ -142,7 +149,7 @@ async function buildSingleDiagnosisInput(
       fallbackInput:
         context.fallbackStorageKey &&
         context.fallbackSha256 &&
-        isImageMediaType(context.fallbackMediaType)
+        isVisualMediaType(context.fallbackMediaType)
           ? {
               ...shared,
               inputKind: "IMAGE",
@@ -167,13 +174,10 @@ async function buildSingleDiagnosisInput(
 async function buildStudentPageInputs(submissionId: string): Promise<{
   classId: string;
   primary: DiagnoseStudentPageInput;
-  fallback: DiagnoseStudentPageInput;
+  fallback: DiagnoseStudentPageInput | null;
 }> {
   const context = getStudentPageDiagnosisContext(submissionId);
-  if (
-    !isImageMediaType(context.mediaType) ||
-    !isImageMediaType(context.fallbackMediaType)
-  ) {
+  if (!isVisualMediaType(context.mediaType)) {
     throw new DiagnosisRepositoryError(
       "SUBMISSION_NOT_READY",
       "This full-page submission does not contain supported OCR renditions.",
@@ -189,18 +193,26 @@ async function buildStudentPageInputs(submissionId: string): Promise<{
       answerFormat: problem.answerFormat,
     })),
   } as const;
-  const [primaryBytes, fallbackBytes] = await Promise.all([
-    readFile(
-      /* turbopackIgnore: true */ resolveStoredStudentWorkAsset(
-        context.storageKey,
-      ),
+  const primaryBytes = await readFile(
+    /* turbopackIgnore: true */ resolveStoredStudentWorkAsset(
+      context.storageKey,
     ),
-    readFile(
-      /* turbopackIgnore: true */ resolveStoredStudentWorkAsset(
-        context.fallbackStorageKey,
-      ),
-    ),
-  ]);
+  );
+  const fallback =
+    context.fallbackStorageKey &&
+    context.fallbackSha256 &&
+    isVisualMediaType(context.fallbackMediaType)
+      ? {
+          ...shared,
+          imageBytes: await readFile(
+            /* turbopackIgnore: true */ resolveStoredStudentWorkAsset(
+              context.fallbackStorageKey,
+            ),
+          ),
+          imageMediaType: context.fallbackMediaType,
+          imageSha256: context.fallbackSha256,
+        }
+      : null;
   return {
     classId: context.classId,
     primary: {
@@ -209,12 +221,7 @@ async function buildStudentPageInputs(submissionId: string): Promise<{
       imageMediaType: context.mediaType,
       imageSha256: context.assetSha256,
     },
-    fallback: {
-      ...shared,
-      imageBytes: fallbackBytes,
-      imageMediaType: context.fallbackMediaType,
-      imageSha256: context.fallbackSha256,
-    },
+    fallback,
   };
 }
 
@@ -313,16 +320,20 @@ export async function POST(
       const prepared = await buildStudentPageInputs(submissionId);
       classId = prepared.classId;
       const primaryHash = createStudentPageDiagnosisInputHash(prepared.primary);
-      const fallbackHash = createStudentPageDiagnosisInputHash(prepared.fallback);
-      const pipelineHash = createHash("sha256")
-        .update(
-          JSON.stringify({
-            primaryHash,
-            fallbackHash,
-            retryPolicyVersion: DIAGNOSIS_RETRY_POLICY_VERSION,
-          }),
-        )
-        .digest("hex");
+      const fallbackHash = prepared.fallback
+        ? createStudentPageDiagnosisInputHash(prepared.fallback)
+        : null;
+      const pipelineHash = fallbackHash
+        ? createHash("sha256")
+            .update(
+              JSON.stringify({
+                primaryHash,
+                fallbackHash,
+                retryPolicyVersion: DIAGNOSIS_RETRY_POLICY_VERSION,
+              }),
+            )
+            .digest("hex")
+        : primaryHash;
       const claimed = claimDiagnosisRun({
         submissionId,
         classId,
@@ -333,7 +344,8 @@ export async function POST(
       runId = claimed.runId;
 
       const primary = await diagnoseStudentPage(prepared.primary);
-      const fallback = shouldRetryStudentPageWithOriginal(primary)
+      const fallback =
+        prepared.fallback && shouldRetryStudentPageWithOriginal(primary)
         ? await diagnoseStudentPage(prepared.fallback)
         : null;
       const selected = fallback
