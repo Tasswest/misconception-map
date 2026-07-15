@@ -42,16 +42,9 @@ export default function ClassesPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-xl font-semibold tracking-[-0.025em]">
-                        {classroom.name}
-                      </h2>
-                      {classroom.isDemo ? (
-                        <span className="rounded-full bg-[var(--soft-mint)] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.1em] text-[var(--sage)]">
-                          Synthetic demo
-                        </span>
-                      ) : null}
-                    </div>
+                    <h2 className="text-xl font-semibold tracking-[-0.025em]">
+                      {classroom.name}
+                    </h2>
                     <p className="mt-1 text-xs text-[var(--muted)]">
                       {gradeLabel(classroom.gradeBand)}
                       {classroom.schoolYear ? ` · ${classroom.schoolYear}` : ""}
@@ -72,14 +65,9 @@ export default function ClassesPage() {
                 </div>
 
                 <div className="mt-5 border-t border-black/[0.06] pt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-                      Roster
-                    </p>
-                    <span className="text-[10px] text-[var(--muted)]">
-                      Synthetic names are marked in demo classes
-                    </span>
-                  </div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
+                    Roster
+                  </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {classroom.students.slice(0, 10).map((student) =>
                       classroom.latestAssignment ? (
@@ -165,7 +153,7 @@ function EmptyState() {
     <section className="mt-6 rounded-[24px] border border-dashed border-black/10 bg-white/60 px-6 py-16 text-center">
       <h2 className="text-xl font-semibold">No active classes yet</h2>
       <p className="mt-2 text-sm text-[var(--muted)]">
-        Create a class manually or load the synthetic demo classroom from Overview.
+        Create your first class, add its roster, and then attach an assignment.
       </p>
       <Link
         className="mt-5 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"

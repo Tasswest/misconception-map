@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { DemoLoaderButton } from "@/components/demo/demo-loader-button";
 import { ArrowIcon, CheckIcon, SparkIcon } from "@/components/icons";
 import { isOpenAIConfigured } from "@/lib/config";
 import {
@@ -67,11 +66,10 @@ export default function Home() {
               >
                 Check local setup
               </Link>
-              <DemoLoaderButton />
             </div>
             <p className="mt-5 flex items-center gap-2 text-xs text-[var(--muted)]">
               <CheckIcon className="size-4 text-[var(--sage)]" />
-              Synthetic demo data stays local; live analysis is always explicit.
+              Student evidence stays on this computer; live analysis is always explicit.
             </p>
           </div>
 
@@ -176,22 +174,12 @@ export default function Home() {
               supported only when a strategy repeats across varied work.
             </p>
           </div>
-          <div className="mt-5 flex items-center gap-3 md:mt-0">
-            <div className="flex -space-x-2">
-              {["AM", "JL", "SK"].map((initials, index) => (
-                <span
-                  className="grid size-9 place-items-center rounded-full border-2 border-white bg-[var(--soft-mint)] text-[10px] font-bold text-[var(--sidebar)]"
-                  key={initials}
-                  style={{ zIndex: 3 - index }}
-                >
-                  {initials}
-                </span>
-              ))}
-            </div>
-            <span className="text-xs font-medium text-[var(--muted)]">
-              Synthetic students only
-            </span>
-          </div>
+          <Link
+            className="mt-5 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white md:mt-0"
+            href="/diagnose"
+          >
+            Create your first class
+          </Link>
         </section>
       </div>
     </AppShell>
@@ -222,7 +210,6 @@ function ReturningTeacherHome({
             </p>
           </div>
           <div className="flex flex-wrap items-start gap-2">
-            <DemoLoaderButton loaded={overview.demoLoaded} />
             <Link
               className="inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
               href="/diagnose"

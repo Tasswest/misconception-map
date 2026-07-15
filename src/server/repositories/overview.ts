@@ -1,6 +1,5 @@
 import "server-only";
 
-import { DEMO_CLASS_ID } from "@/server/demo/seed-database.mjs";
 import { getHeatmapDashboard } from "@/server/repositories/dashboard";
 import {
   listManagedAssignments,
@@ -40,7 +39,6 @@ export function getOverviewSummary() {
 
   return {
     hasWorkspace: classes.length > 0,
-    demoLoaded: classes.some((classroom) => classroom.id === DEMO_CLASS_ID),
     classCount: classes.length,
     studentCount: classes.reduce(
       (sum, classroom) => sum + classroom.studentCount,

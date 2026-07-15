@@ -1,6 +1,6 @@
 # Misconception Map
 
-Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. The app implements worksheet-aware assignment setup, local work intake, live diagnosis, a recoverable diagnosis queue, a clustered class misconception heatmap, returnable corrected-copy PDFs, targeted micro-practice, a Teach This Tomorrow brief, a deterministic 20-learner demo classroom, and the complete Prediction Lab signature flow.
+Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. The app implements worksheet-aware assignment setup, local work intake, live diagnosis, a recoverable diagnosis queue, a clustered class misconception heatmap, returnable corrected-copy PDFs, targeted micro-practice, a Teach This Tomorrow brief, and the complete Prediction Lab signature flow.
 
 The project is being built for the Education category of OpenAI Build Week. It is intentionally local-first: the web app and SQLite database run on one machine, while live diagnosis and generation use the OpenAI API.
 
@@ -36,7 +36,7 @@ MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
 - **npm run dev** — migrate the local database and start development mode.
 - **npm start** — migrate the local database and serve a completed production build on loopback.
 - **npm run db:migrate** — apply pending SQL migrations.
-- **npm run seed** — idempotently load or restore the 20-learner synthetic demo class, two assignments, 200 diagnoses, targeted practice, a teaching brief, and provenance-valid held-out prediction history. No API key is required.
+- **npm run seed** — developer-only command that idempotently loads a synthetic verification classroom. It is not exposed in the product UI and is not run during normal setup.
 - **npm run sample-work** — regenerate eight synthetic handwritten-style JPEG fixtures in `sample-work/` using Sharp.
 - **npm run db:check** — verify database integrity and required bootstrap tables.
 - **npm run verify:phase1** — test taxonomy invariants, schema constraints, model versioning, frozen predictions, outcome matching, and model-update invalidation in an isolated temporary database.
@@ -49,7 +49,7 @@ MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
 - **npm run build** — create a production build.
 - **npm run check** — run lint, typecheck, all deterministic verifiers, and the production build.
 
-The same deterministic seed is available from the visible **Load demo classroom** button on Overview. It is safe to run repeatedly and restores an archived demo without duplicating rows. Eight name-free, synthetic handwritten-style images in `sample-work/` let judges exercise the photo upload flow without using real student work.
+Normal setup starts with an empty workspace ready for the teacher's own class. The optional deterministic seed remains isolated behind the developer CLI for repeatable verification. Eight name-free, synthetic handwritten-style images in `sample-work/` remain available as local OCR fixtures without adding classroom records.
 
 ## Architecture
 
