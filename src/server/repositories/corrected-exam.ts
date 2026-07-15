@@ -3,12 +3,14 @@ import "server-only";
 import { z } from "zod";
 
 import { MISCONCEPTION_BY_ID, misconceptionIdSchema } from "@/domain/misconception-taxonomy.mjs";
+import { normalizeProblemRegion } from "@/domain/problem-region.mjs";
 import { getDatabase } from "@/lib/db";
 
 const idSchema = z.string().uuid();
 
 type CorrectedDiagnosisRow = {
   diagnosis_id: string;
+  submission_id: string;
   assignment_item_id: string;
   outcome: "CORRECT" | "MISCONCEPTION" | "NEEDS_REVIEW" | "INSUFFICIENT_EVIDENCE" | "MULTIPLE_PLAUSIBLE";
   misconception_id: string | null;
@@ -16,7 +18,23 @@ type CorrectedDiagnosisRow = {
   transcription: string;
   evidence_quote: string | null;
   review_reasons_json: string;
+  region_x: number | null;
+  region_y: number | null;
+  region_width: number | null;
+  region_height: number | null;
   created_at: string;
+};
+
+type CorrectedSourcePageRow = {
+  submission_id: string;
+  assignment_item_id: string | null;
+  scope_kind: "SINGLE_PROBLEM" | "FULL_PAGE";
+  status: "UPLOADED" | "PROCESSING" | "DIAGNOSED" | "NEEDS_REVIEW" | "FAILED";
+  review_note: string | null;
+  media_type: "image/jpeg" | "image/png" | "image/webp";
+  width: number;
+  height: number;
+  submitted_at: string;
 };
 
 export function getCorrectedExam(assignmentId: string, membershipId: string) {
@@ -67,8 +85,9 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
   const diagnosisRows = database
     .prepare(
       [
-        "SELECT diagnosis.id AS diagnosis_id, answer.assignment_item_id, diagnosis.outcome, diagnosis.misconception_id,",
-        "diagnosis.confidence, diagnosis.transcription, diagnosis.evidence_quote, diagnosis.review_reasons_json, diagnosis.created_at",
+        "SELECT diagnosis.id AS diagnosis_id, submission.id AS submission_id, answer.assignment_item_id, diagnosis.outcome, diagnosis.misconception_id,",
+        "diagnosis.confidence, diagnosis.transcription, diagnosis.evidence_quote, diagnosis.review_reasons_json,",
+        "answer.region_x, answer.region_y, answer.region_width, answer.region_height, diagnosis.created_at",
         "FROM submissions AS submission",
         "JOIN submission_answers AS answer ON answer.submission_id = submission.id",
         "JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id",
@@ -85,6 +104,38 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
       ].join(" "),
     )
     .all(assignmentId, header.class_id, membershipId) as CorrectedDiagnosisRow[];
+
+  const sourcePageRows = database
+    .prepare(
+      [
+        "SELECT submission.id AS submission_id, submission.assignment_item_id, submission.scope_kind, submission.status,",
+        "submission.sanitized_error_message AS review_note, asset.media_type, asset.width, asset.height, submission.submitted_at",
+        "FROM submissions AS submission",
+        "JOIN submission_assets AS asset ON asset.submission_id = submission.id AND asset.page_position = 1 AND asset.purged_at IS NULL",
+        "WHERE submission.assignment_id = ? AND submission.class_id = ? AND submission.membership_id = ?",
+        "AND submission.input_kind = 'IMAGE'",
+        "ORDER BY submission.submitted_at DESC, submission.id DESC",
+      ].join(" "),
+    )
+    .all(assignmentId, header.class_id, membershipId) as CorrectedSourcePageRow[];
+  const latestFullPage = sourcePageRows.find(
+    (source) => source.scope_kind === "FULL_PAGE",
+  );
+  const selectedSourcePages = latestFullPage
+    ? [latestFullPage]
+    : [
+        ...sourcePageRows
+          .reduce((latestByItem, source) => {
+            if (
+              source.assignment_item_id &&
+              !latestByItem.has(source.assignment_item_id)
+            ) {
+              latestByItem.set(source.assignment_item_id, source);
+            }
+            return latestByItem;
+          }, new Map<string, CorrectedSourcePageRow>())
+          .values(),
+      ].sort((left, right) => left.submitted_at.localeCompare(right.submitted_at));
   const latestByItem = new Map<string, CorrectedDiagnosisRow>();
   for (const row of diagnosisRows) {
     if (!latestByItem.has(row.assignment_item_id)) {
@@ -117,6 +168,51 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
     stepsByDiagnosis.set(step.diagnosis_id, steps);
   }
 
+  const correctedItems = items.map((item) => {
+    const diagnosis = latestByItem.get(item.assignment_item_id) ?? null;
+    const misconceptionId = diagnosis
+      ? misconceptionIdSchema.safeParse(diagnosis.misconception_id)
+      : null;
+    const misconception = misconceptionId?.success
+      ? MISCONCEPTION_BY_ID.get(misconceptionId.data) ?? null
+      : null;
+    return {
+      assignmentItemId: item.assignment_item_id,
+      position: item.position,
+      problemPrompt: item.prompt,
+      correctAnswer: item.correct_answer,
+      diagnosis: diagnosis
+        ? {
+            id: diagnosis.diagnosis_id,
+            sourceSubmissionId: diagnosis.submission_id,
+            region: normalizeProblemRegion({
+              x: diagnosis.region_x,
+              y: diagnosis.region_y,
+              width: diagnosis.region_width,
+              height: diagnosis.region_height,
+            }),
+            outcome: diagnosis.outcome,
+            confidence: diagnosis.confidence,
+            transcription: diagnosis.transcription,
+            evidenceQuote: diagnosis.evidence_quote,
+            reviewReasons: JSON.parse(
+              diagnosis.review_reasons_json,
+            ) as string[],
+            misconceptionLabel: misconception?.label ?? null,
+            steps: (stepsByDiagnosis.get(diagnosis.diagnosis_id) ?? []).map(
+              (step) => ({
+                position: step.position,
+                step: step.step_text,
+                correctness: step.correctness,
+                correctNote: step.correct_note,
+                errorNote: step.error_note,
+              }),
+            ),
+          }
+        : null,
+    };
+  });
+
   return {
     assignmentId: header.assignment_id,
     assignmentTitle: header.assignment_title,
@@ -126,42 +222,52 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
     generatedAt: new Date().toISOString(),
     diagnosedProblemCount: latestByItem.size,
     totalProblemCount: items.length,
-    items: items.map((item) => {
-      const diagnosis = latestByItem.get(item.assignment_item_id) ?? null;
-      const misconceptionId = diagnosis
-        ? misconceptionIdSchema.safeParse(diagnosis.misconception_id)
-        : null;
-      const misconception = misconceptionId?.success
-        ? MISCONCEPTION_BY_ID.get(misconceptionId.data) ?? null
-        : null;
-      return {
-        assignmentItemId: item.assignment_item_id,
-        position: item.position,
-        problemPrompt: item.prompt,
-        correctAnswer: item.correct_answer,
-        diagnosis: diagnosis
-          ? {
-              id: diagnosis.diagnosis_id,
-              outcome: diagnosis.outcome,
-              confidence: diagnosis.confidence,
-              transcription: diagnosis.transcription,
-              evidenceQuote: diagnosis.evidence_quote,
-              reviewReasons: JSON.parse(diagnosis.review_reasons_json) as string[],
-              misconceptionLabel: misconception?.label ?? null,
-              steps: (stepsByDiagnosis.get(diagnosis.diagnosis_id) ?? []).map(
-                (step) => ({
-                  position: step.position,
-                  step: step.step_text,
-                  correctness: step.correctness,
-                  correctNote: step.correct_note,
-                  errorNote: step.error_note,
-                }),
-              ),
-            }
-          : null,
-      };
-    }),
+    sourcePages: selectedSourcePages.map((source, index) => ({
+      submissionId: source.submission_id,
+      assignmentItemId: source.assignment_item_id,
+      scopeKind: source.scope_kind,
+      status: source.status,
+      reviewNote: source.review_note,
+      mediaType: source.media_type,
+      width: source.width,
+      height: source.height,
+      label:
+        selectedSourcePages.length === 1
+          ? "Student's submitted page"
+          : `Student work image ${index + 1}`,
+      src: `/api/submissions/${source.submission_id}/asset`,
+      markers: correctedItems.flatMap((item) =>
+        item.diagnosis?.sourceSubmissionId === source.submission_id &&
+        item.diagnosis.region
+          ? [{ position: item.position, region: item.diagnosis.region }]
+          : [],
+      ),
+    })),
+    items: correctedItems,
   };
+}
+
+export function getCorrectedExamSourceAsset(submissionId: string) {
+  if (!idSchema.safeParse(submissionId).success) return null;
+
+  return (getDatabase()
+    .prepare(
+      [
+        "SELECT asset.storage_key, asset.media_type, asset.byte_size, asset.sha256",
+        "FROM submission_assets AS asset",
+        "JOIN submissions AS submission ON submission.id = asset.submission_id",
+        "WHERE submission.id = ? AND submission.input_kind = 'IMAGE'",
+        "AND asset.page_position = 1 AND asset.purged_at IS NULL",
+      ].join(" "),
+    )
+    .get(submissionId) ?? null) as
+    | {
+        storage_key: string;
+        media_type: "image/jpeg" | "image/png" | "image/webp";
+        byte_size: number;
+        sha256: string;
+      }
+    | null;
 }
 
 export type CorrectedExam = NonNullable<ReturnType<typeof getCorrectedExam>>;

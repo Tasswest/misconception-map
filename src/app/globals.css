@@ -46,6 +46,10 @@ button {
   color: var(--sidebar);
 }
 
+.corrected-copy-image {
+  max-height: 72vh;
+}
+
 @page {
   size: A4;
   margin: 14mm;
@@ -55,6 +59,8 @@ button {
   html,
   body {
     background: white;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   .app-shell-layout {
@@ -90,5 +96,55 @@ button {
   .print-page-break {
     break-before: page;
     page-break-before: always;
+  }
+
+  .corrected-copy-root {
+    color: #21332e;
+  }
+
+  .corrected-copy-header {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .corrected-copy-sources {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .corrected-copy-source {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .corrected-copy-source + .corrected-copy-source {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .corrected-copy-image {
+    display: block;
+    max-height: 205mm !important;
+    width: 100% !important;
+    object-fit: contain !important;
+  }
+
+  .corrected-copy-feedback {
+    margin-top: 0 !important;
+  }
+
+  .corrected-copy-problem {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .corrected-copy-marker {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .corrected-copy-footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
