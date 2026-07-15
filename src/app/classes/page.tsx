@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
+import { AddMemberButton } from "@/components/management/add-member-button";
 import { ClassActions } from "@/components/management/class-actions";
 import { MemberActions } from "@/components/management/member-actions";
 import { isOpenAIConfigured } from "@/lib/config";
@@ -67,9 +68,15 @@ export default function ClassesPage() {
                 </div>
 
                 <div className="mt-5 border-t border-black/[0.06] pt-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-                    Roster
-                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
+                      Roster
+                    </p>
+                    <AddMemberButton
+                      classId={classroom.id}
+                      className={classroom.name}
+                    />
+                  </div>
                   {classroom.students.length ? (
                     <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                       {classroom.students.map((student) => (
@@ -99,16 +106,10 @@ export default function ClassesPage() {
                       ))}
                     </ul>
                   ) : (
-                    <div className="mt-3 flex flex-col items-start gap-2 rounded-xl border border-dashed border-black/10 bg-white/55 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mt-3 rounded-xl border border-dashed border-black/10 bg-white/55 px-4 py-4">
                       <p className="text-xs text-[var(--muted)]">
-                        No class members yet.
+                        No class members yet. Use <span className="font-semibold text-[var(--ink)]">Add person</span> to build this roster.
                       </p>
-                      <Link
-                        className="text-xs font-semibold text-[var(--sage)] hover:text-[var(--sidebar)]"
-                        href="/diagnose"
-                      >
-                        Add class members →
-                      </Link>
                     </div>
                   )}
                 </div>
