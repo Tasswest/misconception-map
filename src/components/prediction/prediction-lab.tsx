@@ -11,6 +11,7 @@ import {
   SpinnerIcon,
 } from "@/components/icons";
 import type { PredictionLabData } from "@/server/repositories/prediction-lab";
+import { formatUtcTimestamp } from "@/lib/date-format";
 
 type Props = {
   classes: Array<{ id: string; name: string; studentCount: number }>;
@@ -194,7 +195,7 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
             href={`/prediction-lab?classId=${encodeURIComponent(classRecord.id)}`}
             key={classRecord.id}
           >
-            {classRecord.name} · {classRecord.studentCount}
+            {classRecord.name} · {classRecord.studentCount} {classRecord.studentCount === 1 ? "student" : "students"}
           </Link>
         ))}
       </div>
@@ -256,7 +257,7 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
                   Coverage {percentage(row.metrics.attempted, row.metrics.valid)}
                 </span>
                 <span className="rounded-full bg-[var(--amber)]/15 px-2.5 py-1 text-[#765725]">
-                  {Math.max(0, row.metrics.valid - row.metrics.attempted)} abstentions
+                  {Math.max(0, row.metrics.valid - row.metrics.attempted)} {Math.max(0, row.metrics.valid - row.metrics.attempted) === 1 ? "abstention" : "abstentions"}
                 </span>
               </div>
             </div>
@@ -279,7 +280,7 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
                           {candidate.misconceptionLabel}
                         </p>
                         <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                          {candidate.evidenceCount} responses · {candidate.distinctProblemCount} distinct problems
+                          {candidate.evidenceCount} {candidate.evidenceCount === 1 ? "response" : "responses"} · {candidate.distinctProblemCount} distinct {candidate.distinctProblemCount === 1 ? "problem" : "problems"}
                         </p>
                         <button
                           className="mt-3 inline-flex items-center gap-2 rounded-xl bg-[var(--sidebar)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-45"
@@ -318,7 +319,7 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
                         {model.ruleStatement}
                       </p>
                       <p className="mt-2 text-[11px] leading-5 text-[var(--muted)]">
-                        {model.misconceptionLabel} · {model.distinctSupportContent} distinct supporting problems · {Math.round(model.confidence * 100)}% synthesis confidence
+                        {model.misconceptionLabel} · {model.distinctSupportContent} distinct supporting {model.distinctSupportContent === 1 ? "problem" : "problems"} · {Math.round(model.confidence * 100)}% synthesis confidence
                       </p>
 
                       {model.status === "SUPPORTED" && candidate ? (
@@ -634,17 +635,7 @@ function percentage(numerator: number, denominator: number) {
   return `${Math.round((numerator / denominator) * 100)}%`;
 }
 
-function formatDate(value: string) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? value
-    : new Intl.DateTimeFormat("en", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      }).format(parsed);
-}
+const formatDate = formatUtcTimestamp;
 
 async function postJson(url: string, body: unknown) {
   const response = await fetch(url, {

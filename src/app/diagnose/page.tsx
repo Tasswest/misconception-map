@@ -28,7 +28,7 @@ export default function DiagnoseSetupPage() {
   }));
 
   return (
-    <AppShell activeNav="Classes" liveAiReady={isOpenAIConfigured()}>
+    <AppShell activeNav="Assignments" liveAiReady={isOpenAIConfigured()}>
       <SetupWorkspace initialClasses={initialClasses} />
     </AppShell>
   );

@@ -1,6 +1,6 @@
 # Misconception Map
 
-Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. Through Phase 4, the app implements worksheet-aware assignment setup, local work intake, live diagnosis, a recoverable diagnosis queue, a clustered class misconception heatmap, targeted micro-practice, a Teach This Tomorrow brief, and the complete Prediction Lab signature flow.
+Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. The app implements worksheet-aware assignment setup, local work intake, live diagnosis, a recoverable diagnosis queue, a clustered class misconception heatmap, printable corrected exams, targeted micro-practice, a Teach This Tomorrow brief, a deterministic 20-learner demo classroom, and the complete Prediction Lab signature flow.
 
 The project is being built for the Education category of OpenAI Build Week. It is intentionally local-first: the web app and SQLite database run on one machine, while live diagnosis and generation use the OpenAI API.
 
@@ -36,6 +36,8 @@ MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
 - **npm run dev** — migrate the local database and start development mode.
 - **npm start** — migrate the local database and serve a completed production build on loopback.
 - **npm run db:migrate** — apply pending SQL migrations.
+- **npm run seed** — idempotently load or restore the 20-learner synthetic demo class, two assignments, 200 diagnoses, targeted practice, a teaching brief, and provenance-valid held-out prediction history. No API key is required.
+- **npm run sample-work** — regenerate eight synthetic handwritten-style JPEG fixtures in `sample-work/` using Sharp.
 - **npm run db:check** — verify database integrity and required bootstrap tables.
 - **npm run verify:phase1** — test taxonomy invariants, schema constraints, model versioning, frozen predictions, outcome matching, and model-update invalidation in an isolated temporary database.
 - **npm run verify:phase2** — test the strict model-facing schema plus evidence grounding, domain, confidence, and abstention policies without calling the API.
@@ -46,7 +48,7 @@ MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
 - **npm run build** — create a production build.
 - **npm run check** — run lint, typecheck, all deterministic verifiers, and the production build.
 
-The `npm run seed` command and synthetic `sample-work/` images arrive in Phase 5; they are not part of this handoff yet.
+The same deterministic seed is available from the visible **Load demo classroom** button on Overview. It is safe to run repeatedly and restores an archived demo without duplicating rows. Eight name-free, synthetic handwritten-style images in `sample-work/` let judges exercise the photo upload flow without using real student work.
 
 ## Architecture
 
@@ -55,7 +57,7 @@ The `npm run seed` command and synthetic `sample-work/` images arrive in Phase 5
 - SQLite through better-sqlite3, with versioned SQL migrations stored in db/migrations.
 - Node.js Route Handlers for local file processing and OpenAI calls.
 - OpenAI Responses API with gpt-5.6, vision inputs, and strict structured outputs.
-- Class and assignment setup, saved diagnoses, heatmaps, and generated artifacts remain usable without an API key; only new live AI actions require it. Phase 5 adds offline seeded content.
+- Class and assignment setup, saved diagnoses, heatmaps, corrected exams, prediction history, and seeded artifacts remain usable without an API key; only new live AI actions require it.
 
 ### Live diagnosis path
 
@@ -74,6 +76,10 @@ A wrong final answer alone never earns a misconception label. A definitive label
 ### Heatmap dashboard
 
 The assignment dashboard uses each problem answer’s latest diagnosis, including every answer segmented from a full page. Misconception columns are sorted by affected-student count, signal frequency, and severity; students in the largest cluster are sorted to the top so the dominant block starts at the upper left. Cells distinguish clear evidence, emerging/strong misconception evidence, teacher review, and not assessed. Opening an evidence cell shows the matched worksheet problem, exact transcription, evidence quote, and the flawed step highlighted in context. Each student row also opens a printable corrected-exam page with per-step ✓/✕ feedback, why-correct notes, and expected answers beside the targeted practice worksheet.
+
+### Accessibility
+
+Heatmap cells are native buttons with descriptive `aria-label` text that includes the student, misconception, signal state, severity, frequency, and evidence availability. Keyboard focus states are visible throughout the sidebar, entity lists, evidence drawer, corrected-exam links, and generation actions. Color is never the only signal: heatmap cells also use icons, numbers, labels, and tooltips, while printable corrected exams pair ✓/✕ marks with explicit “why this is right” or “why this needs revision” copy.
 
 ### Instructional support path
 
@@ -140,7 +146,7 @@ Matching is intentionally conservative and syntactic rather than computer-algebr
 
 ## Privacy
 
-The Phase 5 seed data and sample work will be synthetic. The live regression fixture under `fixtures/student-work/` contains mathematical work only and no student name. Student display names remain in the local database and are not sent in OpenAI prompts. Teachers must use a blank, deidentified worksheet source and de-identify live work before saving it for diagnosis; the server requires those confirmations for both typed and photographed content. Before worksheet extraction or diagnosis, typed content is also blocked if it contains an exact roster name or a roster-name component of two or more characters. This roster check is not general personal-data detection. This hackathon build is not a substitute for an institution's student-data, consent, retention, or child-safety compliance review.
+All seeded records are synthetic and use obvious labels such as `Demo learner 01`; they never reuse live roster names. The live regression fixture under `fixtures/student-work/` contains mathematical work only and no student name. Student display names remain in the local database and are not sent in OpenAI prompts. Teachers must use a blank, deidentified worksheet source and de-identify live work before saving it for diagnosis; the server requires those confirmations for both typed and photographed content. Before worksheet extraction or diagnosis, typed content is also blocked if it contains an exact roster name or a roster-name component of two or more characters. This roster check is not general personal-data detection. This hackathon build is not a substitute for an institution's student-data, consent, retention, or child-safety compliance review.
 
 Roster labels and original filenames are used only to organize local work. They are excluded from request hashes and OpenAI payloads. De-identification is teacher-attested, not automatic: this phase strips image metadata but does not OCR, detect, blur, or redact names inside image pixels. Anything visible in a submitted photo is sent to OpenAI, so the upload screen requires the teacher to cover or remove names first. The local SQLite database, filenames, and normalized uploads persist on disk; the app does not encrypt or automatically purge them. Live diagnosis sends the teacher-attested work and assignment context to the OpenAI API with response storage disabled.
 

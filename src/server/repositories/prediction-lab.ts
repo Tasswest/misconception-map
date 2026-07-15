@@ -393,7 +393,7 @@ export function listPredictionLabClasses() {
         "FROM classes AS class",
         "LEFT JOIN class_memberships AS membership ON membership.class_id = class.id AND membership.archived_at IS NULL",
         "WHERE class.archived_at IS NULL",
-        "GROUP BY class.id ORDER BY class.created_at, class.name COLLATE NOCASE",
+        "GROUP BY class.id ORDER BY class.is_demo DESC, class.created_at DESC, class.name COLLATE NOCASE",
       ].join(" "),
     )
     .all() as Array<{

@@ -1,10 +1,5 @@
-import {
-  MISCONCEPTIONS,
-  TAXONOMY_VERSION,
-} from "@/domain/misconception-taxonomy.mjs";
-import { isOpenAIConfigured, OPENAI_MODEL } from "@/lib/config";
-import { getDatabase } from "@/lib/db";
 import { guardLocalApiRequest } from "@/server/http/local-request-guard";
+import { getSystemStatus } from "@/server/repositories/system-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,42 +7,27 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const guard = guardLocalApiRequest(request);
   if (guard) return guard;
-  try {
-    const database = getDatabase();
-    const application = database
-      .prepare("SELECT value FROM app_meta WHERE key = ?")
-      .get("application") as { value: string } | undefined;
-    const migration = database
-      .prepare(
-        "SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1",
-      )
-      .get() as { name: string } | undefined;
-    const taxonomy = database
-      .prepare(
-        "SELECT count(*) AS count FROM taxonomy_terms WHERE taxonomy_version = ?",
-      )
-      .get(TAXONOMY_VERSION) as { count: number };
-
+  const status = getSystemStatus();
+  if (status.healthy) {
     return Response.json({
       status: "ok",
-      database: application?.value === "misconception-map" ? "ready" : "unknown",
+      database: status.databaseReady ? "ready" : "unknown",
       schema: {
-        latestMigration: migration?.name ?? null,
-        taxonomyVersion: TAXONOMY_VERSION,
-        misconceptionCount: taxonomy.count,
-        codeMisconceptionCount: MISCONCEPTIONS.length,
+        latestMigration: status.latestMigration,
+        taxonomyVersion: status.taxonomyVersion,
+        misconceptionCount: status.misconceptionCount,
+        codeMisconceptionCount: status.codeMisconceptionCount,
       },
-      liveAi: isOpenAIConfigured() ? "ready" : "not_configured",
-      model: OPENAI_MODEL,
+      liveAi: status.liveAiReady ? "ready" : "not_configured",
+      model: status.model,
     });
-  } catch {
-    return Response.json(
-      {
-        status: "error",
-        database: "unavailable",
-        liveAi: isOpenAIConfigured() ? "ready" : "not_configured",
-      },
-      { status: 503 },
-    );
   }
+  return Response.json(
+    {
+      status: "error",
+      database: "unavailable",
+      liveAi: status.liveAiReady ? "ready" : "not_configured",
+    },
+    { status: 503 },
+  );
 }

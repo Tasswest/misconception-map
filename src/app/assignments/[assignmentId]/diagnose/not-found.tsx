@@ -14,7 +14,7 @@ export default function AssignmentNotFound() {
         </p>
         <Link
           className="mt-6 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
-          href="/diagnose"
+          href="/assignments"
         >
           Choose an assignment
         </Link>

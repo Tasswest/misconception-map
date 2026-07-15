@@ -617,7 +617,7 @@ export function DiagnosisWorkbench({
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--muted)]">
-            <Link className="transition hover:text-[var(--ink)]" href="/diagnose">
+            <Link className="transition hover:text-[var(--ink)]" href="/classes">
               Classes
             </Link>
             <span aria-hidden="true">/</span>

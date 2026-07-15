@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { WorkspaceRepositoryError } from "@/server/repositories/workspace";
+import { ManagementRepositoryError } from "@/server/repositories/management";
 import {
   LocalRequestBodyError,
   requireDeclaredBodyWithinLimit,
@@ -59,6 +60,7 @@ export function apiErrorResponse(error: unknown) {
 
   if (
     error instanceof ApiRequestError ||
+    error instanceof ManagementRepositoryError ||
     error instanceof WorkspaceRepositoryError
   ) {
     return Response.json(

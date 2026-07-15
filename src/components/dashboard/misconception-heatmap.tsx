@@ -15,6 +15,7 @@ import type {
   HeatmapDashboard,
   HeatmapDiagnosisDetail,
 } from "@/server/repositories/dashboard";
+import { formatUtcTimestamp } from "@/lib/date-format";
 
 export function MisconceptionHeatmap({
   dashboard,
@@ -108,7 +109,7 @@ export function MisconceptionHeatmap({
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--muted)]">
-            <Link className="transition hover:text-[var(--ink)]" href="/diagnose">
+            <Link className="transition hover:text-[var(--ink)]" href="/classes">
               Classes
             </Link>
             <span aria-hidden="true">/</span>
@@ -142,13 +143,13 @@ export function MisconceptionHeatmap({
                 Largest cluster
               </p>
               <p className="mt-1 text-base font-semibold text-[var(--ink)]">
-                {dashboard.largestCluster.affectedCount} of {dashboard.studentCount} students show {dashboard.largestCluster.shortLabel.toLowerCase()}.
+                {dashboard.largestCluster.affectedCount} {dashboard.largestCluster.affectedCount === 1 ? "student" : "students"} out of {dashboard.studentCount} {dashboard.largestCluster.affectedCount === 1 ? "shows" : "show"} {dashboard.largestCluster.shortLabel.toLowerCase()}.
               </p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs font-medium text-[var(--muted)]">
-              {dashboard.diagnosedStudentCount} students have diagnosed work
+              {dashboard.diagnosedStudentCount} {dashboard.diagnosedStudentCount === 1 ? "student has" : "students have"} diagnosed work
             </p>
             <button
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#244b42] disabled:cursor-not-allowed disabled:opacity-45"
@@ -195,7 +196,7 @@ export function MisconceptionHeatmap({
                 {teachingBrief.paragraph}
               </p>
               <p className="mt-3 text-[10px] font-medium text-[var(--muted)]">
-                Evidence snapshot: {teachingBrief.clusterStudentCount} of {teachingBrief.diagnosedStudentCount} diagnosed students · cutoff {formatDate(teachingBrief.evidenceCutoffAt)}
+                Evidence snapshot: {teachingBrief.clusterStudentCount} of {teachingBrief.diagnosedStudentCount} diagnosed {teachingBrief.diagnosedStudentCount === 1 ? "student" : "students"} · cutoff {formatDate(teachingBrief.evidenceCutoffAt)}
               </p>
             </div>
             <div className="rounded-2xl border border-[var(--sage)]/15 bg-[var(--soft-mint)]/65 p-4">
@@ -277,7 +278,7 @@ export function MisconceptionHeatmap({
                     {column.shortLabel}
                   </p>
                   <p className="mt-1 text-[10px] leading-4 text-[var(--muted)]">
-                    {column.affectedCount} students · {column.frequency} signals
+                    {column.affectedCount} {column.affectedCount === 1 ? "student" : "students"} · {column.frequency} {column.frequency === 1 ? "signal" : "signals"}
                   </p>
                 </div>
               ))}
@@ -295,7 +296,7 @@ export function MisconceptionHeatmap({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">{row.studentName}</p>
                       <p className="mt-1 text-[10px] text-[var(--muted)]">
-                        {row.diagnosedCount} diagnosed{row.reviewCount ? ` · ${row.reviewCount} review` : ""}
+                        {row.diagnosedCount} diagnosed{row.reviewCount ? ` · ${row.reviewCount} ${row.reviewCount === 1 ? "review item" : "review items"}` : ""}
                       </p>
                       {row.practiceTarget ? (
                         practice ? (
@@ -414,17 +415,7 @@ function messageFromError(error: unknown) {
   return error instanceof Error ? error.message : "The generation request failed.";
 }
 
-function formatDate(value: string) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? value
-    : new Intl.DateTimeFormat("en", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      }).format(parsed);
-}
+const formatDate = formatUtcTimestamp;
 
 function DiagnosisDrawer({
   selected,

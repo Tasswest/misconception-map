@@ -9,14 +9,14 @@ import {
 
 const navigation = [
   { key: "Overview", label: "Overview", icon: GridIcon, href: "/" },
-  { key: "Classes", label: "Classes", icon: UsersIcon, href: "/diagnose" },
+  { key: "Classes", label: "Classes", icon: UsersIcon, href: "/classes" },
   {
     key: "Assignments",
     label: "Assignments",
     icon: ClipboardIcon,
-    href: "/diagnose#assignments",
+    href: "/assignments",
   },
-  { key: "Dashboard", label: "Dashboard", icon: GridIcon, href: "/#workspace" },
+  { key: "Dashboard", label: "Dashboard", icon: GridIcon, href: "/dashboard" },
   {
     key: "Prediction Lab",
     label: "Prediction Lab",
@@ -31,7 +31,7 @@ export type AppNavItem = (typeof navigation)[number]["key"];
 type AppShellProps = {
   children: ReactNode;
   liveAiReady: boolean;
-  activeNav?: AppNavItem;
+  activeNav?: AppNavItem | null;
 };
 
 export function AppShell({
@@ -91,7 +91,10 @@ export function AppShell({
           })}
         </nav>
 
-        <div className="mt-auto rounded-2xl bg-white/[0.07] p-4 ring-1 ring-white/10">
+        <Link
+          className="mt-auto rounded-2xl bg-white/[0.07] p-4 ring-1 ring-white/10 transition hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--mint)]"
+          href="/status"
+        >
           <div className="flex items-center gap-2 text-xs font-medium text-white/80">
             <span
               className={
@@ -106,7 +109,10 @@ export function AppShell({
               ? "GPT-5.6 is configured for live diagnosis and instructional support."
               : "Add an API key for live diagnosis and instructional support."}
           </p>
-        </div>
+          <p className="mt-2 text-[10px] font-semibold text-[var(--mint)]/80">
+            View system status →
+          </p>
+        </Link>
       </aside>
 
       <div className="app-shell-main min-w-0">

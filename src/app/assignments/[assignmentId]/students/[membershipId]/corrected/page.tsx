@@ -32,7 +32,7 @@ export default async function CorrectedExamPage({
               Corrected exam · {exam.studentName}
             </h1>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              {exam.diagnosedProblemCount} of {exam.totalProblemCount} problems have diagnostic feedback.
+              {exam.diagnosedProblemCount} of {exam.totalProblemCount} {exam.totalProblemCount === 1 ? "problem has" : "problems have"} diagnostic feedback.
             </p>
           </div>
           <PrintButton />
