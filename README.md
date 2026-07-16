@@ -211,7 +211,7 @@ The data graph covers classes, memberships, exercises, reusable problems, assign
 
 ## Privacy
 
-All committed and seeded student work is synthetic and name-free. Raw roster names remain in local SQLite and are never sent to OpenAI. Before any upload, the teacher must attest that visible names and identifying PDF properties were removed. Typed sources are also blocked when they contain an exact local roster name or a roster-name component of two or more characters; this is a narrow guard, not general personal-data detection.
+All committed and seeded student work is synthetic and name-free. Raw roster names remain in local SQLite and are never sent to OpenAI. Before any upload, the teacher must attest that visible names and identifying PDF properties were removed. Typed sources are also blocked when they contain an exact local roster name or a textual roster-name component of two or more characters; purely numeric roster suffixes do not block ordinary math answers. This is a narrow guard, not general personal-data detection.
 
 Images have metadata removed. PDF API filenames are generated. Protected uploads live outside `public/` and are served only through loopback-guarded, database-owned routes with private, no-store caching. The app does not encrypt or automatically purge local files. Anything still visible inside an attested image or PDF is sent to OpenAI, so this hackathon build is not a substitute for institutional consent, retention, security, or child-safety review.
 

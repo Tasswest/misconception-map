@@ -6,6 +6,8 @@ import path from "node:path";
 import process from "node:process";
 import Database from "better-sqlite3";
 
+import { rosterNameTerms } from "../src/server/privacy/roster-terms.mjs";
+
 const root = process.cwd();
 const tempDirectory = fs.mkdtempSync(
   path.join(os.tmpdir(), "misconception-map-readiness-"),
@@ -193,6 +195,17 @@ function verifyCostCacheAndStatus() {
   assert.match(statusRepository, /totalTokens/);
   assert.match(statusPage, /Tokens per saved run/);
   assert.match(statusPage, /cache hit/);
+
+  assert.deepEqual(rosterNameTerms("Demo learner 12"), [
+    "demo learner 12",
+    "demo",
+    "learner",
+  ]);
+  assert.equal(
+    rosterNameTerms("Demo learner 12").includes("12"),
+    false,
+    "numeric demo roster suffixes must not collide with ordinary math answers",
+  );
 }
 
 try {

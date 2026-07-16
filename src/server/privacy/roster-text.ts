@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getDatabase } from "@/lib/db";
+import { rosterNameTerms } from "@/server/privacy/roster-terms.mjs";
 
 function escapeRegularExpression(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -30,18 +31,8 @@ export function containsRosterName(
     .map((value) => value.normalize("NFKC").toLocaleLowerCase("en-US"));
 
   for (const { display_name: displayName } of rosterNames) {
-    const normalizedName = displayName
-      .normalize("NFKC")
-      .trim()
-      .toLocaleLowerCase("en-US");
-    if (!normalizedName) continue;
-    const rosterNameTerms = new Set([
-      normalizedName,
-      ...normalizedName
-        .split(/[^\p{L}\p{N}]+/u)
-        .filter((part) => part.length >= 2),
-    ]);
-    for (const term of rosterNameTerms) {
+    const terms = rosterNameTerms(displayName);
+    for (const term of terms) {
       const pattern = new RegExp(
         `(?:^|[^\\p{L}\\p{N}])${escapeRegularExpression(term)}(?=$|[^\\p{L}\\p{N}])`,
         "u",
