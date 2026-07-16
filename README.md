@@ -1,6 +1,6 @@
 # Misconception Map
 
-Misconception Map is a local, teacher-facing diagnostic workspace for middle-school algebra and fractions. It turns a structured exam and deidentified student work into four answers a teacher can read quickly:
+Misconception Map is a local-first, teacher-facing diagnostic workspace for middle-school algebra and fractions, with an access-code-protected hosted judge demo. It turns a structured exam and deidentified student work into four answers a teacher can read quickly:
 
 1. Where am I?
 2. What needs my review?
@@ -38,7 +38,7 @@ npm run seed
 npm run dev
 ~~~
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). The local clone remains the full, unlimited local-first experience.
 
 For live AI features, put one key in `.env.local` before starting the app:
 
@@ -47,6 +47,21 @@ OPENAI_API_KEY=your_key_here
 ~~~
 
 `npm run dev` applies checksummed SQLite migrations before starting Next.js. The app binds to `127.0.0.1`; do not expose this single-teacher build through a LAN binding or public reverse proxy.
+
+### Hosted judge demo
+
+Hosted URL: **`https://<your-railway-domain>`** (replace after the first production deploy). The shared access code is intentionally not in this public README; put **`<JUDGE_ACCESS_CODE from the author>`** only in the Devpost testing-instructions field.
+
+The hosted path is the same application with `HOSTED_MODE=1`: every product page and API route requires a seven-day, httpOnly, HMAC-signed access cookie; failed gate attempts and live-AI requests are rate-limited. The banner asks judges to upload only synthetic or de-identified work and provides two downloadable fixtures. Seeded dashboards, grouped copies, and Prediction Lab remain available if live AI is unavailable.
+
+Railway deployment:
+
+1. Create a Railway service from this repository. Railway detects the root `Dockerfile` and uses `/access` as the healthcheck from `railway.toml`.
+2. Attach one persistent volume at `/data`.
+3. Set `HOSTED_MODE=1`, `DATA_DIR=/data`, `JUDGE_ACCESS_CODE=<long shared secret>`, `OPENAI_API_KEY=<server key>`, and `OPENAI_DAILY_BUDGET_USD=5`. Optionally adjust `OPENAI_REQUESTS_PER_SESSION_HOUR` from its default of 20.
+4. Generate a Railway public domain. `npm start` binds to `0.0.0.0:$PORT`, applies checksummed migrations, and idempotently restores the synthetic demo at every boot.
+
+The daily guard estimates spend from saved input/output token counts at the configured GPT‑5.6 rates. At the cap it disables only AI actions with “Daily demo budget reached — resets at midnight UTC; clone the repo to run unlimited.” Seeded reads keep working. This in-app guard is defense in depth; also set a project budget/alert in the OpenAI dashboard.
 
 ### No API key? Use the judge path
 
@@ -87,10 +102,10 @@ All live calls use `gpt-5.6`, strict Structured Outputs, `store: false`, prompt/
    ~~~
 
 4. Confirm the extracted `Ex. 1 · Q1.1` question.
-5. Upload `sample-work/01-negative-distribution.jpeg` for a demo learner, attest that it contains no identifying information, check the match, and run correction.
+5. Upload `sample-work/01-negative-distribution.jpeg` for a demo learner, attest that it contains no identifying information, check the match, and run correction. For exercise/question segmentation against the seeded follow-up, use `sample-work/09-full-page-followup.jpeg`.
 6. The permanent regression fixture `fixtures/student-work/sign-error-equals-regression.jpeg` is also available. It protects the case where a faint handwritten `=` was once read as a dash.
 
-All files in `sample-work/` and `fixtures/student-work/` are synthetic and name-free.
+All files in `sample-work/` and `fixtures/student-work/` are synthetic and name-free. In hosted mode, the same single-answer and full-page fixtures are downloadable from the privacy banner.
 
 ### Real six-page French exam and booklet
 
@@ -143,7 +158,7 @@ Expected-versus-actual reporting treats a 3-of-4 result as consistent with a 0.8
 
 ## Status, costs, and verification
 
-Open `/status` to see database migration state, taxonomy synchronization, whether live AI is configured, and the most recent saved runs with input, output, and total tokens, latency, and cache-hit status.
+Open `/status` to see database migration state, taxonomy synchronization, whether live AI is configured, the hosted daily aggregate/cap, and the most recent saved runs with input, output, and total tokens, latency, and cache-hit status. Per-request API cost is not exposed; only the daily aggregate is estimated from the ledger.
 
 Useful commands:
 
@@ -153,7 +168,8 @@ Useful commands:
 | `npm run seed` | Idempotently load the 20-learner synthetic classroom. |
 | `npm run db:migrate` | Apply checksummed SQL migrations. |
 | `npm run db:check` | Verify SQLite integrity and bootstrap records. |
-| `npm run sample-work` | Regenerate the eight synthetic JPEG fixtures with Sharp. |
+| `npm run sample-work` | Regenerate the nine synthetic JPEG fixtures with Sharp. |
+| `npm run verify:privacy` | Refuse tracked databases, uploads, PDFs, named booklet files, or unreviewed image locations. |
 | `npm run verify:phase1` | Domain model, evidence, versioning, prediction, and invalidation invariants. |
 | `npm run verify:hierarchy` | Hierarchical extraction, legacy migration, label matching, and grouped demo shape. |
 | `npm run verify:phase2` | Diagnosis schema, grounding, confidence, domain, and abstention policy. |
@@ -215,6 +231,10 @@ The data graph covers classes, memberships, exercises, reusable problems, assign
 
 **Live button is disabled.** Add `OPENAI_API_KEY` to `.env.local`, stop the running server, and restart `npm run dev`. `/status` must say `gpt-5.6 is configured`.
 
+**Hosted live AI is disabled.** Read the hosted banner or `/status`. A missing server key needs an operator fix; a daily-budget block resets at midnight UTC; an hourly session limit reports its own retry window. Seeded views do not require a retry.
+
+**Hosted data disappeared after redeploy.** Confirm the Railway volume is mounted at `/data` and that `DATA_DIR=/data`. The database is `/data/misconception-map.db`; protected uploads are under `/data/uploads/`.
+
 **Fresh clone shows no classes.** Run `npm run seed`. The empty state intentionally gives that as its only next action.
 
 **A PDF is rejected.** Confirm it has a valid `%PDF-` signature and is below 15 MB for a teacher source or 10 MB for student work. Password-protected or malformed PDFs are not supported.
@@ -231,7 +251,9 @@ The data graph covers classes, memberships, exercises, reusable problems, assign
 
 All committed and seeded student work is synthetic and name-free. Raw roster names remain in local SQLite and are never sent to OpenAI. Before any upload, the teacher must attest that visible names and identifying PDF properties were removed. Typed sources are also blocked when they contain an exact local roster name or a textual roster-name component of two or more characters; purely numeric roster suffixes do not block ordinary math answers. This is a narrow guard, not general personal-data detection.
 
-Images have metadata removed. PDF API filenames are generated. Protected uploads live outside `public/` and are served only through loopback-guarded, database-owned routes with private, no-store caching. The app does not encrypt or automatically purge local files. Anything still visible inside an attested image or PDF is sent to OpenAI, so this hackathon build is not a substitute for institutional consent, retention, security, or child-safety review.
+Images have metadata removed. PDF API filenames are generated. Protected uploads live outside `public/` and are served only through database-owned routes: loopback plus same-origin guards locally, and the signed access gate plus same-origin guards when hosted. Responses use private, no-store caching. The app does not encrypt or automatically purge files. Anything still visible inside an attested image or PDF is sent to OpenAI, so this hackathon build is not a substitute for institutional consent, retention, security, or child-safety review.
+
+Before publication, `npm run verify:privacy` audits the Git index. Real exam/booklet PDFs, SQLite files, uploads, and known student-booklet names are ignored or rejected; only the synthetic fixture directories and product screenshots are allowlisted for tracked images.
 
 OpenAI calls use `store: false`. The teacher source, assignment context, and deidentified work needed for the task are sent; local roster labels and original filenames are not.
 
