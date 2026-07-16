@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import Database from "better-sqlite3";
 
+import { inferLocalMembershipIdFromFilename } from "../src/domain/local-roster-matching.mjs";
 import { rosterNameTerms } from "../src/server/privacy/roster-terms.mjs";
 
 const root = process.cwd();
@@ -113,6 +114,9 @@ function verifyIntentionalStates() {
   assert.match(workbench, /currentStep === 2 \|\| currentStep === 3/);
   assert.match(workbench, /id="student-work-files"[\s\S]*multiple/);
   assert.match(workbench, /Choose up to \{MAX_PHOTOS\} files together/);
+  assert.match(workbench, /const diagnosableItems = actionableItems\.filter/);
+  assert.match(workbench, /persistAndDiagnose\(diagnosableItems\)/);
+  assert.match(workbench, /diagnosableItems\.length === 0/);
 }
 
 function verifyCopyAndHierarchy() {
@@ -145,6 +149,28 @@ function verifyCopyAndHierarchy() {
   const triage = read("src/components/triage/assignment-triage-screen.tsx");
   assert.match(triage, /automaticallyCorrectedCount === 1 \? "copy" : "copies"/);
   assert.match(triage, /needsReviewCount === 1 \? "item needs" : "items need"/);
+
+  const roster = [
+    { membershipId: "cecilia", displayName: "Cecilia" },
+    { membershipId: "julia", displayName: "Julia" },
+    { membershipId: "thomas", displayName: "Thomas" },
+  ];
+  assert.equal(
+    inferLocalMembershipIdFromFilename(
+      "2019_07_Amerique_du_Sud_Thomas.pdf",
+      roster,
+    ),
+    "thomas",
+  );
+  assert.equal(
+    inferLocalMembershipIdFromFilename("unlabelled-copy.pdf", roster),
+    null,
+  );
+  assert.equal(
+    inferLocalMembershipIdFromFilename("Julia-and-Cecilia.pdf", roster),
+    null,
+    "filenames matching multiple roster names must remain unassigned",
+  );
 }
 
 function verifyAccessibilityAndPrint() {

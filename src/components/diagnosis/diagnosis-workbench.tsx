@@ -17,6 +17,7 @@ import {
 } from "@/components/icons";
 import { AssignmentStepper, type AssignmentWorkflowStep } from "@/components/assignment-stepper";
 import { exerciseQuestionReference } from "@/domain/exam-labels";
+import { inferLocalMembershipIdFromFilename } from "@/domain/local-roster-matching.mjs";
 import type {
   DiagnosisStep,
   DiagnosisSummary,
@@ -146,19 +147,36 @@ export function DiagnosisWorkbench({
   const previewUrls = useRef(new Set<string>());
   const queueSequence = useRef(0);
 
+  const locallyMatchedPhotoItems = useMemo(
+    () =>
+      photoItems.map((item) => {
+        if (item.membershipId || item.submissionId) return item;
+        const membershipId = inferLocalMembershipIdFromFilename(
+          item.filename,
+          students,
+        );
+        return membershipId ? { ...item, membershipId } : item;
+      }),
+    [photoItems, students],
+  );
   const allItems = useMemo(
     () =>
-      [...photoItems, ...typedItems].sort(
+      [...locallyMatchedPhotoItems, ...typedItems].sort(
         (left, right) => left.createdAt - right.createdAt,
       ),
-    [photoItems, typedItems],
+    [locallyMatchedPhotoItems, typedItems],
   );
   const counts = useMemo(() => summarizeQueue(allItems), [allItems]);
   const processing = counts.processing > 0;
   const actionableItems = allItems.filter(
     (item) => item.status === "READY" || item.status === "SAVED",
   );
-  const unsavedActionableItems = actionableItems.filter(
+  const diagnosableItems = actionableItems.filter(
+    (item) =>
+      Boolean(item.membershipId) &&
+      (item.scopeKind === "FULL_PAGE" || Boolean(item.assignmentItemId)),
+  );
+  const unsavedDiagnosableItems = diagnosableItems.filter(
     (item) => !item.submissionId,
   );
   const readyWithMissingStudent = actionableItems.some(
@@ -168,7 +186,7 @@ export function DiagnosisWorkbench({
     (item) => item.scopeKind === "SINGLE_PROBLEM" && !item.assignmentItemId,
   );
   const workAttestationMissing =
-    unsavedActionableItems.length > 0 && !workDeidentificationConfirmed;
+    unsavedDiagnosableItems.length > 0 && !workDeidentificationConfirmed;
   const queuedPhotoCount = photoItems.filter(
     (item) => !item.submissionId,
   ).length;
@@ -982,7 +1000,7 @@ export function DiagnosisWorkbench({
             ) : null}
             {readyWithMissingStudent ? (
               <p className="mt-4 text-xs font-medium text-[#8e6328]">
-                Choose a student for each ready item to enable diagnosis.
+                Choose a student for each unresolved item. Exact roster names in filenames are matched locally; ambiguous copies stay in the queue and are never guessed.
               </p>
             ) : null}
             {readyWithMissingProblem ? (
@@ -990,7 +1008,7 @@ export function DiagnosisWorkbench({
                 Match each ready item to the worksheet problem it answers.
               </p>
             ) : null}
-            {unsavedActionableItems.length > 0 ? (
+            {unsavedDiagnosableItems.length > 0 ? (
               <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--sage)]/20 bg-[var(--soft-mint)]/70 px-4 py-3 text-xs leading-5 text-[var(--ink)]">
                 <input
                   checked={workDeidentificationConfirmed}
@@ -1017,12 +1035,10 @@ export function DiagnosisWorkbench({
                 disabled={
                   processing ||
                   !liveAiReady ||
-                  actionableItems.length === 0 ||
-                  readyWithMissingStudent ||
-                  readyWithMissingProblem ||
+                  diagnosableItems.length === 0 ||
                   workAttestationMissing
                 }
-                onClick={() => void persistAndDiagnose(actionableItems)}
+                onClick={() => void persistAndDiagnose(diagnosableItems)}
                 type="button"
               >
                 {processing ? (
@@ -1032,7 +1048,7 @@ export function DiagnosisWorkbench({
                 )}
                 {processing
                   ? "Diagnosing two at a time…"
-                  : `Diagnose ${actionableItems.length || "queued"} ${actionableItems.length === 1 ? "response" : "responses"}`}
+                  : `Diagnose ${diagnosableItems.length || "queued"} ${diagnosableItems.length === 1 ? "response" : "responses"}`}
               </button>
             </div>
           </article>
