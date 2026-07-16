@@ -7,6 +7,7 @@ import {
   requireDeclaredBodyWithinLimit,
 } from "@/server/http/local-request-guard";
 import { InstructionalGenerationError } from "@/server/openai/generate-instructional-support";
+import { beginAiRequest } from "@/server/openai/spend-protection";
 import { InstructionalRepositoryError } from "@/server/repositories/instructional-support";
 import { generateBriefForLargestCluster } from "@/server/services/instructional-support";
 
@@ -79,7 +80,15 @@ export async function POST(
     requireDeclaredBodyWithinLimit(request, 1_000);
     requestSchema.parse(await request.json());
     const { assignmentId } = await context.params;
-    const brief = await generateBriefForLargestCluster(assignmentId);
+    const protectedRequest = await beginAiRequest(request);
+    if (!protectedRequest.allowed) return protectedRequest.response;
+    const brief = await (async () => {
+      try {
+        return await generateBriefForLargestCluster(assignmentId);
+      } finally {
+        protectedRequest.release();
+      }
+    })();
     return NextResponse.json({ data: brief }, { status: 201 });
   } catch (error) {
     return errorResponse(error);

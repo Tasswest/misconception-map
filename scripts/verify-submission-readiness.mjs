@@ -238,9 +238,12 @@ function verifyCostCacheAndStatus() {
   assert.match(diagnosis, /detail: "high" as const/);
 
   const worksheetRoute = read("src/app/api/assignments/[assignmentId]/worksheet/route.ts");
-  assert.match(
-    worksheetRoute,
-    /getCachedWorksheetExtractionRun\(inputHash\) \?\? extractWorksheet\(input\)/,
+  assert.match(worksheetRoute, /const cached = getCachedWorksheetExtractionRun\(inputHash\)/);
+  assert.match(worksheetRoute, /if \(cached\) return \{ run: cached, denied: null \}/);
+  assert.ok(
+    worksheetRoute.indexOf("if (cached)") <
+      worksheetRoute.indexOf("beginAiRequest(request)"),
+    "stored extraction reuse must happen before hosted budget and rate guards",
   );
   const worksheetRepository = read("src/server/repositories/worksheet.ts");
   assert.match(worksheetRepository, /WHERE input_hash = \?/);
@@ -249,8 +252,8 @@ function verifyCostCacheAndStatus() {
   const diagnosisRoute = read("src/app/api/submissions/[submissionId]/diagnose/route.ts");
   assert.ok(
     diagnosisRoute.indexOf("getPersistedDiagnosisSummaryForSubmission(submissionId)") <
-      diagnosisRoute.indexOf("if (!isOpenAIConfigured())"),
-    "stored diagnosis reuse must happen before the API-key gate",
+      diagnosisRoute.indexOf("beginAiRequest(request)"),
+    "stored diagnosis reuse must happen before hosted budget and rate guards",
   );
 
   const statusRepository = read("src/server/repositories/system-status.ts");
@@ -273,12 +276,39 @@ function verifyCostCacheAndStatus() {
   );
 }
 
+function verifyHostedDeploymentContracts() {
+  const proxy = read("src/proxy.ts");
+  const access = read("src/lib/hosted-access.ts");
+  const accessRoute = read("src/app/api/access/route.ts");
+  const spend = read("src/server/openai/spend-protection.ts");
+  const start = read("scripts/start.mjs");
+  const storage = read("src/server/storage/submission-assets.ts");
+  const dockerfile = read("Dockerfile");
+  const railway = read("railway.toml");
+
+  assert.match(proxy, /verifyHostedAccessCookie/);
+  assert.match(proxy, /ACCESS_CODE_REQUIRED/);
+  assert.match(access, /HMAC/);
+  assert.match(accessRoute, /httpOnly: true/);
+  assert.match(accessRoute, /ACCESS_RATE_LIMITED/);
+  assert.match(spend, /OPENAI_DAILY_BUDGET_USD/);
+  assert.match(spend, /MAX_CONCURRENT_REQUESTS = 2/);
+  assert.match(spend, /OPENAI_REQUESTS_PER_SESSION_HOUR/);
+  assert.match(spend, /cache_hit = 0/);
+  assert.match(start, /hosted \? "0\.0\.0\.0" : "127\.0\.0\.1"/);
+  assert.match(start, /scripts\/seed\.mjs/);
+  assert.match(storage, /process\.env\.DATA_DIR/);
+  assert.match(dockerfile, /ENV DATA_DIR=\/data/);
+  assert.match(railway, /healthcheckPath = "\/access"/);
+}
+
 try {
   verifyFreshAndSeededDatabases();
   verifyIntentionalStates();
   verifyCopyAndHierarchy();
   verifyAccessibilityAndPrint();
   verifyCostCacheAndStatus();
+  verifyHostedDeploymentContracts();
   console.log(
     "Submission-readiness verification passed: fresh/seeded databases, no-key states, hierarchy, language, accessibility, print rules, cost tiers, cache reuse, and token reporting are locked.",
   );

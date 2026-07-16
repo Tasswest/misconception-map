@@ -233,6 +233,16 @@ export async function prepareStudentWorkAsset(input: {
 }
 
 function getUploadRoot() {
+  const configuredDataDirectory = process.env.DATA_DIR?.trim();
+  if (configuredDataDirectory) {
+    return path.join(
+      path.resolve(
+        /* turbopackIgnore: true */ process.cwd(),
+        configuredDataDirectory,
+        "uploads",
+      ),
+    );
+  }
   return path.join(
     /* turbopackIgnore: true */ process.cwd(),
     "uploads",

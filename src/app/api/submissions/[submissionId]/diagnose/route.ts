@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { NextResponse } from "next/server";
 
-import { isOpenAIConfigured } from "@/lib/config";
 import { guardLocalApiRequest } from "@/server/http/local-request-guard";
 import {
   buildDiagnosisRunCompletion,
@@ -26,6 +25,7 @@ import {
   type DiagnoseStudentPageInput,
   type DiagnoseSubmissionInput,
 } from "@/server/openai/diagnose-submission";
+import { beginAiRequest } from "@/server/openai/spend-protection";
 import {
   claimDiagnosisRun,
   completeDiagnosisRun,
@@ -297,18 +297,8 @@ export async function POST(
     return errorResponse(error);
   }
 
-  if (!isOpenAIConfigured()) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "OPENAI_NOT_CONFIGURED",
-          message:
-            "Add OPENAI_API_KEY to .env.local, then restart the local app.",
-        },
-      },
-      { status: 503 },
-    );
-  }
+  const protectedRequest = await beginAiRequest(request);
+  if (!protectedRequest.allowed) return protectedRequest.response;
 
   let runId: string | null = null;
   const routeStartedAt = performance.now();
@@ -506,5 +496,7 @@ export async function POST(
     }
 
     return errorResponse(error);
+  } finally {
+    protectedRequest.release();
   }
 }

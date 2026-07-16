@@ -3,22 +3,26 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { CheckIcon, AlertIcon } from "@/components/icons";
 import { getSystemStatus } from "@/server/repositories/system-status";
+import { isHostedMode } from "@/lib/hosted-access";
 
 export const dynamic = "force-dynamic";
 
 export default function StatusPage() {
   const status = getSystemStatus();
+  const hosted = isHostedMode();
   return (
     <AppShell activeNav={null} liveAiReady={status.liveAiReady}>
       <div className="mx-auto max-w-5xl px-5 py-10 md:px-8 lg:py-14">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--sage)]">
-          Local setup
+          {hosted ? "Hosted demo" : "Local setup"}
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
           System status
         </h1>
         <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
-          Misconception Map runs locally. The API key is needed only for live AI actions; the seeded classroom works without it.
+          {hosted
+            ? "The shared instance keeps its SQLite database and de-identified uploads on a persistent volume. Seeded views never spend tokens."
+            : "Misconception Map runs locally. The API key is needed only for live AI actions; the seeded classroom works without it."}
         </p>
 
         <section className="mt-6 overflow-hidden rounded-[24px] border border-black/[0.07] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
@@ -33,11 +37,19 @@ export default function StatusPage() {
             ready={status.misconceptionCount === status.codeMisconceptionCount}
           />
           <StatusRow
-            detail={status.liveAiReady ? `${status.model} is configured` : "OPENAI_API_KEY is not configured"}
+            detail={status.liveAiReady ? `${status.model} is configured` : status.aiAvailability.message ?? "Live AI is unavailable"}
             label="Live diagnosis"
             ready={status.liveAiReady}
             warning={!status.liveAiReady}
           />
+          {hosted && status.aiAvailability.spend && status.aiAvailability.dailyBudgetUsd !== null ? (
+            <StatusRow
+              detail={`$${status.aiAvailability.spend.estimatedUsd.toFixed(3)} estimated today · $${status.aiAvailability.dailyBudgetUsd.toFixed(2)} daily cap · resets at midnight UTC`}
+              label="Daily demo budget"
+              ready={status.aiAvailability.available}
+              warning={!status.aiAvailability.available}
+            />
+          ) : null}
         </section>
 
         <section className="mt-6 overflow-hidden rounded-[24px] border border-black/[0.07] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">

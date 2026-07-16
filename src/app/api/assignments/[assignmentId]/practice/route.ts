@@ -8,6 +8,7 @@ import {
   requireDeclaredBodyWithinLimit,
 } from "@/server/http/local-request-guard";
 import { InstructionalGenerationError } from "@/server/openai/generate-instructional-support";
+import { beginAiRequest } from "@/server/openai/spend-protection";
 import { InstructionalRepositoryError } from "@/server/repositories/instructional-support";
 import { generatePracticeForStudent } from "@/server/services/instructional-support";
 
@@ -88,10 +89,15 @@ export async function POST(
     requireDeclaredBodyWithinLimit(request, 20_000);
     const { assignmentId } = await context.params;
     const input = requestSchema.parse(await request.json());
-    const worksheet = await generatePracticeForStudent({
-      assignmentId,
-      ...input,
-    });
+    const protectedRequest = await beginAiRequest(request);
+    if (!protectedRequest.allowed) return protectedRequest.response;
+    const worksheet = await (async () => {
+      try {
+        return await generatePracticeForStudent({ assignmentId, ...input });
+      } finally {
+        protectedRequest.release();
+      }
+    })();
     return NextResponse.json({ data: worksheet }, { status: 201 });
   } catch (error) {
     return errorResponse(error);

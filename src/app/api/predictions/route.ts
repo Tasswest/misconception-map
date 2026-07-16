@@ -7,6 +7,7 @@ import {
   requireDeclaredBodyWithinLimit,
 } from "@/server/http/local-request-guard";
 import { InstructionalGenerationError } from "@/server/openai/generate-instructional-support";
+import { beginAiRequest } from "@/server/openai/spend-protection";
 import { PredictionRepositoryError } from "@/server/repositories/prediction-lab";
 import { lockStudentPrediction } from "@/server/services/prediction-lab";
 
@@ -80,7 +81,15 @@ export async function POST(request: Request) {
   try {
     requireDeclaredBodyWithinLimit(request, 20_000);
     const input = requestSchema.parse(await request.json());
-    const prediction = await lockStudentPrediction(input);
+    const protectedRequest = await beginAiRequest(request);
+    if (!protectedRequest.allowed) return protectedRequest.response;
+    const prediction = await (async () => {
+      try {
+        return await lockStudentPrediction(input);
+      } finally {
+        protectedRequest.release();
+      }
+    })();
     return NextResponse.json({ data: prediction }, { status: 201 });
   } catch (error) {
     return errorResponse(error);

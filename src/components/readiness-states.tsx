@@ -32,9 +32,8 @@ export function AiUnavailableNotice({ className = "" }: { className?: string }) 
     >
       <AlertIcon className="mt-1 size-4 shrink-0" />
       <p>
-        Add <code className="rounded bg-white/60 px-1.5 py-0.5 text-xs">OPENAI_API_KEY</code>{" "}
-        to <code className="rounded bg-white/60 px-1.5 py-0.5 text-xs">.env.local</code>{" "}
-        and restart the app to enable live correction. Seeded results remain fully readable without a key.
+        Live AI is currently unavailable. In a local clone, add <code className="rounded bg-white/60 px-1.5 py-0.5 text-xs">OPENAI_API_KEY</code>{" "}
+        to <code className="rounded bg-white/60 px-1.5 py-0.5 text-xs">.env.local</code> to enable live correction. On the shared demo, the banner above reports any daily budget limit. Seeded results remain fully readable.
       </p>
     </div>
   );

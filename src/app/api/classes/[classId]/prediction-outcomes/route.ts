@@ -7,6 +7,7 @@ import {
   requireDeclaredBodyWithinLimit,
 } from "@/server/http/local-request-guard";
 import { PredictionRepositoryError } from "@/server/repositories/prediction-lab";
+import { beginAiRequest } from "@/server/openai/spend-protection";
 import { synchronizePredictionOutcomes } from "@/server/services/prediction-lab";
 
 export const runtime = "nodejs";
@@ -24,7 +25,15 @@ export async function POST(
     requireDeclaredBodyWithinLimit(request, 1_000);
     requestSchema.parse(await request.json());
     const { classId } = await context.params;
-    const result = await synchronizePredictionOutcomes(classId);
+    const protectedRequest = await beginAiRequest(request);
+    if (!protectedRequest.allowed) return protectedRequest.response;
+    const result = await (async () => {
+      try {
+        return await synchronizePredictionOutcomes(classId);
+      } finally {
+        protectedRequest.release();
+      }
+    })();
     return NextResponse.json({ data: result });
   } catch (error) {
     if (error instanceof LocalRequestBodyError) {

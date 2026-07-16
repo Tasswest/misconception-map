@@ -6,9 +6,11 @@ import {
 } from "@/domain/misconception-taxonomy.mjs";
 import { isOpenAIConfigured, OPENAI_MODEL } from "@/lib/config";
 import { getDatabase } from "@/lib/db";
+import { getAiAvailability } from "@/server/openai/spend-protection";
 
 export function getSystemStatus() {
   try {
+    const aiAvailability = getAiAvailability();
     const database = getDatabase();
     const application = database
       .prepare("SELECT value FROM app_meta WHERE key = ?")
@@ -85,10 +87,12 @@ export function getSystemStatus() {
       misconceptionCount: taxonomy.count,
       codeMisconceptionCount: MISCONCEPTIONS.length,
       liveAiReady: isOpenAIConfigured(),
+      aiAvailability,
       model: OPENAI_MODEL,
       recentRuns,
     };
   } catch {
+    const aiAvailability = getAiAvailability();
     return {
       healthy: false,
       databaseReady: false,
@@ -97,6 +101,7 @@ export function getSystemStatus() {
       misconceptionCount: 0,
       codeMisconceptionCount: MISCONCEPTIONS.length,
       liveAiReady: isOpenAIConfigured(),
+      aiAvailability,
       model: OPENAI_MODEL,
       recentRuns: [],
     };

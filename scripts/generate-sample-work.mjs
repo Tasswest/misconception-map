@@ -50,7 +50,38 @@ for (const [filename, workLines] of samples) {
     .toFile(path.join(outputDirectory, filename));
 }
 
-console.log(`Generated ${samples.length} synthetic handwriting samples in sample-work/.`);
+const fullPageLines = [
+  ["1.1", "−3(x + 4) = −3x + 12"],
+  ["1.2", "−(2y − 5) = −2y + 5"],
+  ["2.1", "−2(a + 7) = −2a + 14"],
+  ["2.2", "−4(m − 3) = −4m + 12"],
+  ["3.1", "2x + 5 = 17 ; 2x = 12 ; x = 6"],
+];
+const fullPageRules = Array.from(
+  { length: 24 },
+  (_, index) =>
+    `<line x1="100" y1="${235 + index * 88}" x2="1500" y2="${235 + index * 88}" stroke="#a8c8db" stroke-width="2" opacity="0.55"/>`,
+).join("");
+const fullPageWork = fullPageLines
+  .map(
+    ([label, line], index) => `
+      <text x="190" y="${410 + index * 360}" font-family="Arial, sans-serif" font-size="42" font-weight="700" fill="#31453d">${label}</text>
+      <text x="300" y="${410 + index * 360}" transform="rotate(${index % 2 ? -0.8 : 0.6} 300 ${410 + index * 360})" font-family="Bradley Hand, Comic Sans MS, cursive" font-size="62" fill="#18251f">${escapeXml(line)}</text>`,
+  )
+  .join("");
+const fullPageSvg = `
+  <svg width="1600" height="2300" viewBox="0 0 1600 2300" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1600" height="2300" fill="#f8f4e8"/>
+    ${fullPageRules}
+    <line x1="145" y1="90" x2="145" y2="2220" stroke="#dc8a86" stroke-width="3" opacity="0.55"/>
+    <text x="190" y="150" font-family="Arial, sans-serif" font-size="34" fill="#65766f">Copie synthétique · sans nom d’élève</text>
+    ${fullPageWork}
+  </svg>`;
+await sharp(Buffer.from(fullPageSvg))
+  .jpeg({ quality: 91, chromaSubsampling: "4:4:4" })
+  .toFile(path.join(outputDirectory, "09-full-page-followup.jpeg"));
+
+console.log(`Generated ${samples.length + 1} synthetic handwriting samples in sample-work/.`);
 
 function escapeXml(value) {
   return value

@@ -18,6 +18,7 @@ import {
   type ExtractWorksheetInput,
   WorksheetExtractionError,
 } from "@/server/openai/extract-worksheet";
+import { beginAiRequest } from "@/server/openai/spend-protection";
 import { containsRosterName } from "@/server/privacy/roster-text";
 import {
   confirmWorksheetExtraction,
@@ -36,9 +37,20 @@ const MAX_WORKSHEET_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_WORKSHEET_REQUEST_BYTES = 16 * 1024 * 1024;
 const MAX_CONFIRM_REQUEST_BYTES = 180_000;
 
-async function extractOrReuseWorksheet(input: ExtractWorksheetInput) {
+async function extractOrReuseWorksheet(input: ExtractWorksheetInput, request: Request) {
   const inputHash = createWorksheetExtractionInputHash(input);
-  return getCachedWorksheetExtractionRun(inputHash) ?? extractWorksheet(input);
+  const cached = getCachedWorksheetExtractionRun(inputHash);
+  if (cached) return { run: cached, denied: null };
+
+  const protectedRequest = await beginAiRequest(request);
+  if (!protectedRequest.allowed) {
+    return { run: null, denied: protectedRequest.response };
+  }
+  try {
+    return { run: await extractWorksheet(input), denied: null };
+  } finally {
+    protectedRequest.release();
+  }
 }
 
 function safeFilename(value: string) {
@@ -147,11 +159,13 @@ export async function POST(
           },
         ]);
       }
-      const run = await extractOrReuseWorksheet({
+      const extraction = await extractOrReuseWorksheet({
         sourceKind,
         assignmentDomain: assignment.domain,
         sourceText,
-      });
+      }, request);
+      if (extraction.denied) return extraction.denied;
+      const run = extraction.run;
       const saved = saveWorksheetExtraction({
         assignmentId,
         source: { sourceKind, sourceText },
@@ -205,12 +219,14 @@ export async function POST(
         ]);
       }
       const pdfSha256 = createHash("sha256").update(sourceBytes).digest("hex");
-      const run = await extractOrReuseWorksheet({
+      const extraction = await extractOrReuseWorksheet({
         sourceKind: "PDF",
         assignmentDomain: assignment.domain,
         pdfBytes: sourceBytes,
         pdfSha256,
-      });
+      }, request);
+      if (extraction.denied) return extraction.denied;
+      const run = extraction.run;
       const saved = saveWorksheetExtraction({
         assignmentId,
         source: {
@@ -230,13 +246,15 @@ export async function POST(
     const imageSha256 = createHash("sha256")
       .update(prepared.bytes)
       .digest("hex");
-    const run = await extractOrReuseWorksheet({
+    const extraction = await extractOrReuseWorksheet({
       sourceKind,
       assignmentDomain: assignment.domain,
       imageBytes: prepared.bytes,
       imageMediaType: "image/webp",
       imageSha256,
-    });
+    }, request);
+    if (extraction.denied) return extraction.denied;
+    const run = extraction.run;
     const saved = saveWorksheetExtraction({
       assignmentId,
       source: {
