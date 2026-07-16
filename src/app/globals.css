@@ -36,6 +36,11 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--sage);
+  outline-offset: 3px;
+}
+
 a,
 button {
   -webkit-tap-highlight-color: transparent;

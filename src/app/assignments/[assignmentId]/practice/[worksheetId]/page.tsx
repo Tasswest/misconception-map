@@ -50,6 +50,11 @@ export default async function PracticeWorksheetPage({
               <p className="mt-1 text-sm text-[var(--muted)]">
                 {worksheet.assignmentTitle} · {worksheet.className}
               </p>
+              {worksheet.sourceReference ? (
+                <p className="mt-1 text-xs font-semibold text-[var(--sage)]">
+                  Targeted from {worksheet.sourceReference}
+                </p>
+              ) : null}
             </div>
             <div className="text-right text-xs leading-6 text-[var(--muted)]">
               <p>
@@ -95,6 +100,7 @@ export default async function PracticeWorksheetPage({
           <header className="border-b-2 border-[var(--sidebar)] pb-5">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--sage)]">
               Teacher answer key · {worksheet.studentName}
+              {worksheet.sourceReference ? ` · ${worksheet.sourceReference}` : ""}
             </p>
             <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em]">
               Make the mismatch visible

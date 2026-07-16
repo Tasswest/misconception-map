@@ -359,9 +359,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
         };
       }
       if (
-        relevantDiagnoses.some((diagnosis) =>
-          ["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
-        )
+        relevantDiagnoses.some((diagnosis) => diagnosis.outcome === "CORRECT")
       ) {
         return {
           misconceptionId: column.misconceptionId,

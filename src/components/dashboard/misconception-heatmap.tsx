@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   AlertIcon,
@@ -12,6 +12,8 @@ import {
   XIcon,
 } from "@/components/icons";
 import { AssignmentStepper } from "@/components/assignment-stepper";
+import { EvidenceLegend } from "@/components/evidence-legend";
+import { AiUnavailableNotice } from "@/components/readiness-states";
 import type {
   HeatmapDashboard,
   HeatmapDiagnosisDetail,
@@ -30,6 +32,7 @@ export function MisconceptionHeatmap({
     misconceptionLabel: string;
     detail: HeatmapDiagnosisDetail;
   } | null>(null);
+  const selectedCellRef = useRef<HTMLButtonElement | null>(null);
   const [teachingBrief, setTeachingBrief] = useState(dashboard.teachingBrief);
   const [briefBusy, setBriefBusy] = useState(false);
   const [briefError, setBriefError] = useState<string | null>(null);
@@ -44,6 +47,23 @@ export function MisconceptionHeatmap({
       ),
     ),
   );
+
+  useEffect(() => {
+    if (!selected) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setSelected(null);
+      window.requestAnimationFrame(() => selectedCellRef.current?.focus());
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selected]);
+
+  function closeDiagnosisDrawer() {
+    setSelected(null);
+    window.requestAnimationFrame(() => selectedCellRef.current?.focus());
+  }
 
   async function createTeachingBrief() {
     if (briefBusy || !liveAiReady) return;
@@ -137,6 +157,8 @@ export function MisconceptionHeatmap({
           Review results
         </Link>
       </div>
+
+      {!liveAiReady ? <AiUnavailableNotice className="mt-5" /> : null}
 
       <section className="mt-6 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
         <div className="border-b border-black/[0.06] px-5 py-4 md:px-6">
@@ -298,12 +320,7 @@ export function MisconceptionHeatmap({
                 : "Waiting for a definitive diagnosis"}
             </h2>
           </div>
-          <div className="flex flex-wrap gap-3 text-[11px] font-medium text-[var(--muted)]">
-            <Legend color="bg-[var(--mint)]" label="No evidence" />
-            <Legend color="bg-[var(--amber)]" label="Emerging" />
-            <Legend color="bg-[var(--coral)]" label="Strong" />
-            <Legend color="bg-[var(--line)]" label="Not assessed" />
-          </div>
+          <EvidenceLegend />
         </div>
 
         {practiceError ? (
@@ -418,8 +435,9 @@ export function MisconceptionHeatmap({
                           aria-label={copy}
                           className={`group relative grid size-11 place-items-center rounded-xl shadow-[inset_0_0_0_1px_rgba(0,0,0,0.035)] transition ${cellClass(cell.state, cell.severity)} ${cell.detail ? "cursor-pointer hover:scale-105 hover:shadow-md" : "cursor-default"}`}
                           disabled={!cell.detail}
-                          onClick={() => {
+                          onClick={(event) => {
                             if (!cell.detail) return;
+                            selectedCellRef.current = event.currentTarget;
                             setSelected({
                               studentName: row.studentName,
                               misconceptionLabel: column.label,
@@ -452,7 +470,7 @@ export function MisconceptionHeatmap({
       </section>
 
       {selected ? (
-        <DiagnosisDrawer selected={selected} onClose={() => setSelected(null)} />
+        <DiagnosisDrawer selected={selected} onClose={closeDiagnosisDrawer} />
       ) : null}
     </div>
   );
@@ -500,8 +518,13 @@ function DiagnosisDrawer({
   onClose: () => void;
 }) {
   const { detail } = selected;
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
   return (
     <div
+      aria-labelledby="diagnosis-drawer-title"
       aria-modal="true"
       className="fixed inset-0 z-50 flex justify-end bg-[#10231f]/35 p-3 backdrop-blur-sm md:p-5"
       onMouseDown={(event) => {
@@ -515,7 +538,7 @@ function DiagnosisDrawer({
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--sage)]">
               {selected.studentName} · {detail.questionReference}
             </p>
-            <h2 className="mt-2 text-xl font-semibold tracking-[-0.025em]">
+            <h2 className="mt-2 text-xl font-semibold tracking-[-0.025em]" id="diagnosis-drawer-title">
               {detail.outcome === "MISCONCEPTION"
                 ? selected.misconceptionLabel
                 : "Teacher review needed"}
@@ -528,6 +551,7 @@ function DiagnosisDrawer({
             aria-label="Close diagnosis detail"
             className="grid size-10 shrink-0 place-items-center rounded-xl border border-black/10 bg-white transition hover:bg-[var(--canvas)]"
             onClick={onClose}
+            ref={closeButtonRef}
             type="button"
           >
             <XIcon className="size-4" />
@@ -630,13 +654,4 @@ function cellTooltip(
   if (cell.state === "CLEAR") return `${student}: no evidence of ${misconception} in diagnosed work`;
   if (cell.state === "REVIEW") return `${student}: work needs teacher review`;
   return `${student}: not assessed`;
-}
-
-function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <span className={`size-2 rounded-full ${color}`} />
-      {label}
-    </span>
-  );
 }

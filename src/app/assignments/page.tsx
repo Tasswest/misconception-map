@@ -2,13 +2,21 @@ import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
 import { EntityActions } from "@/components/management/entity-actions";
+import {
+  FreshDatabaseState,
+  SingleActionEmptyState,
+} from "@/components/readiness-states";
 import { isOpenAIConfigured } from "@/lib/config";
-import { listManagedAssignments } from "@/server/repositories/management";
+import {
+  listManagedAssignments,
+  listManagedClasses,
+} from "@/server/repositories/management";
 
 export const dynamic = "force-dynamic";
 
 export default function AssignmentsPage() {
   const assignments = listManagedAssignments();
+  const hasClasses = listManagedClasses().length > 0;
   return (
     <AppShell activeNav="Assignments" liveAiReady={isOpenAIConfigured()}>
       <div className="mx-auto max-w-[1260px] px-5 py-7 md:px-8 lg:px-10 lg:py-9">
@@ -24,12 +32,14 @@ export default function AssignmentsPage() {
               Each assignment reopens at the next action that needs you.
             </p>
           </div>
-          <Link
-            className="inline-flex self-start rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
-            href="/diagnose"
-          >
-            New diagnostic
-          </Link>
+          {hasClasses ? (
+            <Link
+              className="inline-flex self-start rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
+              href="/diagnose"
+            >
+              New diagnostic
+            </Link>
+          ) : null}
         </header>
 
         {assignments.length ? (
@@ -82,12 +92,16 @@ export default function AssignmentsPage() {
             ))}
           </div>
         ) : (
-          <section className="mt-6 rounded-[24px] border border-dashed border-black/10 bg-white/60 px-6 py-16 text-center">
-            <h2 className="text-xl font-semibold">No active assignments</h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Upload a worksheet once, then diagnose every student against its problems.
-            </p>
-          </section>
+          hasClasses ? (
+            <SingleActionEmptyState
+              actionHref="/diagnose"
+              actionLabel="Create the first diagnostic"
+              description="Upload one exam source, review its exercise structure, then add student copies."
+              title="No active assignments"
+            />
+          ) : (
+            <FreshDatabaseState title="No active assignments" />
+          )
         )}
       </div>
     </AppShell>

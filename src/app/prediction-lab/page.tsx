@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { PredictionLab } from "@/components/prediction/prediction-lab";
+import { FreshDatabaseState } from "@/components/readiness-states";
 import { isOpenAIConfigured } from "@/lib/config";
 import {
   getPredictionLabData,
@@ -24,15 +25,21 @@ export default async function PredictionLabPage({
 
   return (
     <AppShell activeNav="Prediction Lab" liveAiReady={liveAiReady}>
-      <PredictionLab
-        classes={classes.map((classRecord) => ({
-          id: classRecord.id,
-          name: classRecord.name,
-          studentCount: classRecord.student_count,
-        }))}
-        data={data}
-        liveAiReady={liveAiReady}
-      />
+      {classes.length === 0 ? (
+        <div className="px-5 py-8 md:px-8 lg:px-10">
+          <FreshDatabaseState title="No Prediction Lab evidence is loaded" />
+        </div>
+      ) : (
+        <PredictionLab
+          classes={classes.map((classRecord) => ({
+            id: classRecord.id,
+            name: classRecord.name,
+            studentCount: classRecord.student_count,
+          }))}
+          data={data}
+          liveAiReady={liveAiReady}
+        />
+      )}
     </AppShell>
   );
 }

@@ -10,6 +10,7 @@ import {
   SparkIcon,
   SpinnerIcon,
 } from "@/components/icons";
+import { AiUnavailableNotice } from "@/components/readiness-states";
 import type { PredictionLabData } from "@/server/repositories/prediction-lab";
 import { formatUtcTimestamp } from "@/lib/date-format";
 
@@ -182,6 +183,8 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
           Compare new work
         </button>
       </div>
+
+      {!liveAiReady ? <AiUnavailableNotice className="mt-5" /> : null}
 
       <div className="mt-6 flex flex-wrap gap-2">
         {classes.map((classRecord) => (

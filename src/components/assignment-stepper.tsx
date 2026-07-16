@@ -69,7 +69,7 @@ export function AssignmentStepper({
           return (
             <li aria-current={current ? "step" : undefined} key={step.number}>
               {href ? (
-                <Link className={`${classes} transition hover:bg-[var(--canvas)]`} href={href}>
+                <Link className={`${classes} transition hover:bg-[var(--canvas)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sage)]`} href={href}>
                   {content}
                 </Link>
               ) : (

@@ -1,8 +1,15 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
+import {
+  FreshDatabaseState,
+  SingleActionEmptyState,
+} from "@/components/readiness-states";
 import { isOpenAIConfigured } from "@/lib/config";
-import { listManagedAssignments } from "@/server/repositories/management";
+import {
+  listManagedAssignments,
+  listManagedClasses,
+} from "@/server/repositories/management";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +18,7 @@ export default function DashboardIndexPage() {
     (assignment) => assignment.status === "READY",
   );
   const latest = assignments[0] ?? null;
+  const hasClasses = listManagedClasses().length > 0;
   return (
     <AppShell activeNav="Dashboard" liveAiReady={isOpenAIConfigured()}>
       <div className="mx-auto max-w-[1120px] px-5 py-8 md:px-8 lg:px-10 lg:py-10">
@@ -43,12 +51,16 @@ export default function DashboardIndexPage() {
             </span>
           </Link>
         ) : (
-          <section className="mt-6 rounded-[24px] border border-dashed border-black/10 bg-white/60 p-12 text-center">
-            <h2 className="text-xl font-semibold">No dashboards yet</h2>
-            <Link className="mt-4 inline-flex text-sm font-semibold text-[var(--sage)]" href="/diagnose">
-              Create a diagnostic →
-            </Link>
-          </section>
+          hasClasses ? (
+            <SingleActionEmptyState
+              actionHref="/diagnose"
+              actionLabel="Create a diagnostic"
+              description="A dashboard appears after an exam source is confirmed."
+              title="No dashboards yet"
+            />
+          ) : (
+            <FreshDatabaseState title="No dashboards yet" />
+          )
         )}
 
         {assignments.length > 1 ? (

@@ -7,6 +7,7 @@ import {
   MISCONCEPTION_BY_ID,
   misconceptionIdSchema,
 } from "@/domain/misconception-taxonomy.mjs";
+import { exerciseQuestionReference } from "@/domain/exam-labels";
 import { getDatabase } from "@/lib/db";
 
 const idSchema = z.string().uuid();
@@ -1089,6 +1090,7 @@ export type PrintableWorksheet = {
   modelStatus: "PROVISIONAL" | "SUPPORTED";
   ruleStatement: string;
   misconceptionLabel: string;
+  sourceReference: string | null;
   createdAt: string;
   items: Array<{
     position: number;
@@ -1109,7 +1111,7 @@ export function getPrintableWorksheet(worksheetId: string) {
   const row = getDatabase()
     .prepare(
       [
-        "SELECT worksheet.id, worksheet.assignment_id, assignment.title AS assignment_title, class.name AS class_name,",
+        "SELECT worksheet.id, worksheet.assignment_id, worksheet.membership_id, assignment.title AS assignment_title, class.name AS class_name,",
         "student.display_name AS student_name, worksheet.title, worksheet.rationale, worksheet.created_at,",
         "model.status AS model_status, model.rule_statement, hypothesis.misconception_id",
         "FROM worksheets AS worksheet",
@@ -1126,6 +1128,7 @@ export function getPrintableWorksheet(worksheetId: string) {
     | {
         id: string;
         assignment_id: string;
+        membership_id: string;
         assignment_title: string;
         class_name: string;
         student_name: string;
@@ -1165,6 +1168,24 @@ export function getPrintableWorksheet(worksheetId: string) {
       "This worksheet is incomplete and cannot be printed.",
     );
   }
+  const source = getDatabase()
+    .prepare(
+      [
+        "SELECT exercise.exercise_label, item.question_label",
+        "FROM submissions AS submission",
+        "JOIN submission_answers AS answer ON answer.submission_id = submission.id",
+        "JOIN assignment_items AS item ON item.id = answer.assignment_item_id",
+        "JOIN exercises AS exercise ON exercise.id = item.exercise_id",
+        "JOIN answer_versions AS version ON version.submission_answer_id = answer.id",
+        "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = version.id",
+        "WHERE submission.assignment_id = ? AND submission.membership_id = ?",
+        "AND diagnosis.outcome = 'MISCONCEPTION' AND diagnosis.misconception_id = ?",
+        "ORDER BY diagnosis.created_at DESC, diagnosis.id DESC LIMIT 1",
+      ].join(" "),
+    )
+    .get(row.assignment_id, row.membership_id, row.misconception_id) as
+    | { exercise_label: string; question_label: string }
+    | undefined;
   return {
     id: row.id,
     assignmentId: row.assignment_id,
@@ -1176,6 +1197,9 @@ export function getPrintableWorksheet(worksheetId: string) {
     modelStatus: row.model_status,
     ruleStatement: row.rule_statement,
     misconceptionLabel: taxonomy.label,
+    sourceReference: source
+      ? exerciseQuestionReference(source.exercise_label, source.question_label)
+      : null,
     createdAt: row.created_at,
     items: items.map((item) => ({
       position: item.position,

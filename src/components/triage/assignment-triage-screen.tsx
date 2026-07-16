@@ -45,6 +45,10 @@ export function AssignmentTriageScreen({
         setNote("");
         setError(null);
       }
+      if (event.key === "Escape") {
+        setView("SUMMARY");
+        setError(null);
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

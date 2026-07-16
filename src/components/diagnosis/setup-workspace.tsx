@@ -24,6 +24,7 @@ import type { DraftWorksheetSetup } from "@/server/repositories/worksheet";
 type SetupWorkspaceProps = {
   initialClasses: ClassWorkspaceOption[];
   initialDraft: DraftWorksheetSetup | null;
+  liveAiReady: boolean;
 };
 
 type ApiValue = Record<string, unknown>;
@@ -66,6 +67,7 @@ const fieldClass =
 export function SetupWorkspace({
   initialClasses,
   initialDraft,
+  liveAiReady,
 }: SetupWorkspaceProps) {
   const [classes, setClasses] = useState(initialClasses);
   const [selectedClassId, setSelectedClassId] = useState(
@@ -126,6 +128,8 @@ export function SetupWorkspace({
             ? "Choose a worksheet photo or PDF to continue."
             : !worksheetDeidentified
               ? "Confirm that this is a blank teacher copy to continue."
+              : !liveAiReady
+                ? "Add OPENAI_API_KEY to .env.local and restart the app to enable worksheet extraction."
               : null;
 
   async function createClass(event: FormEvent<HTMLFormElement>) {
@@ -551,7 +555,7 @@ export function SetupWorkspace({
                   Check the extracted worksheet
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                  GPT extracted {worksheetReview.exercises.length} {worksheetReview.exercises.length === 1 ? "exercise" : "exercises"} and {countExtractedQuestions(worksheetReview.exercises)} questions at {Math.round(worksheetReview.overallConfidence * 100)}% overall confidence. {countOutOfScopeQuestions(worksheetReview.exercises, domain) > 0 ? `${countOutOfScopeQuestions(worksheetReview.exercises, domain)} ${countOutOfScopeQuestions(worksheetReview.exercises, domain) === 1 ? "question is" : "questions are"} preserved as out of scope and will not be forced into algebra/fractions diagnosis. ` : ""}Your confirmation makes this structure the shared reference for every student submission.
+                  GPT extracted {worksheetReview.exercises.length} {worksheetReview.exercises.length === 1 ? "exercise" : "exercises"} and {countExtractedQuestions(worksheetReview.exercises)} {countExtractedQuestions(worksheetReview.exercises) === 1 ? "question" : "questions"} at {Math.round(worksheetReview.overallConfidence * 100)}% overall confidence. {countOutOfScopeQuestions(worksheetReview.exercises, domain) > 0 ? `${countOutOfScopeQuestions(worksheetReview.exercises, domain)} ${countOutOfScopeQuestions(worksheetReview.exercises, domain) === 1 ? "question is" : "questions are"} preserved as out of scope and will not be forced into algebra/fractions diagnosis. ` : ""}Your confirmation makes this structure the shared reference for every student submission.
                 </p>
               </div>
 
@@ -836,7 +840,8 @@ export function SetupWorkspace({
                 !worksheetDeidentified ||
                 (worksheetSourceKind === "TYPED"
                   ? !worksheetText.trim()
-                  : !worksheetFile)
+                  : !worksheetFile) ||
+                !liveAiReady
               }
               type="submit"
             >

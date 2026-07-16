@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { AddMemberButton } from "@/components/management/add-member-button";
 import { ClassActions } from "@/components/management/class-actions";
 import { MemberActions } from "@/components/management/member-actions";
+import { FreshDatabaseState } from "@/components/readiness-states";
 import { isOpenAIConfigured } from "@/lib/config";
 import { listManagedClasses } from "@/server/repositories/management";
 
@@ -27,12 +28,14 @@ export default function ClassesPage() {
               Open a class to see its roster, evidence coverage, and latest diagnostic.
             </p>
           </div>
-          <Link
-            className="inline-flex self-start rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
-            href="/diagnose"
-          >
-            New class or assignment
-          </Link>
+          {classes.length ? (
+            <Link
+              className="inline-flex self-start rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
+              href="/diagnose"
+            >
+              New class or assignment
+            </Link>
+          ) : null}
         </header>
 
         {classes.length ? (
@@ -167,20 +170,7 @@ function Stat({
 }
 
 function EmptyState() {
-  return (
-    <section className="mt-6 rounded-[24px] border border-dashed border-black/10 bg-white/60 px-6 py-16 text-center">
-      <h2 className="text-xl font-semibold">No active classes yet</h2>
-      <p className="mt-2 text-sm text-[var(--muted)]">
-        Create your first class, add its roster, and then attach an assignment.
-      </p>
-      <Link
-        className="mt-5 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
-        href="/diagnose"
-      >
-        Create a class
-      </Link>
-    </section>
-  );
+  return <FreshDatabaseState title="No active classes yet" />;
 }
 
 function gradeLabel(value: string) {

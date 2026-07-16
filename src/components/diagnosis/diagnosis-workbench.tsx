@@ -1324,7 +1324,7 @@ function DiagnosisResult({
         <div className="flex shrink-0 gap-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">
           {typeof result.segmentedProblemCount === "number" ? (
             <span className="rounded-full border border-black/[0.07] bg-white/55 px-2.5 py-1">
-              {result.segmentedProblemCount} problems found
+              {result.segmentedProblemCount} {result.segmentedProblemCount === 1 ? "problem" : "problems"} found
             </span>
           ) : null}
           <span className="rounded-full border border-black/[0.07] bg-white/55 px-2.5 py-1">
