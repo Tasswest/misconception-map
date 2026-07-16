@@ -90,6 +90,11 @@ export type WorkspaceMembershipRecord = {
 export type DiagnosticAssignmentItemRecord = {
   id: string;
   position: number;
+  exerciseId: string;
+  exercisePosition: number;
+  exerciseLabel: string;
+  sharedContext: string | null;
+  questionLabel: string;
   problemId: string;
   prompt: string;
   correctAnswer: string;
@@ -158,6 +163,11 @@ type AssignmentWithItemRow = {
   status: AssignmentStatus;
   item_id: string | null;
   item_position: number | null;
+  exercise_id: string | null;
+  exercise_position: number | null;
+  exercise_label: string | null;
+  shared_context: string | null;
+  question_label: string | null;
   problem_id: string | null;
   prompt: string | null;
   correct_answer: string | null;
@@ -210,6 +220,10 @@ function mapAssignmentItem(
   if (
     row.item_id === null ||
     row.item_position === null ||
+    row.exercise_id === null ||
+    row.exercise_position === null ||
+    row.exercise_label === null ||
+    row.question_label === null ||
     row.problem_id === null ||
     row.prompt === null ||
     row.correct_answer === null ||
@@ -221,6 +235,11 @@ function mapAssignmentItem(
   return {
     id: row.item_id,
     position: row.item_position,
+    exerciseId: row.exercise_id,
+    exercisePosition: row.exercise_position,
+    exerciseLabel: row.exercise_label,
+    sharedContext: row.shared_context,
+    questionLabel: row.question_label,
     problemId: row.problem_id,
     prompt: row.prompt,
     correctAnswer: row.correct_answer,
@@ -328,7 +347,9 @@ export function listWorkspaceOverview(): WorkspaceClassRecord[] {
       [
         "SELECT assignment.id, assignment.class_id, class.name AS class_name,",
         "assignment.title, assignment.description, assignment.domain, assignment.status,",
-        "item.id AS item_id, item.position AS item_position, problem.id AS problem_id, problem.prompt,",
+        "item.id AS item_id, item.position AS item_position, item.exercise_id, item.question_label,",
+        "exercise.position AS exercise_position, exercise.exercise_label, exercise.shared_context,",
+        "problem.id AS problem_id, problem.prompt,",
         "problem.correct_answer, problem.answer_format",
         "FROM assignments AS assignment",
         "JOIN classes AS class ON class.id = assignment.class_id",
@@ -338,6 +359,8 @@ export function listWorkspaceOverview(): WorkspaceClassRecord[] {
         "SELECT MIN(first_item.position) FROM assignment_items AS first_item",
         "WHERE first_item.assignment_id = assignment.id",
         ")",
+        "LEFT JOIN exercises AS exercise ON exercise.id = item.exercise_id",
+        "AND exercise.assignment_id = assignment.id AND exercise.class_id = assignment.class_id",
         "LEFT JOIN problems AS problem ON problem.id = item.problem_id",
         "WHERE class.archived_at IS NULL",
         "AND assignment.archived_at IS NULL",
@@ -382,18 +405,22 @@ export function getDiagnosticAssignment(
       [
         "SELECT assignment.id, assignment.class_id, class.name AS class_name,",
         "assignment.title, assignment.description, assignment.domain, assignment.status,",
-        "item.id AS item_id, item.position AS item_position, problem.id AS problem_id, problem.prompt,",
+        "item.id AS item_id, item.position AS item_position, item.exercise_id, item.question_label,",
+        "exercise.position AS exercise_position, exercise.exercise_label, exercise.shared_context,",
+        "problem.id AS problem_id, problem.prompt,",
         "problem.correct_answer, problem.answer_format",
         "FROM assignments AS assignment",
         "JOIN classes AS class ON class.id = assignment.class_id",
         "JOIN assignment_items AS item",
         "ON item.assignment_id = assignment.id",
+        "JOIN exercises AS exercise ON exercise.id = item.exercise_id",
+        "AND exercise.assignment_id = assignment.id AND exercise.class_id = assignment.class_id",
         "JOIN problems AS problem ON problem.id = item.problem_id",
         "WHERE assignment.id = ?",
         "AND class.archived_at IS NULL",
         "AND assignment.archived_at IS NULL",
         "AND assignment.status != 'ARCHIVED'",
-        "ORDER BY item.position",
+        "ORDER BY exercise.position, item.position",
       ].join(" "),
     )
     .all(parsedAssignmentId) as AssignmentWithItemRow[];
@@ -517,6 +544,7 @@ export function createDiagnosticAssignment(
 ): CreatedDiagnosticAssignmentRecord {
   const parsed = createDiagnosticAssignmentInputSchema.parse(input);
   const assignmentId = randomUUID();
+  const exerciseId = `${assignmentId}:legacy-exercise`;
   const problemId = randomUUID();
   const itemId = randomUUID();
   const answerFormat =
@@ -575,6 +603,11 @@ export function createDiagnosticAssignment(
   const item = {
     id: itemId,
     position: 1,
+    exerciseId,
+    exercisePosition: 1,
+    exerciseLabel: "1",
+    sharedContext: null,
+    questionLabel: "1",
     problemId,
     prompt: parsed.problemPrompt,
     correctAnswer: parsed.correctAnswer,

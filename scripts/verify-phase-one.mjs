@@ -156,6 +156,7 @@ function verifyDatabase() {
     const requiredObjects = [
       ["table", "student_model_finalizations"],
       ["table", "diagnosis_run_targets"],
+      ["table", "exercises"],
       ["table", "prediction_invalidations"],
       ["view", "student_prediction_metrics"],
       ["trigger", "student_model_finalization_is_evidence_backed"],
@@ -172,6 +173,8 @@ function verifyDatabase() {
       ["trigger", "diagnosis_run_targets_are_scoped"],
       ["trigger", "diagnosis_run_targets_are_immutable"],
       ["trigger", "diagnosis_run_targets_cannot_be_deleted_directly"],
+      ["trigger", "assignment_item_grouping_is_immutable"],
+      ["trigger", "flat_assignment_items_receive_default_exercise"],
       ["trigger", "targeted_diagnosis_runs_cannot_be_deleted_directly"],
       ["index", "one_prediction_per_student_problem"],
     ];

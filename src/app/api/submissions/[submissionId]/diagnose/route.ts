@@ -188,6 +188,8 @@ async function buildStudentPageInputs(submissionId: string): Promise<{
     problems: context.problems.map((problem) => ({
       assignmentItemId: problem.assignmentItemId,
       position: problem.position,
+      exerciseLabel: problem.exerciseLabel,
+      questionLabel: problem.questionLabel,
       prompt: problem.prompt,
       correctAnswer: problem.correctAnswer,
       answerFormat: problem.answerFormat,

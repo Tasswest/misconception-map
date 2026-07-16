@@ -184,7 +184,7 @@ export const studentPageRunCompletionSchema = z
               })
               .strict(),
           )
-          .max(30),
+          .max(60),
       })
       .strict(),
   })
@@ -278,6 +278,8 @@ type AssignmentDiagnosisRow = {
   domain: "ALGEBRA" | "FRACTIONS" | "MIXED";
   status: "DRAFT" | "READY" | "ARCHIVED";
   assignment_item_id: string;
+  exercise_label: string;
+  question_label: string;
   prompt: string;
   correct_answer: string;
   answer_format: string;
@@ -401,11 +403,14 @@ function getAssignmentDiagnosisRows(assignmentId: string) {
     .prepare(
       [
         "SELECT assignment.id, assignment.class_id, assignment.domain, assignment.status,",
-        "item.id AS assignment_item_id, problem.prompt, problem.correct_answer, problem.answer_format",
+        "item.id AS assignment_item_id, exercise.exercise_label, item.question_label,",
+        "problem.prompt, problem.correct_answer, problem.answer_format",
         "FROM assignments AS assignment",
         "JOIN classes AS class ON class.id = assignment.class_id AND class.archived_at IS NULL",
         "LEFT JOIN assignment_items AS item",
         "ON item.assignment_id = assignment.id AND item.class_id = assignment.class_id",
+        "LEFT JOIN exercises AS exercise ON exercise.id = item.exercise_id",
+        "AND exercise.assignment_id = assignment.id AND exercise.class_id = assignment.class_id",
         "LEFT JOIN problems AS problem",
         "ON problem.id = item.problem_id AND problem.class_id = assignment.class_id",
         "WHERE assignment.id = ? AND assignment.archived_at IS NULL",
@@ -430,7 +435,12 @@ function getAssignmentDiagnosisRows(assignmentId: string) {
 
   if (
     rows.some(
-      (row) => !row.assignment_item_id || !row.prompt || !row.correct_answer,
+      (row) =>
+        !row.assignment_item_id ||
+        !row.exercise_label ||
+        !row.question_label ||
+        !row.prompt ||
+        !row.correct_answer,
     )
   ) {
     throw new DiagnosisRepositoryError(
@@ -1173,6 +1183,8 @@ export type StudentPageDiagnosisContext = {
   problems: Array<{
     assignmentItemId: string;
     position: number;
+    exerciseLabel: string;
+    questionLabel: string;
     prompt: string;
     correctAnswer: string;
     answerFormat: string;
@@ -1247,6 +1259,8 @@ export function getStudentPageDiagnosisContext(
     (problem, index) => ({
       assignmentItemId: problem.assignment_item_id,
       position: index + 1,
+      exerciseLabel: problem.exercise_label,
+      questionLabel: problem.question_label,
       prompt: problem.prompt,
       correctAnswer: problem.correct_answer,
       answerFormat: problem.answer_format,

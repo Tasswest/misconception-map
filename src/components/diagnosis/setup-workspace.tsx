@@ -25,22 +25,28 @@ type SetupWorkspaceProps = {
 
 type ApiValue = Record<string, unknown>;
 
-type ExtractedProblem = {
-  position: number;
-  prompt: string;
+type ExtractedQuestion = {
+  questionLabel: string;
+  problemStatement: string;
   domain: "ALGEBRA" | "FRACTIONS";
-  answerFormat: "EXPRESSION" | "NUMBER" | "FRACTION" | "MULTIPLE_CHOICE" | "SHORT_TEXT";
-  correctAnswer: string;
+  answerKind: "EXPRESSION" | "NUMBER" | "FRACTION" | "MULTIPLE_CHOICE" | "SHORT_TEXT";
+  expectedAnswer: string;
   extractionConfidence: number;
   answerConfidence: number;
   reviewNote: string | null;
+};
+
+type ExtractedExercise = {
+  exerciseLabel: string;
+  sharedContext: string | null;
+  questions: ExtractedQuestion[];
 };
 
 type WorksheetReview = {
   assignmentId: string;
   overallConfidence: number;
   needsReview: boolean;
-  problems: ExtractedProblem[];
+  exercises: ExtractedExercise[];
 };
 
 const gradeOptions = [
@@ -212,18 +218,19 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
         formData,
       );
       const extraction = unwrapRecord(extractionPayload, "data");
-      const problems = readExtractedProblems(extraction.problems);
-      if (problems.length === 0) {
-        throw new Error("No worksheet problems were returned for review.");
+      const exercises = readExtractedExercises(extraction.exercises);
+      const questionCount = countExtractedQuestions(exercises);
+      if (questionCount === 0) {
+        throw new Error("No worksheet questions were returned for review.");
       }
       setWorksheetReview({
         assignmentId,
         overallConfidence: readNumber(extraction, "overallConfidence"),
         needsReview: extraction.needsReview === true,
-        problems,
+        exercises,
       });
       setNotice(
-        `${problems.length} ${problems.length === 1 ? "problem" : "problems"} extracted. Check the wording and expected answers before student work is added.`,
+        `${exercises.length} ${exercises.length === 1 ? "exercise" : "exercises"} and ${questionCount} ${questionCount === 1 ? "question" : "questions"} extracted. Check the structure, wording, and expected answers.`,
       );
       setBusy(null);
     } catch (caught) {
@@ -236,11 +243,18 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
     event.preventDefault();
     if (!worksheetReview || busy) return;
     if (
-      worksheetReview.problems.some(
-        (problem) => !problem.prompt.trim() || !problem.correctAnswer.trim(),
+      worksheetReview.exercises.some(
+        (exercise) =>
+          !exercise.exerciseLabel.trim() ||
+          exercise.questions.some(
+            (question) =>
+              !question.questionLabel.trim() ||
+              !question.problemStatement.trim() ||
+              !question.expectedAnswer.trim(),
+          ),
       )
     ) {
-      setError("Every extracted problem needs a prompt and expected answer.");
+      setError("Every exercise and question needs a label, statement, and expected answer.");
       return;
     }
 
@@ -249,7 +263,7 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
     try {
       await putJson(
         `/api/assignments/${encodeURIComponent(worksheetReview.assignmentId)}/worksheet`,
-        { problems: worksheetReview.problems },
+        { exercises: worksheetReview.exercises },
       );
       window.location.assign(
         `/assignments/${encodeURIComponent(worksheetReview.assignmentId)}/diagnose`,
@@ -260,16 +274,42 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
     }
   }
 
-  function updateExtractedProblem(
-    index: number,
-    patch: Partial<ExtractedProblem>,
+  function updateExtractedExercise(
+    exerciseIndex: number,
+    patch: Partial<Omit<ExtractedExercise, "questions">>,
   ) {
     setWorksheetReview((current) =>
       current
         ? {
             ...current,
-            problems: current.problems.map((problem, problemIndex) =>
-              problemIndex === index ? { ...problem, ...patch } : problem,
+            exercises: current.exercises.map((exercise, index) =>
+              index === exerciseIndex ? { ...exercise, ...patch } : exercise,
+            ),
+          }
+        : current,
+    );
+  }
+
+  function updateExtractedQuestion(
+    exerciseIndex: number,
+    questionIndex: number,
+    patch: Partial<ExtractedQuestion>,
+  ) {
+    setWorksheetReview((current) =>
+      current
+        ? {
+            ...current,
+            exercises: current.exercises.map((exercise, index) =>
+              index === exerciseIndex
+                ? {
+                    ...exercise,
+                    questions: exercise.questions.map((question, nestedIndex) =>
+                      nestedIndex === questionIndex
+                        ? { ...question, ...patch }
+                        : question,
+                    ),
+                  }
+                : exercise,
             ),
           }
         : current,
@@ -480,73 +520,128 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
                   Check the extracted worksheet
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                  GPT extracted {worksheetReview.problems.length} problems at {Math.round(worksheetReview.overallConfidence * 100)}% overall confidence. Your confirmation makes these the shared reference for every student submission.
+                  GPT extracted {worksheetReview.exercises.length} {worksheetReview.exercises.length === 1 ? "exercise" : "exercises"} and {countExtractedQuestions(worksheetReview.exercises)} questions at {Math.round(worksheetReview.overallConfidence * 100)}% overall confidence. Your confirmation makes this structure the shared reference for every student submission.
                 </p>
               </div>
 
-              <div className="max-h-[620px] space-y-4 overflow-y-auto pr-1">
-                {worksheetReview.problems.map((problem, index) => (
-                  <div
-                    className="rounded-2xl border border-black/[0.07] bg-white/65 p-4"
-                    key={`${problem.position}-${index}`}
+              <div className="max-h-[680px] space-y-5 overflow-y-auto pr-1">
+                {worksheetReview.exercises.map((exercise, exerciseIndex) => (
+                  <section
+                    className="overflow-hidden rounded-2xl border border-[var(--sage)]/20 bg-white/70"
+                    key={`${exercise.exerciseLabel}-${exerciseIndex}`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--sage)]">
-                        Problem {problem.position}
-                      </p>
-                      <span className="text-[10px] font-semibold text-[var(--muted)]">
-                        Text {Math.round(problem.extractionConfidence * 100)}% · answer {Math.round(problem.answerConfidence * 100)}%
-                      </span>
-                    </div>
-                    {problem.reviewNote ? (
-                      <p className="mt-3 rounded-xl bg-[var(--amber)]/15 px-3 py-2 text-xs leading-5 text-[#765725]">
-                        {problem.reviewNote}
-                      </p>
-                    ) : null}
-                    <label className="mt-3 block text-sm font-semibold">
-                      Problem statement
-                      <textarea
-                        className={fieldClass + " min-h-24 resize-y font-mono leading-6"}
-                        maxLength={4_000}
-                        onChange={(event) =>
-                          updateExtractedProblem(index, { prompt: event.target.value })
-                        }
-                        required
-                        value={problem.prompt}
-                      />
-                    </label>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-[150px_1fr]">
-                      <label className="block text-sm font-semibold">
-                        Domain
-                        <select
-                          className={fieldClass}
-                          onChange={(event) =>
-                            updateExtractedProblem(index, {
-                              domain: event.target.value as ExtractedProblem["domain"],
-                            })
-                          }
-                          value={problem.domain}
-                        >
-                          <option value="ALGEBRA">Algebra</option>
-                          <option value="FRACTIONS">Fractions</option>
-                        </select>
-                      </label>
-                      <label className="block text-sm font-semibold">
-                        Expected answer
+                    <div className="border-b border-[var(--sage)]/12 bg-[var(--soft-mint)]/55 p-4">
+                      <label className="block text-xs font-bold uppercase tracking-[0.11em] text-[var(--sage)]">
+                        Exercise label
                         <input
-                          className={fieldClass + " font-mono"}
-                          maxLength={1_000}
+                          className={fieldClass + " text-sm normal-case tracking-normal"}
+                          maxLength={200}
                           onChange={(event) =>
-                            updateExtractedProblem(index, {
-                              correctAnswer: event.target.value,
+                            updateExtractedExercise(exerciseIndex, {
+                              exerciseLabel: event.target.value,
                             })
                           }
                           required
-                          value={problem.correctAnswer}
+                          value={exercise.exerciseLabel}
+                        />
+                      </label>
+                      <label className="mt-3 block text-xs font-semibold text-[var(--muted)]">
+                        Shared context <span className="font-normal">(shown once for the exercise)</span>
+                        <textarea
+                          className={fieldClass + " min-h-20 resize-y leading-6"}
+                          maxLength={8_000}
+                          onChange={(event) =>
+                            updateExtractedExercise(exerciseIndex, {
+                              sharedContext: event.target.value.trim()
+                                ? event.target.value
+                                : null,
+                            })
+                          }
+                          placeholder="No shared context"
+                          value={exercise.sharedContext ?? ""}
                         />
                       </label>
                     </div>
-                  </div>
+
+                    <div className="space-y-3 p-3">
+                      {exercise.questions.map((question, questionIndex) => (
+                        <article
+                          className="rounded-xl border border-black/[0.07] bg-[var(--paper)] p-4"
+                          key={`${question.questionLabel}-${questionIndex}`}
+                        >
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                            <label className="block max-w-[220px] text-xs font-bold uppercase tracking-[0.11em] text-[var(--sage)]">
+                              Question label
+                              <input
+                                className={fieldClass + " text-sm normal-case tracking-normal"}
+                                maxLength={120}
+                                onChange={(event) =>
+                                  updateExtractedQuestion(exerciseIndex, questionIndex, {
+                                    questionLabel: event.target.value,
+                                  })
+                                }
+                                required
+                                value={question.questionLabel}
+                              />
+                            </label>
+                            <span className="pb-1 text-[10px] font-semibold text-[var(--muted)]">
+                              Text {Math.round(question.extractionConfidence * 100)}% · answer {Math.round(question.answerConfidence * 100)}%
+                            </span>
+                          </div>
+                          {question.reviewNote ? (
+                            <p className="mt-3 rounded-xl bg-[var(--amber)]/15 px-3 py-2 text-xs leading-5 text-[#765725]">
+                              {question.reviewNote}
+                            </p>
+                          ) : null}
+                          <label className="mt-3 block text-sm font-semibold">
+                            Self-contained problem statement
+                            <textarea
+                              className={fieldClass + " min-h-24 resize-y font-mono leading-6"}
+                              maxLength={4_000}
+                              onChange={(event) =>
+                                updateExtractedQuestion(exerciseIndex, questionIndex, {
+                                  problemStatement: event.target.value,
+                                })
+                              }
+                              required
+                              value={question.problemStatement}
+                            />
+                          </label>
+                          <div className="mt-3 grid gap-3 sm:grid-cols-[150px_1fr]">
+                            <label className="block text-sm font-semibold">
+                              Domain
+                              <select
+                                className={fieldClass}
+                                onChange={(event) =>
+                                  updateExtractedQuestion(exerciseIndex, questionIndex, {
+                                    domain: event.target.value as ExtractedQuestion["domain"],
+                                  })
+                                }
+                                value={question.domain}
+                              >
+                                <option value="ALGEBRA">Algebra</option>
+                                <option value="FRACTIONS">Fractions</option>
+                              </select>
+                            </label>
+                            <label className="block text-sm font-semibold">
+                              Expected answer
+                              <input
+                                className={fieldClass + " font-mono"}
+                                maxLength={1_000}
+                                onChange={(event) =>
+                                  updateExtractedQuestion(exerciseIndex, questionIndex, {
+                                    expectedAnswer: event.target.value,
+                                  })
+                                }
+                                required
+                                value={question.expectedAnswer}
+                              />
+                            </label>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
 
@@ -818,47 +913,68 @@ function readNumber(record: ApiValue, key: string): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function readExtractedProblems(value: unknown): ExtractedProblem[] {
+function readExtractedExercises(value: unknown): ExtractedExercise[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((problem) => {
-    if (typeof problem !== "object" || problem === null || Array.isArray(problem)) {
+  return value.flatMap((exercise) => {
+    if (typeof exercise !== "object" || exercise === null || Array.isArray(exercise)) {
       return [];
     }
-    const record = problem as ApiValue;
-    const position = readNumber(record, "position");
-    const prompt = readString(record, "prompt");
-    const domain = readString(record, "domain");
-    const answerFormat = readString(record, "answerFormat");
-    const correctAnswer = readString(record, "correctAnswer");
-    if (
-      !Number.isInteger(position) ||
-      position < 1 ||
-      !prompt ||
-      (domain !== "ALGEBRA" && domain !== "FRACTIONS") ||
-      ![
-        "EXPRESSION",
-        "NUMBER",
-        "FRACTION",
-        "MULTIPLE_CHOICE",
-        "SHORT_TEXT",
-      ].includes(answerFormat) ||
-      !correctAnswer
-    ) {
-      return [];
-    }
+    const record = exercise as ApiValue;
+    const exerciseLabel = readString(record, "exerciseLabel");
+    const questionsValue = record.questions;
+    if (!exerciseLabel || !Array.isArray(questionsValue)) return [];
+    const questions = questionsValue.flatMap((question) => {
+      if (typeof question !== "object" || question === null || Array.isArray(question)) {
+        return [];
+      }
+      const questionRecord = question as ApiValue;
+      const questionLabel = readString(questionRecord, "questionLabel");
+      const problemStatement = readString(questionRecord, "problemStatement");
+      const domain = readString(questionRecord, "domain");
+      const answerKind = readString(questionRecord, "answerKind");
+      const expectedAnswer = readString(questionRecord, "expectedAnswer");
+      if (
+        !questionLabel ||
+        !problemStatement ||
+        (domain !== "ALGEBRA" && domain !== "FRACTIONS") ||
+        ![
+          "EXPRESSION",
+          "NUMBER",
+          "FRACTION",
+          "MULTIPLE_CHOICE",
+          "SHORT_TEXT",
+        ].includes(answerKind) ||
+        !expectedAnswer
+      ) {
+        return [];
+      }
+      return [{
+        questionLabel,
+        problemStatement,
+        domain: domain as ExtractedQuestion["domain"],
+        answerKind: answerKind as ExtractedQuestion["answerKind"],
+        expectedAnswer,
+        extractionConfidence: readNumber(questionRecord, "extractionConfidence"),
+        answerConfidence: readNumber(questionRecord, "answerConfidence"),
+        reviewNote: readNullableString(questionRecord, "reviewNote"),
+      }];
+    });
+    if (questions.length === 0) return [];
     return [
       {
-        position,
-        prompt,
-        domain,
-        answerFormat: answerFormat as ExtractedProblem["answerFormat"],
-        correctAnswer,
-        extractionConfidence: readNumber(record, "extractionConfidence"),
-        answerConfidence: readNumber(record, "answerConfidence"),
-        reviewNote: readNullableString(record, "reviewNote"),
+        exerciseLabel,
+        sharedContext: readNullableString(record, "sharedContext"),
+        questions,
       },
     ];
   });
+}
+
+function countExtractedQuestions(exercises: ExtractedExercise[]) {
+  return exercises.reduce(
+    (count, exercise) => count + exercise.questions.length,
+    0,
+  );
 }
 
 function messageFromError(error: unknown) {

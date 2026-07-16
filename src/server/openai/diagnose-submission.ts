@@ -83,6 +83,8 @@ const pageProblemSchema = z
   .object({
     assignmentItemId: z.string().uuid(),
     position: z.number().int().positive(),
+    exerciseLabel: normalizedTextSchema,
+    questionLabel: normalizedTextSchema,
     prompt: normalizedTextSchema,
     correctAnswer: normalizedTextSchema,
     answerFormat: normalizedTextSchema,
@@ -92,7 +94,7 @@ const pageProblemSchema = z
 const studentPageDiagnosisInputSchema = z
   .object({
     assignmentDomain: assignmentDomainSchema,
-    problems: z.array(pageProblemSchema).min(1).max(30),
+    problems: z.array(pageProblemSchema).min(1).max(60),
     imageBytes: z.instanceof(Uint8Array).refine((value) => value.byteLength > 0),
     imageMediaType: z.enum([
       "image/jpeg",
@@ -557,6 +559,8 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
     assignmentDomain: prepared.assignmentDomain,
     problems: prepared.problems.map((problem) => ({
       position: problem.position,
+      exerciseLabel: problem.exerciseLabel,
+      questionLabel: problem.questionLabel,
       prompt: problem.prompt,
       correctAnswer: problem.correctAnswer,
       answerFormat: problem.answerFormat,
@@ -634,10 +638,17 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
     const problemsByPosition = new Map(
       prepared.problems.map((problem) => [problem.position, problem]),
     );
-    const results = parsedOutput.visibleProblems.map((visible) => {
+    let rejectedLabelMatch = false;
+    const results = parsedOutput.visibleProblems.flatMap((visible) => {
       const problem = problemsByPosition.get(visible.problemPosition);
-      if (!problem || seenPositions.has(visible.problemPosition)) {
-        throw new TypeError("Page segmentation referenced an invalid or duplicate problem.");
+      if (
+        !problem ||
+        seenPositions.has(visible.problemPosition) ||
+        visible.exerciseLabel !== problem.exerciseLabel ||
+        visible.questionLabel !== problem.questionLabel
+      ) {
+        rejectedLabelMatch = true;
+        return [];
       }
       seenPositions.add(visible.problemPosition);
       const output =
@@ -666,7 +677,7 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
         correctAnswer: problem.correctAnswer,
         typedResponse: null,
       });
-      return {
+      return [{
         assignmentItemId: problem.assignmentItemId,
         position: problem.position,
         correctAnswer: problem.correctAnswer,
@@ -686,12 +697,20 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
             evidenceNote: candidate.evidenceNote,
           })),
         },
-      };
+      }];
     });
+    const segmentationReviewNote = [
+      parsedOutput.segmentationReviewNote,
+      rejectedLabelMatch
+        ? "At least one work block had inconsistent exercise or question cues and was left unmatched for teacher review."
+        : null,
+    ]
+      .filter((note): note is string => note !== null)
+      .join(" ") || null;
     const result = {
       pageTranscriptionConfidence: parsedOutput.pageTranscriptionConfidence,
       imageQuality: parsedOutput.imageQuality,
-      segmentationReviewNote: parsedOutput.segmentationReviewNote,
+      segmentationReviewNote,
       results: results.sort((left, right) => left.position - right.position),
     };
 

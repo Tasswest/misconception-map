@@ -194,7 +194,7 @@ export function getAssignmentTriage(assignmentId: string) {
         "LEFT JOIN teacher_item_reviews AS review ON review.submission_id = submission.id AND review.diagnosis_id IS NULL",
         "WHERE submission.assignment_id = ? AND submission.class_id = ?",
         "AND submission.status = 'NEEDS_REVIEW'",
-        "AND NOT EXISTS (SELECT 1 FROM submission_answers AS answer WHERE answer.submission_id = submission.id)",
+        "AND submission.sanitized_error_message IS NOT NULL",
         "ORDER BY student.display_name COLLATE NOCASE, submission.id",
       ].join(" "),
     )
@@ -338,7 +338,7 @@ export function markTriageItemReviewed(
             "FROM submissions AS submission",
             "WHERE submission.id = ? AND submission.assignment_id = ? AND submission.class_id = ?",
             "AND submission.status = 'NEEDS_REVIEW'",
-            "AND NOT EXISTS (SELECT 1 FROM submission_answers AS answer WHERE answer.submission_id = submission.id)",
+            "AND submission.sanitized_error_message IS NOT NULL",
           ].join(" "),
     )
     .get(targetId, assignment.id, assignment.class_id) as

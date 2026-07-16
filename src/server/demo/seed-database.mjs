@@ -18,7 +18,15 @@ const FOLLOWUP_ANSWERED = "2026-01-21T09:01:00.000Z";
 const FOLLOWUP_DIAGNOSED = "2026-01-21T09:02:00.000Z";
 
 /** @typedef {import("better-sqlite3").Database} Database */
-/** @typedef {{ prompt: string; correct: string }} DemoProblem */
+/**
+ * @typedef {{
+ *   exerciseLabel: string;
+ *   questionLabel: string;
+ *   sharedContext: string | null;
+ *   prompt: string;
+ *   correct: string;
+ * }} DemoProblem
+ */
 /** @typedef {"baseline" | "followup"} DemoPhase */
 /**
  * @typedef {{
@@ -60,19 +68,19 @@ const FOLLOWUP_DIAGNOSED = "2026-01-21T09:02:00.000Z";
  */
 
 const baselineProblems = [
-  { prompt: "Expand −(x + 6).", correct: "−x − 6" },
-  { prompt: "Expand −2(y + 5).", correct: "−2y − 10" },
-  { prompt: "Expand 3(a + 4).", correct: "3a + 12" },
-  { prompt: "Solve x + 7 = 12.", correct: "x = 5" },
-  { prompt: "Simplify 2x + 3 + x.", correct: "3x + 3" },
+  { exerciseLabel: "Exercice 1 — Développer", questionLabel: "1.1", sharedContext: "Développer chaque expression en appliquant le facteur à tous les termes.", prompt: "Développer −(x + 6).", correct: "−x − 6" },
+  { exerciseLabel: "Exercice 1 — Développer", questionLabel: "1.2", sharedContext: "Développer chaque expression en appliquant le facteur à tous les termes.", prompt: "Développer −2(y + 5).", correct: "−2y − 10" },
+  { exerciseLabel: "Exercice 1 — Développer", questionLabel: "1.3", sharedContext: "Développer chaque expression en appliquant le facteur à tous les termes.", prompt: "Développer 3(a + 4).", correct: "3a + 12" },
+  { exerciseLabel: "Exercice 2 — Équation", questionLabel: "2.1", sharedContext: null, prompt: "Résoudre x + 7 = 12.", correct: "x = 5" },
+  { exerciseLabel: "Exercice 3 — Réduire", questionLabel: "3.1", sharedContext: null, prompt: "Réduire 2x + 3 + x.", correct: "3x + 3" },
 ];
 
 const followupProblems = [
-  { prompt: "Expand −3(x + 4).", correct: "−3x − 12" },
-  { prompt: "Expand −(2y − 5).", correct: "−2y + 5" },
-  { prompt: "Expand −2(a + 7).", correct: "−2a − 14" },
-  { prompt: "Expand −4(m − 3).", correct: "−4m + 12" },
-  { prompt: "Solve 2x + 5 = 17.", correct: "x = 6" },
+  { exerciseLabel: "Exercice 1 — Signe et parenthèses", questionLabel: "1.1", sharedContext: "Développer puis réduire les expressions suivantes.", prompt: "Développer puis réduire −3(x + 4).", correct: "−3x − 12" },
+  { exerciseLabel: "Exercice 1 — Signe et parenthèses", questionLabel: "1.2", sharedContext: "Développer puis réduire les expressions suivantes.", prompt: "Développer puis réduire −(2y − 5).", correct: "−2y + 5" },
+  { exerciseLabel: "Exercice 2 — Distribution", questionLabel: "2.1", sharedContext: "Développer en faisant apparaître chaque produit.", prompt: "Développer −2(a + 7) en faisant apparaître chaque produit.", correct: "−2a − 14" },
+  { exerciseLabel: "Exercice 2 — Distribution", questionLabel: "2.2", sharedContext: "Développer en faisant apparaître chaque produit.", prompt: "Développer −4(m − 3) en faisant apparaître chaque produit.", correct: "−4m + 12" },
+  { exerciseLabel: "Exercice 3 — Équation", questionLabel: "3.1", sharedContext: null, prompt: "Résoudre 2x + 5 = 17.", correct: "x = 6" },
 ];
 
 const predictedAnswers = [
@@ -420,10 +428,28 @@ function insertAssignment(database, input) {
   const insertProblem = database.prepare(
     "INSERT INTO problems (id, class_id, domain, prompt, answer_format, correct_answer, canonical_correct_answer, origin, content_hash, created_at) VALUES (?, ?, 'ALGEBRA', ?, 'EXPRESSION', ?, ?, 'SEED', ?, ?)",
   );
-  const insertItem = database.prepare(
-    "INSERT INTO assignment_items (id, class_id, assignment_id, problem_id, position, points, is_required, created_at) VALUES (?, ?, ?, ?, ?, 1, 1, ?)",
+  const insertExercise = database.prepare(
+    "INSERT INTO exercises (id, class_id, assignment_id, position, exercise_label, shared_context, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
   );
+  const insertItem = database.prepare(
+    "INSERT INTO assignment_items (id, class_id, assignment_id, problem_id, position, points, is_required, created_at, exercise_id, question_label) VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?)",
+  );
+  const exerciseIds = new Map();
   input.problems.forEach((problem, index) => {
+    let exerciseId = exerciseIds.get(problem.exerciseLabel);
+    if (!exerciseId) {
+      exerciseId = id(input.itemIdStart + 80 + exerciseIds.size + 1);
+      exerciseIds.set(problem.exerciseLabel, exerciseId);
+      insertExercise.run(
+        exerciseId,
+        DEMO_CLASS_ID,
+        input.id,
+        exerciseIds.size,
+        problem.exerciseLabel,
+        problem.sharedContext,
+        input.createdAt,
+      );
+    }
     const problemId = id(input.problemIdStart + index + 1);
     insertProblem.run(
       problemId,
@@ -441,6 +467,8 @@ function insertAssignment(database, input) {
       problemId,
       index + 1,
       input.createdAt,
+      exerciseId,
+      problem.questionLabel,
     );
   });
 }

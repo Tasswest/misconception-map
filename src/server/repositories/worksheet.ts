@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import {
   worksheetExtractionAIOutputSchema,
-  worksheetProblemSchema,
+  worksheetExerciseSchema,
   type WorksheetExtraction,
 } from "@/domain/worksheet-extraction";
 import { getDatabase } from "@/lib/db";
@@ -14,19 +14,21 @@ const idSchema = z.string().trim().min(1).max(200);
 
 export const confirmWorksheetInputSchema = z
   .object({
-    problems: z.array(worksheetProblemSchema).min(1).max(30),
+    exercises: z.array(worksheetExerciseSchema).min(1).max(30),
   })
   .strict()
   .superRefine((input, context) => {
-    input.problems.forEach((problem, index) => {
-      if (problem.position !== index + 1) {
-        context.addIssue({
-          code: "custom",
-          message: "Worksheet problem positions must be consecutive.",
-          path: ["problems", index, "position"],
-        });
-      }
-    });
+    const questionCount = input.exercises.reduce(
+      (count, exercise) => count + exercise.questions.length,
+      0,
+    );
+    if (questionCount > 60) {
+      context.addIssue({
+        code: "custom",
+        message: "A worksheet can contain at most 60 questions.",
+        path: ["exercises"],
+      });
+    }
   });
 
 type AssignmentRow = {
@@ -132,11 +134,13 @@ export function saveWorksheetExtraction(input: {
   const extractionId = randomUUID();
   const needsReview =
     extraction.overallConfidence < 0.72 ||
-    extraction.problems.some(
-      (problem) =>
-        problem.extractionConfidence < 0.72 ||
-        problem.answerConfidence < 0.72 ||
-        problem.reviewNote !== null,
+    extraction.exercises.some((exercise) =>
+      exercise.questions.some(
+        (question) =>
+          question.extractionConfidence < 0.72 ||
+          question.answerConfidence < 0.72 ||
+          question.reviewNote !== null,
+      ),
     );
   const database = getDatabase();
 
@@ -185,7 +189,7 @@ export function saveWorksheetExtraction(input: {
         [
           "INSERT INTO assignment_source_extractions",
           "(id, source_id, model_name, prompt_version, schema_version, openai_response_id,",
-          "input_hash, output_hash, overall_confidence, problems_json, input_tokens, output_tokens, latency_ms)",
+          "input_hash, output_hash, overall_confidence, exercises_json, input_tokens, output_tokens, latency_ms)",
           "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         ].join(" "),
       )
@@ -199,7 +203,7 @@ export function saveWorksheetExtraction(input: {
         input.run.inputHash,
         input.run.outputHash,
         extraction.overallConfidence,
-        JSON.stringify(extraction.problems),
+        JSON.stringify(extraction.exercises),
         input.run.inputTokens,
         input.run.outputTokens,
         input.run.latencyMs,
@@ -235,6 +239,10 @@ export function confirmWorksheetExtraction(
   const createdItems: Array<{
     id: string;
     position: number;
+    exerciseId: string;
+    exerciseLabel: string;
+    questionLabel: string;
+    sharedContext: string | null;
     prompt: string;
     correctAnswer: string;
     answerFormat: string;
@@ -254,58 +262,86 @@ export function confirmWorksheetExtraction(
       );
     }
 
-    for (const problem of input.problems) {
-      if (
-        assignment.domain !== "MIXED" &&
-        problem.domain !== assignment.domain
-      ) {
-        throw new WorksheetRepositoryError(
-          "DOMAIN_MISMATCH",
-          "An extracted problem falls outside the assignment domain.",
-        );
-      }
-      const problemId = randomUUID();
-      const itemId = randomUUID();
+    let itemPosition = 0;
+    for (const [exerciseIndex, exercise] of input.exercises.entries()) {
+      const exerciseId = randomUUID();
       database
         .prepare(
           [
-            "INSERT INTO problems",
-            "(id, class_id, domain, prompt, answer_format, correct_answer, canonical_correct_answer, origin, content_hash)",
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 'WORKSHEET', ?)",
+            "INSERT INTO exercises",
+            "(id, class_id, assignment_id, position, exercise_label, shared_context)",
+            "VALUES (?, ?, ?, ?, ?, ?)",
           ].join(" "),
         )
         .run(
-          problemId,
-          assignment.classId,
-          problem.domain,
-          problem.prompt,
-          problem.answerFormat,
-          problem.correctAnswer,
-          problem.correctAnswer.normalize("NFKC").trim(),
-          contentHash(problem.domain, problem.prompt),
-        );
-      database
-        .prepare(
-          [
-            "INSERT INTO assignment_items",
-            "(id, class_id, assignment_id, problem_id, position, points, is_required)",
-            "VALUES (?, ?, ?, ?, ?, 1, 1)",
-          ].join(" "),
-        )
-        .run(
-          itemId,
+          exerciseId,
           assignment.classId,
           assignment.id,
-          problemId,
-          problem.position,
+          exerciseIndex + 1,
+          exercise.exerciseLabel,
+          exercise.sharedContext,
         );
-      createdItems.push({
-        id: itemId,
-        position: problem.position,
-        prompt: problem.prompt,
-        correctAnswer: problem.correctAnswer,
-        answerFormat: problem.answerFormat,
-      });
+
+      for (const question of exercise.questions) {
+        itemPosition += 1;
+        if (
+          assignment.domain !== "MIXED" &&
+          question.domain !== assignment.domain
+        ) {
+          throw new WorksheetRepositoryError(
+            "DOMAIN_MISMATCH",
+            "An extracted question falls outside the assignment domain.",
+          );
+        }
+        const problemId = randomUUID();
+        const itemId = randomUUID();
+        database
+          .prepare(
+            [
+              "INSERT INTO problems",
+              "(id, class_id, domain, prompt, answer_format, correct_answer, canonical_correct_answer, origin, content_hash)",
+              "VALUES (?, ?, ?, ?, ?, ?, ?, 'WORKSHEET', ?)",
+            ].join(" "),
+          )
+          .run(
+            problemId,
+            assignment.classId,
+            question.domain,
+            question.problemStatement,
+            question.answerKind,
+            question.expectedAnswer,
+            question.expectedAnswer.normalize("NFKC").trim(),
+            contentHash(question.domain, question.problemStatement),
+          );
+        database
+          .prepare(
+            [
+              "INSERT INTO assignment_items",
+              "(id, class_id, assignment_id, problem_id, position, points, is_required, exercise_id, question_label)",
+              "VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?)",
+            ].join(" "),
+          )
+          .run(
+            itemId,
+            assignment.classId,
+            assignment.id,
+            problemId,
+            itemPosition,
+            exerciseId,
+            question.questionLabel,
+          );
+        createdItems.push({
+          id: itemId,
+          position: itemPosition,
+          exerciseId,
+          exerciseLabel: exercise.exerciseLabel,
+          questionLabel: question.questionLabel,
+          sharedContext: exercise.sharedContext,
+          prompt: question.problemStatement,
+          correctAnswer: question.expectedAnswer,
+          answerFormat: question.answerKind,
+        });
+      }
     }
 
     database
