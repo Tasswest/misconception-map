@@ -362,7 +362,10 @@ function CorrectedQuestion({
           {item.questionReference}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="whitespace-pre-wrap font-mono text-sm font-semibold leading-6">
+          <p
+            className="corrected-copy-problem-heading whitespace-pre-wrap font-mono text-sm font-semibold leading-6"
+            data-question-reference={item.questionReference}
+          >
             {item.problemPrompt}
           </p>
 
@@ -377,7 +380,7 @@ function CorrectedQuestion({
             </div>
           ) : (
             <>
-              <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-[0.1em]">
+              <div className="corrected-copy-verdict mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-[0.1em]">
                 <span
                   className={`rounded-full px-2.5 py-1 ${
                     diagnosis.outcome === "CORRECT"
@@ -397,7 +400,7 @@ function CorrectedQuestion({
               </div>
 
               {needsReview ? (
-                <div className="mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
+                <div className="corrected-copy-review mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
                   <span className="font-semibold">
                     {french ? "À vérifier par l’enseignant —" : "Needs teacher review —"}
                   </span>{" "}

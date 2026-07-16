@@ -165,8 +165,43 @@ button {
   }
 
   .corrected-copy-problem {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .corrected-copy-problem > div {
+    display: block !important;
+  }
+
+  .corrected-copy-problem > div > span {
+    display: none !important;
+  }
+
+  .corrected-copy-problem-heading::before {
+    background: #193b33;
+    border-radius: 8px;
+    color: white;
+    content: attr(data-question-reference);
+    display: table;
+    font-family: Inter, ui-sans-serif, sans-serif;
+    font-size: 8px;
+    letter-spacing: normal;
+    margin-bottom: 12px;
+    padding: 7px 9px;
+  }
+
+  .corrected-copy-problem > div > div > div,
+  .corrected-copy-problem > div > div > ol > li,
+  .corrected-copy-problem > div > div > p {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  .corrected-copy-problem-heading,
+  .corrected-copy-verdict,
+  .corrected-copy-review {
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   .corrected-copy-marker {

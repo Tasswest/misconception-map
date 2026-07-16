@@ -14,6 +14,7 @@ import {
   UsersIcon,
 } from "@/components/icons";
 import { AssignmentStepper } from "@/components/assignment-stepper";
+import { AiUnavailableNotice } from "@/components/readiness-states";
 import type {
   AssignmentOption,
   ClassWorkspaceOption,
@@ -365,6 +366,8 @@ export function SetupWorkspace({
           only to organize the evidence.
         </p>
       </div>
+
+      {!liveAiReady ? <AiUnavailableNotice className="mt-6" /> : null}
 
       <div aria-live="polite" className="mt-6 space-y-3">
         {error ? (

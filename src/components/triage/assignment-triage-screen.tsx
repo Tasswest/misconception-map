@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   AlertIcon,
@@ -29,12 +29,16 @@ export function AssignmentTriageScreen({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reviewButtonRef = useRef<HTMLButtonElement | null>(null);
   const currentItem = triage.needsReview[reviewIndex] ?? null;
 
   useEffect(() => {
     if (view !== "REVIEW") return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      const editingNote =
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement;
+      if (editingNote && (event.key === "ArrowLeft" || event.key === "ArrowRight")) return;
       if (event.key === "ArrowLeft") {
         setReviewIndex(Math.max(0, reviewIndex - 1));
         setNote("");
@@ -48,6 +52,7 @@ export function AssignmentTriageScreen({
       if (event.key === "Escape") {
         setView("SUMMARY");
         setError(null);
+        window.requestAnimationFrame(() => reviewButtonRef.current?.focus());
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -161,7 +166,7 @@ export function AssignmentTriageScreen({
       </header>
 
       {view === "SUMMARY" ? (
-        <SummaryView triage={triage} setView={setView} />
+        <SummaryView reviewButtonRef={reviewButtonRef} triage={triage} setView={setView} />
       ) : view === "REVIEW" ? (
         <ReviewView
           busy={busy}
@@ -184,9 +189,11 @@ export function AssignmentTriageScreen({
 }
 
 function SummaryView({
+  reviewButtonRef,
   triage,
   setView,
 }: {
+  reviewButtonRef: React.RefObject<HTMLButtonElement | null>;
   triage: AssignmentTriage;
   setView: (view: View) => void;
 }) {
@@ -220,6 +227,7 @@ function SummaryView({
           />
           <Pile
             action="Review flagged items"
+            buttonRef={reviewButtonRef}
             count={summary.needsReviewCount}
             detail="Unreadable, ambiguous, or not safely matched."
             disabled={summary.needsReviewCount === 0}
@@ -266,6 +274,7 @@ function SummaryView({
 
 function Pile({
   action,
+  buttonRef,
   count,
   detail,
   disabled,
@@ -275,6 +284,7 @@ function Pile({
   tone,
 }: {
   action: string;
+  buttonRef?: React.Ref<HTMLButtonElement>;
   count: number;
   detail: string;
   disabled: boolean;
@@ -299,6 +309,7 @@ function Pile({
         className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-35"
         disabled={disabled}
         onClick={onClick}
+        ref={buttonRef}
         type="button"
       >
         {action} <ArrowIcon className="size-3.5" />
