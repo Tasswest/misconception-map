@@ -61,9 +61,17 @@ export default function AssignmentsPage() {
                   {assignment.status === "READY" ? (
                     <Link
                       className="rounded-xl bg-[var(--sidebar)] px-3.5 py-2.5 text-xs font-semibold text-white"
+                      href={`/assignments/${assignment.id}/results`}
+                    >
+                      Open results
+                    </Link>
+                  ) : null}
+                  {assignment.status === "READY" ? (
+                    <Link
+                      className="rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-xs font-semibold"
                       href={`/assignments/${assignment.id}/dashboard`}
                     >
-                      Open dashboard
+                      Class dashboard
                     </Link>
                   ) : null}
                   <Link

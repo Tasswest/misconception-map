@@ -126,9 +126,9 @@ export function MisconceptionHeatmap({
         </div>
         <Link
           className="inline-flex self-start items-center justify-center rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm font-semibold transition hover:bg-[var(--paper)] md:self-auto"
-          href={`/assignments/${dashboard.assignment.id}/diagnose`}
+          href={`/assignments/${dashboard.assignment.id}/results`}
         >
-          Add more work
+          Review results
         </Link>
       </div>
 

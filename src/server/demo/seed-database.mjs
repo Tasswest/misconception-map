@@ -27,6 +27,7 @@ const FOLLOWUP_DIAGNOSED = "2026-01-21T09:02:00.000Z";
  *   response: string;
  *   severity: number;
  *   confidence: number;
+ *   reviewReasons?: string[];
  * }} DemoOutcome
  */
 /**
@@ -157,6 +158,9 @@ function demoOutcome(studentIndex, problemIndex, phase) {
   if (studentIndex === 18 && problemIndex === 4) {
     return misconception("EQUALITY_AS_OPERATOR", "17", 2);
   }
+  if (studentIndex === 19 && problemIndex === 4) {
+    return outOfScope("Diagram response without an algebraic answer");
+  }
   if (studentIndex === 20 && problemIndex === 0) {
     return review("−3x 12");
   }
@@ -198,6 +202,22 @@ function review(response) {
     response,
     severity: 0,
     confidence: 0.42,
+    reviewReasons: [
+      "LOW_TRANSCRIPTION_CONFIDENCE",
+      "IMPLAUSIBLE_TRANSCRIPTION_STEP",
+    ],
+  };
+}
+
+/** @param {string} response @returns {DemoOutcome} */
+function outOfScope(response) {
+  return {
+    outcome: "NEEDS_REVIEW",
+    misconceptionId: null,
+    response,
+    severity: 0,
+    confidence: 0.36,
+    reviewReasons: ["NO_TAXONOMY_MATCH"],
   };
 }
 
@@ -502,10 +522,12 @@ function insertClassWork(database, input) {
         isReview ? 0.55 : 0.99,
         result.confidence,
         isReview
-          ? JSON.stringify([
-              "The final line cannot be parsed confidently as an equation.",
-              "Teacher confirmation is required before classification.",
-            ])
+          ? JSON.stringify(
+              result.reviewReasons ?? [
+                "LOW_CONFIDENCE",
+                "MODEL_REQUESTED_REVIEW",
+              ],
+            )
           : "[]",
         input.diagnosedAt,
       );
