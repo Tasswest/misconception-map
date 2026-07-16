@@ -463,6 +463,78 @@ assert.ok(
   !implausibleFinalLine.reviewReasons.includes("LOW_TRANSCRIPTION_CONFIDENCE"),
 );
 
+const validAnswerWithTrailingAnnotation = normalizeDiagnosisAIOutput({
+  output: {
+    ...baseOutput,
+    outcome: "CORRECT",
+    transcription:
+      "-2x = 4\nx = -2\nThe squared terms cancel, so the remaining equation is linear.",
+    steps: [
+      {
+        position: 1,
+        step: "-2x = 4",
+        normalizedMath: "-2x=4",
+        stepKind: "EQUATION",
+        parseIssue: null,
+        correctness: "CORRECT",
+        correctNote: "The simplified equation is valid.",
+        errorNote: null,
+        evidenceQuote: "-2x = 4",
+      },
+      {
+        position: 2,
+        step: "x = -2",
+        normalizedMath: "x=-2",
+        stepKind: "ANSWER",
+        parseIssue: null,
+        correctness: "CORRECT",
+        correctNote: "Dividing both sides by -2 gives the correct solution.",
+        errorNote: null,
+        evidenceQuote: "x = -2",
+      },
+      {
+        position: 3,
+        step: "The squared terms cancel, so the remaining equation is linear.",
+        normalizedMath: null,
+        stepKind: "ANNOTATION",
+        parseIssue: null,
+        correctness: "CORRECT",
+        correctNote: "This is a valid explanatory note.",
+        errorNote: null,
+        evidenceQuote:
+          "The squared terms cancel, so the remaining equation is linear.",
+      },
+    ],
+    observedPrompt:
+      "Solve 5x² - 3(2x + 1) = 5x² - 4x + 1.",
+    studentAnswer: "x = -2",
+    normalizedAnswer: "x=-2",
+    misconceptionId: null,
+    confidence: 0.96,
+    transcriptionConfidence: 0.95,
+    reasoningConfidence: 0.96,
+    evidenceQuote: "x = -2",
+    severity: 0,
+    observedTransformation: null,
+    strategyVariant: null,
+    reviewReasons: [],
+    candidates: [],
+  },
+  assignmentDomain: "ALGEBRA",
+  inputKind: "IMAGE",
+  observedPrompt:
+    "Solve 5x² - 3(2x + 1) = 5x² - 4x + 1.",
+  correctAnswer: "x = -2",
+  typedResponse: null,
+});
+assert.equal(validAnswerWithTrailingAnnotation.coreDiagnosis.outcome, "CORRECT");
+assert.ok(
+  !validAnswerWithTrailingAnnotation.reviewReasons.includes(
+    "IMPLAUSIBLE_TRANSCRIPTION_STEP",
+  ),
+  "a prose annotation after a valid final answer must not trigger the handwriting guard",
+);
+
 const typed = normalizeDiagnosisAIOutput({
   output: {
     ...baseOutput,

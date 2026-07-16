@@ -189,17 +189,19 @@ export function normalizeDiagnosisAIOutput(input) {
     };
   });
 
-  const finalStep = steps.at(-1);
+  const finalMathStep = steps.findLast(
+    (step) => step.stepKind !== "ANNOTATION",
+  );
   const equationAnswerExpected =
     input.inputKind === "IMAGE" &&
     input.assignmentDomain === "ALGEBRA" &&
     /=/u.test(input.correctAnswer);
   const finalStepIsImplausible =
-    finalStep !== undefined &&
-    (finalStep.stepKind === "UNPARSEABLE" ||
+    finalMathStep !== undefined &&
+    (finalMathStep.stepKind === "UNPARSEABLE" ||
       (equationAnswerExpected &&
-        !containsEquationOrAnswerMarker(finalStep.step) &&
-        !isPlausibleScalarAnswer(finalStep.step)));
+        !containsEquationOrAnswerMarker(finalMathStep.step) &&
+        !isPlausibleScalarAnswer(finalMathStep.step)));
 
   if (finalStepIsImplausible) {
     policyReasons.add("IMPLAUSIBLE_TRANSCRIPTION_STEP");
