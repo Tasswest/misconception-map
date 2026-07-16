@@ -650,9 +650,9 @@ export function DiagnosisWorkbench({
           </h1>
           <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
             {currentStep === 2
-              ? "Add one deidentified booklet or page for each student."
+              ? "Add one deidentified booklet or page for each student. Select several files at once or add them one after another."
               : currentStep === 3
-                ? "Check the matches, then let AI correct the queued copies."
+                ? "Keep adding copies until the queue is complete, check every student match, then let AI correct them together."
                 : "Automatic correction is complete. Review only the items that were flagged."}
           </p>
         </div>
@@ -713,9 +713,28 @@ export function DiagnosisWorkbench({
             </div>
           ) : null}
 
-          {currentStep === 2 ? (
-          <article className="overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
-            <div className="flex border-b border-black/[0.06] px-5 pt-4 md:px-6">
+          {currentStep === 2 || currentStep === 3 ? (
+          <article
+            className="scroll-mt-6 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]"
+            id="student-copies"
+          >
+            <div className="border-b border-black/[0.06] px-5 pt-5 md:px-6">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
+                    Student copies
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold tracking-[-0.025em]">
+                    Add all student work
+                  </h2>
+                </div>
+                {queuedPhotoCount > 0 ? (
+                  <p className="pb-1 text-xs font-semibold text-[var(--muted)]">
+                    {queuedPhotoCount} {queuedPhotoCount === 1 ? "file" : "files"} ready in this batch
+                  </p>
+                ) : null}
+              </div>
+              <div className="mt-3 flex">
               <TabButton
                 active={activeTab === "PHOTOS"}
                 icon={<ImageIcon className="size-4" />}
@@ -728,6 +747,7 @@ export function DiagnosisWorkbench({
                 label="Typed answers"
                 onClick={() => setActiveTab("TYPED")}
               />
+              </div>
             </div>
 
             <div className="p-5 md:p-6">
@@ -751,6 +771,7 @@ export function DiagnosisWorkbench({
                   onDrop={onDrop}
                 >
                   <input
+                    aria-describedby="student-work-files-help"
                     accept="image/jpeg,image/png,image/webp,application/pdf"
                     className="sr-only"
                     disabled={processing || queuedPhotoCount >= MAX_PHOTOS}
@@ -771,14 +792,17 @@ export function DiagnosisWorkbench({
                           ? "Drop files here"
                           : "Drop handwritten work here"}
                     </h2>
-                    <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">
-                      JPEG, PNG, WebP, or PDF · up to 10 MB each · {MAX_PHOTOS} files per queue
+                    <p
+                      className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--muted)]"
+                      id="student-work-files-help"
+                    >
+                      Choose up to {MAX_PHOTOS} files together, or keep adding them one at a time. JPEG, PNG, WebP, or PDF · up to 10 MB each.
                     </p>
                     <label
                       className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm font-semibold shadow-sm transition hover:bg-[var(--canvas)]"
                       htmlFor="student-work-files"
                     >
-                      <PlusIcon className="size-4" /> Choose files
+                      <PlusIcon className="size-4" /> Choose student files
                     </label>
                   </div>
                 </div>

@@ -109,6 +109,10 @@ function verifyIntentionalStates() {
   assert.match(setup, /OPENAI_API_KEY/);
   assert.match(workbench, /!liveAiReady/);
   assert.match(workbench, /disabled=.*!liveAiReady/s);
+  assert.match(setup, /diagnose#student-copies/);
+  assert.match(workbench, /currentStep === 2 \|\| currentStep === 3/);
+  assert.match(workbench, /id="student-work-files"[\s\S]*multiple/);
+  assert.match(workbench, /Choose up to \{MAX_PHOTOS\} files together/);
 }
 
 function verifyCopyAndHierarchy() {

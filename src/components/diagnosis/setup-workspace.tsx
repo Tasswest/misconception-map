@@ -300,7 +300,7 @@ export function SetupWorkspace({
         { exercises: worksheetReview.exercises },
       );
       window.location.assign(
-        `/assignments/${encodeURIComponent(worksheetReview.assignmentId)}/diagnose`,
+        `/assignments/${encodeURIComponent(worksheetReview.assignmentId)}/diagnose#student-copies`,
       );
     } catch (caught) {
       setError(messageFromError(caught));
