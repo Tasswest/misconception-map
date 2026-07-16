@@ -8,6 +8,10 @@ import { exerciseQuestionReference } from "@/domain/exam-labels";
 import { canonicalizeMathAnswer } from "@/domain/math-normalization.mjs";
 import { extractStudentFinalAnswer } from "@/domain/student-final-answer.mjs";
 import {
+  effectivePredictionKind,
+  mathematicalSkillKey,
+} from "@/domain/student-model-predictions.mjs";
+import {
   MISCONCEPTION_BY_ID,
   misconceptionIdSchema,
 } from "@/domain/misconception-taxonomy.mjs";
@@ -18,10 +22,12 @@ const idSchema = z.string().uuid();
 
 type PredictionRun = {
   result: {
+    predictionKind: "FLAWED_RULE_APPLIES" | "MASTERY" | "ABSTAIN";
     ruleApplied: boolean;
     predictedAnswer: string | null;
     confidence: number;
     abstentionReason: string | null;
+    masteryEvidenceUsed: string | null;
     trace: {
       inputFormMatched: string;
       appliedTransformation: string;
@@ -49,6 +55,9 @@ export class PredictionRepositoryError extends Error {
     | "TARGET_ALREADY_SEEN"
     | "PERSONAL_DATA_DETECTED"
     | "PREDICTION_CONFLICT"
+    | "REVISION_NOT_FOUND"
+    | "REVISION_ALREADY_DECIDED"
+    | "REVISION_MODEL_CHANGED"
     | "PERSISTENCE_ERROR";
 
   constructor(
@@ -74,6 +83,15 @@ export type PredictionContext = {
   ruleStatement: string;
   formalPattern: Record<string, string>;
   scopeLimits: string[];
+  observedApplicationCount: number | null;
+  observedOpportunityCount: number | null;
+  observedApplicationRate: number | null;
+  masteryEvidence: Array<{
+    problemPrompt: string;
+    correctAnswer: string;
+    skillKey: string;
+    evidenceSummary: string;
+  }>;
   targetAssignmentId: string;
   targetAssignmentTitle: string;
   targetAssignmentItemId: string;
@@ -116,6 +134,7 @@ export function getPredictionContext(input: {
         "hypothesis.taxonomy_version, hypothesis.misconception_id,",
         "model.id AS model_version_id, model.version AS model_version, model.status,",
         "model.rule_statement, model.formal_pattern_json, model.scope_limits_json,",
+        "model.observed_application_count, model.observed_opportunity_count, model.observed_application_rate,",
         "item.id AS target_item_id, assignment.id AS target_assignment_id, assignment.title AS target_assignment_title,",
         "problem.id AS problem_id, problem.prompt, problem.answer_format, problem.correct_answer,",
         "problem.canonical_correct_answer, problem.content_hash",
@@ -148,6 +167,9 @@ export function getPredictionContext(input: {
         rule_statement: string;
         formal_pattern_json: string;
         scope_limits_json: string;
+        observed_application_count: number | null;
+        observed_opportunity_count: number | null;
+        observed_application_rate: number | null;
         target_item_id: string;
         target_assignment_id: string;
         target_assignment_title: string;
@@ -216,6 +238,28 @@ export function getPredictionContext(input: {
     );
   }
 
+  const targetSkillKey = mathematicalSkillKey(row.prompt);
+  const masteryEvidence = getDatabase()
+    .prepare(
+      [
+        "SELECT problem.prompt, problem.correct_answer, mastery.skill_key, mastery.rationale",
+        "FROM student_model_mastery_evidence AS mastery",
+        "JOIN diagnoses AS diagnosis ON diagnosis.id = mastery.diagnosis_id",
+        "JOIN answer_versions AS answer_version ON answer_version.id = diagnosis.answer_version_id",
+        "JOIN submission_answers AS answer ON answer.id = answer_version.submission_answer_id",
+        "JOIN assignment_items AS item ON item.id = answer.assignment_item_id",
+        "JOIN problems AS problem ON problem.id = item.problem_id",
+        "WHERE mastery.student_model_version_id = ? AND mastery.skill_key = ?",
+        "ORDER BY mastery.created_at DESC, mastery.diagnosis_id LIMIT 12",
+      ].join(" "),
+    )
+    .all(row.model_version_id, targetSkillKey) as Array<{
+    prompt: string;
+    correct_answer: string;
+    skill_key: string;
+    rationale: string;
+  }>;
+
   return {
     classId: row.class_id,
     membershipId: row.membership_id,
@@ -228,6 +272,15 @@ export function getPredictionContext(input: {
     ruleStatement: row.rule_statement,
     formalPattern: parseJsonObject(row.formal_pattern_json),
     scopeLimits: parseStringArray(row.scope_limits_json),
+    observedApplicationCount: row.observed_application_count,
+    observedOpportunityCount: row.observed_opportunity_count,
+    observedApplicationRate: row.observed_application_rate,
+    masteryEvidence: masteryEvidence.map((evidence) => ({
+      problemPrompt: evidence.prompt,
+      correctAnswer: evidence.correct_answer,
+      skillKey: evidence.skill_key,
+      evidenceSummary: evidence.rationale,
+    })),
     targetAssignmentId: row.target_assignment_id,
     targetAssignmentTitle: row.target_assignment_title,
     targetAssignmentItemId: row.target_item_id,
@@ -286,6 +339,11 @@ export function persistLockedPrediction(input: {
   const predictionId = randomUUID();
   const runId = randomUUID();
   const lockedAt = new Date().toISOString();
+  const confidence =
+    input.run.result.predictionKind === "FLAWED_RULE_APPLIES" &&
+    input.context.observedApplicationRate !== null
+      ? input.context.observedApplicationRate
+      : input.run.result.confidence;
 
   try {
     database.transaction(() => {
@@ -319,8 +377,9 @@ export function persistLockedPrediction(input: {
             "INSERT INTO predictions",
             "(id, class_id, membership_id, student_model_version_id, problem_id, target_assignment_item_id,",
             "rule_applied, predicted_answer, canonical_predicted_answer, correct_answer_snapshot, canonical_correct_answer,",
-            "trace_json, confidence, abstention_reason, ai_run_id, model_name, prompt_version, schema_version, locked_at, created_at)",
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "trace_json, confidence, abstention_reason, ai_run_id, model_name, prompt_version, schema_version, locked_at, created_at,",
+            "prediction_kind, consistency_snapshot, mastery_evidence_summary)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           ].join(" "),
         )
         .run(
@@ -330,7 +389,7 @@ export function persistLockedPrediction(input: {
           input.context.modelVersionId,
           input.context.targetProblemId,
           input.context.targetAssignmentItemId,
-          input.run.result.ruleApplied ? 1 : 0,
+          input.run.result.predictionKind === "ABSTAIN" ? 0 : 1,
           input.run.result.predictedAnswer,
           input.run.result.predictedAnswer
             ? canonicalizeMathAnswer(input.run.result.predictedAnswer)
@@ -338,7 +397,7 @@ export function persistLockedPrediction(input: {
           input.context.correctAnswer,
           input.context.canonicalCorrectAnswer,
           JSON.stringify(input.run.result.trace),
-          input.run.result.confidence,
+          confidence,
           input.run.result.abstentionReason,
           runId,
           input.run.modelName,
@@ -346,6 +405,9 @@ export function persistLockedPrediction(input: {
           input.run.schemaVersion,
           lockedAt,
           lockedAt,
+          input.run.result.predictionKind,
+          input.context.observedApplicationRate,
+          input.run.result.masteryEvidenceUsed,
         );
     })();
   } catch (error) {
@@ -378,8 +440,9 @@ export function persistLockedPrediction(input: {
     problemPrompt: input.context.problemPrompt,
     correctAnswer: input.context.correctAnswer,
     ruleApplied: input.run.result.ruleApplied,
+    predictionKind: input.run.result.predictionKind,
     predictedAnswer: input.run.result.predictedAnswer,
-    confidence: input.run.result.confidence,
+    confidence,
     abstentionReason: input.run.result.abstentionReason,
     trace: input.run.result.trace,
     lockedAt,
@@ -417,6 +480,10 @@ type ModelRow = {
     | "RETIRED";
   rule_statement: string;
   confidence: number;
+  observed_application_count: number | null;
+  observed_opportunity_count: number | null;
+  observed_application_rate: number | null;
+  mastery_evidence_count: number | null;
   domain: "ALGEBRA" | "FRACTIONS";
   taxonomy_version: string;
   misconception_id: MisconceptionId;
@@ -496,6 +563,7 @@ export function getPredictionLabData(classIdInput: string) {
     .prepare(
       [
         "SELECT model.id, hypothesis.membership_id, model.version, model.status, model.rule_statement, model.confidence,",
+        "model.observed_application_count, model.observed_opportunity_count, model.observed_application_rate, model.mastery_evidence_count,",
         "hypothesis.domain, hypothesis.taxonomy_version, hypothesis.misconception_id, model.created_at,",
         "coalesce(finalization.support_count, (",
         "SELECT count(DISTINCT answer_version.submission_answer_id) FROM student_model_evidence AS evidence",
@@ -555,7 +623,8 @@ export function getPredictionLabData(classIdInput: string) {
         "WHERE outcome.version = (SELECT max(candidate.version) FROM prediction_outcome_versions AS candidate WHERE candidate.prediction_id = outcome.prediction_id)",
         ")",
         "SELECT prediction.id, prediction.membership_id, prediction.student_model_version_id, model.version AS model_version,",
-        "hypothesis.misconception_id, prediction.rule_applied, prediction.predicted_answer,",
+        "hypothesis.misconception_id, prediction.rule_applied, prediction.prediction_kind, prediction.predicted_answer,",
+        "prediction.consistency_snapshot, prediction.mastery_evidence_summary,",
         "prediction.correct_answer_snapshot, prediction.trace_json, prediction.confidence, prediction.abstention_reason, prediction.locked_at,",
         "item.id AS target_item_id, item.question_label, exercise.exercise_label, assignment.id AS assignment_id, assignment.title AS assignment_title, problem.prompt, problem.content_hash AS problem_content_hash,",
         "invalidation.reason AS invalidation_reason, invalidation.note AS invalidation_note, invalidation.invalidated_at,",
@@ -579,10 +648,13 @@ export function getPredictionLabData(classIdInput: string) {
     model_version: number;
     misconception_id: MisconceptionId;
     rule_applied: 0 | 1;
+    prediction_kind: "FLAWED_RULE_APPLIES" | "MASTERY" | "ABSTAIN" | null;
     predicted_answer: string | null;
     correct_answer_snapshot: string;
     trace_json: string;
     confidence: number;
+    consistency_snapshot: number | null;
+    mastery_evidence_summary: string | null;
     abstention_reason: string | null;
     locked_at: string;
     target_item_id: string;
@@ -601,6 +673,32 @@ export function getPredictionLabData(classIdInput: string) {
     evaluated_at: string | null;
   }>;
 
+  const revisionRows = database
+    .prepare(
+      [
+        "SELECT suggestion.id, suggestion.prediction_id, suggestion.suggestion_kind, suggestion.proposed_rule_statement,",
+        "suggestion.proposed_application_rate, suggestion.rationale, suggestion.evidence_connection, suggestion.created_at,",
+        "decision.action, decision.note, decision.resulting_model_version_id, decision.created_at AS decided_at",
+        "FROM student_model_revision_suggestions AS suggestion",
+        "LEFT JOIN student_model_revision_decisions AS decision ON decision.suggestion_id = suggestion.id",
+        "WHERE suggestion.class_id = ? ORDER BY suggestion.created_at DESC",
+      ].join(" "),
+    )
+    .all(classId) as Array<{
+    id: string;
+    prediction_id: string;
+    suggestion_kind: "REVISE_RULE" | "DOWNGRADE_CONSISTENCY";
+    proposed_rule_statement: string | null;
+    proposed_application_rate: number | null;
+    rationale: string;
+    evidence_connection: string;
+    created_at: string;
+    action: "CONFIRM" | "DISMISS" | null;
+    note: string | null;
+    resulting_model_version_id: string | null;
+    decided_at: string | null;
+  }>;
+
   const metricRows = database
     .prepare("SELECT * FROM student_prediction_metrics")
     .all() as Array<{
@@ -613,6 +711,12 @@ export function getPredictionLabData(classIdInput: string) {
     scorable_predictions: number;
     matched_predictions: number;
     prediction_accuracy: number | null;
+    flawed_rule_predictions: number;
+    mastery_predictions: number;
+    abstentions: number;
+    expected_flawed_matches: number;
+    flawed_scorable_predictions: number;
+    flawed_matched_predictions: number;
   }>;
 
   return {
@@ -658,6 +762,10 @@ export function getPredictionLabData(classIdInput: string) {
             status: model.status,
             ruleStatement: model.rule_statement,
             confidence: model.confidence,
+            observedApplicationCount: model.observed_application_count,
+            observedOpportunityCount: model.observed_opportunity_count,
+            observedApplicationRate: model.observed_application_rate,
+            masteryEvidenceCount: model.mastery_evidence_count,
             domain: model.domain,
             misconceptionId: model.misconception_id,
             misconceptionLabel: taxonomy?.label ?? model.misconception_id,
@@ -716,10 +824,20 @@ export function getPredictionLabData(classIdInput: string) {
               prediction.question_label,
             ),
             targetAssignmentItemId: prediction.target_item_id,
-            ruleApplied: prediction.rule_applied === 1,
+            ruleApplied:
+              effectivePredictionKind({
+                predictionKind: prediction.prediction_kind,
+                ruleApplied: prediction.rule_applied === 1,
+              }) === "FLAWED_RULE_APPLIES",
+            predictionKind: effectivePredictionKind({
+              predictionKind: prediction.prediction_kind,
+              ruleApplied: prediction.rule_applied === 1,
+            }) as "FLAWED_RULE_APPLIES" | "MASTERY" | "ABSTAIN",
             predictedAnswer: prediction.predicted_answer,
             correctAnswer: prediction.correct_answer_snapshot,
             confidence: prediction.confidence,
+            consistencySnapshot: prediction.consistency_snapshot,
+            masteryEvidenceSummary: prediction.mastery_evidence_summary,
             abstentionReason: prediction.abstention_reason,
             trace: parseJsonObject(prediction.trace_json),
             lockedAt: prediction.locked_at,
@@ -738,6 +856,32 @@ export function getPredictionLabData(classIdInput: string) {
                   evaluatedAt: prediction.evaluated_at as string,
                 }
               : null,
+            revisionSuggestion: (() => {
+              const suggestion = revisionRows.find(
+                (candidate) => candidate.prediction_id === prediction.id,
+              );
+              return suggestion
+                ? {
+                    id: suggestion.id,
+                    kind: suggestion.suggestion_kind,
+                    proposedRuleStatement: suggestion.proposed_rule_statement,
+                    proposedApplicationRate:
+                      suggestion.proposed_application_rate,
+                    rationale: suggestion.rationale,
+                    evidenceConnection: suggestion.evidence_connection,
+                    createdAt: suggestion.created_at,
+                    decision: suggestion.action
+                      ? {
+                          action: suggestion.action,
+                          note: suggestion.note,
+                          resultingModelVersionId:
+                            suggestion.resulting_model_version_id,
+                          decidedAt: suggestion.decided_at as string,
+                        }
+                      : null,
+                  }
+                : null;
+            })(),
           })),
         metrics: metric
           ? {
@@ -749,6 +893,12 @@ export function getPredictionLabData(classIdInput: string) {
               scorable: metric.scorable_predictions,
               matched: metric.matched_predictions,
               accuracy: metric.prediction_accuracy,
+              flawedRule: metric.flawed_rule_predictions,
+              mastery: metric.mastery_predictions,
+              abstentions: metric.abstentions,
+              expectedFlawedMatches: metric.expected_flawed_matches,
+              flawedScorable: metric.flawed_scorable_predictions,
+              flawedMatched: metric.flawed_matched_predictions,
             }
           : {
               total: 0,
@@ -759,6 +909,12 @@ export function getPredictionLabData(classIdInput: string) {
               scorable: 0,
               matched: 0,
               accuracy: null,
+              flawedRule: 0,
+              mastery: 0,
+              abstentions: 0,
+              expectedFlawedMatches: 0,
+              flawedScorable: 0,
+              flawedMatched: 0,
             },
       };
     }),
@@ -956,4 +1112,469 @@ export function synchronizePredictionOutcomesForClass(classIdInput: string) {
   })();
 
   return { created };
+}
+
+export type RevisionSuggestionContext = {
+  classId: string;
+  membershipId: string;
+  modelVersionId: string;
+  modelVersion: number;
+  domain: "ALGEBRA" | "FRACTIONS";
+  misconceptionId: MisconceptionId;
+  misconceptionLabel: string;
+  ruleStatement: string;
+  formalPattern: Record<string, string>;
+  scopeLimits: string[];
+  observedApplicationCount: number | null;
+  observedOpportunityCount: number | null;
+  observedApplicationRate: number | null;
+  predictionId: string;
+  predictionKind: "FLAWED_RULE_APPLIES" | "MASTERY" | "ABSTAIN";
+  problemPrompt: string;
+  predictedAnswer: string;
+  actualAnswer: string;
+  correctAnswer: string;
+  diagnosisId: string;
+  diagnosisOutcome: "CORRECT" | "MISCONCEPTION";
+  observedTransformation: string | null;
+  evidenceQuote: string | null;
+};
+
+export function listUnsuggestedPredictionMismatches(
+  classIdInput: string,
+): RevisionSuggestionContext[] {
+  const classId = idSchema.parse(classIdInput);
+  const rows = getDatabase()
+    .prepare(
+      [
+        "WITH latest_outcome AS (",
+        "SELECT outcome.* FROM prediction_outcome_versions AS outcome",
+        "WHERE outcome.version = (SELECT max(candidate.version) FROM prediction_outcome_versions AS candidate WHERE candidate.prediction_id = outcome.prediction_id)",
+        ")",
+        "SELECT prediction.class_id, prediction.membership_id, prediction.id AS prediction_id,",
+        "prediction.prediction_kind, prediction.rule_applied, prediction.predicted_answer, prediction.correct_answer_snapshot,",
+        "model.id AS model_id, model.version AS model_version, model.rule_statement, model.formal_pattern_json, model.scope_limits_json,",
+        "model.observed_application_count, model.observed_opportunity_count, model.observed_application_rate,",
+        "hypothesis.domain, hypothesis.misconception_id, problem.prompt, outcome.actual_answer_snapshot,",
+        "diagnosis.id AS diagnosis_id, diagnosis.outcome AS diagnosis_outcome, diagnosis.observed_transformation, diagnosis.evidence_quote",
+        "FROM predictions AS prediction",
+        "JOIN latest_outcome AS outcome ON outcome.prediction_id = prediction.id AND outcome.match_state = 'MISMATCH'",
+        "JOIN answer_versions AS outcome_answer_version ON outcome_answer_version.id = outcome.answer_version_id",
+        "JOIN answer_versions AS diagnosed_answer_version ON diagnosed_answer_version.submission_answer_id = outcome_answer_version.submission_answer_id",
+        "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = diagnosed_answer_version.id",
+        "JOIN student_model_versions AS model ON model.id = prediction.student_model_version_id",
+        "JOIN student_model_hypotheses AS hypothesis ON hypothesis.id = model.hypothesis_id",
+        "JOIN problems AS problem ON problem.id = prediction.problem_id",
+        "LEFT JOIN prediction_invalidations AS invalidation ON invalidation.prediction_id = prediction.id",
+        "LEFT JOIN student_model_revision_suggestions AS suggestion ON suggestion.prediction_id = prediction.id",
+        "WHERE prediction.class_id = ? AND invalidation.prediction_id IS NULL AND suggestion.id IS NULL",
+        "AND diagnosis.id = (",
+        "SELECT latest_diagnosis.id FROM diagnoses AS latest_diagnosis",
+        "JOIN answer_versions AS latest_answer_version ON latest_answer_version.id = latest_diagnosis.answer_version_id",
+        "WHERE latest_answer_version.submission_answer_id = outcome_answer_version.submission_answer_id",
+        "ORDER BY latest_diagnosis.created_at DESC, latest_diagnosis.version DESC, latest_diagnosis.id DESC LIMIT 1",
+        ") ORDER BY outcome.evaluated_at, prediction.id",
+      ].join(" "),
+    )
+    .all(classId) as Array<{
+    class_id: string;
+    membership_id: string;
+    prediction_id: string;
+    prediction_kind: "FLAWED_RULE_APPLIES" | "MASTERY" | "ABSTAIN" | null;
+    rule_applied: 0 | 1;
+    predicted_answer: string;
+    correct_answer_snapshot: string;
+    model_id: string;
+    model_version: number;
+    rule_statement: string;
+    formal_pattern_json: string;
+    scope_limits_json: string;
+    observed_application_count: number | null;
+    observed_opportunity_count: number | null;
+    observed_application_rate: number | null;
+    domain: "ALGEBRA" | "FRACTIONS";
+    misconception_id: MisconceptionId;
+    prompt: string;
+    actual_answer_snapshot: string;
+    diagnosis_id: string;
+    diagnosis_outcome: "CORRECT" | "MISCONCEPTION";
+    observed_transformation: string | null;
+    evidence_quote: string | null;
+  }>;
+  return rows.map((row) => ({
+    classId: row.class_id,
+    membershipId: row.membership_id,
+    modelVersionId: row.model_id,
+    modelVersion: row.model_version,
+    domain: row.domain,
+    misconceptionId: row.misconception_id,
+    misconceptionLabel:
+      MISCONCEPTION_BY_ID.get(row.misconception_id)?.label ?? row.misconception_id,
+    ruleStatement: row.rule_statement,
+    formalPattern: parseJsonObject(row.formal_pattern_json),
+    scopeLimits: parseStringArray(row.scope_limits_json),
+    observedApplicationCount: row.observed_application_count,
+    observedOpportunityCount: row.observed_opportunity_count,
+    observedApplicationRate: row.observed_application_rate,
+    predictionId: row.prediction_id,
+    predictionKind: effectivePredictionKind({
+      predictionKind: row.prediction_kind,
+      ruleApplied: row.rule_applied === 1,
+    }) as "FLAWED_RULE_APPLIES" | "MASTERY" | "ABSTAIN",
+    problemPrompt: row.prompt,
+    predictedAnswer: row.predicted_answer,
+    actualAnswer: row.actual_answer_snapshot,
+    correctAnswer: row.correct_answer_snapshot,
+    diagnosisId: row.diagnosis_id,
+    diagnosisOutcome: row.diagnosis_outcome,
+    observedTransformation: row.observed_transformation,
+    evidenceQuote: row.evidence_quote,
+  }));
+}
+
+type RevisionSuggestionResult = {
+  suggestionKind: "REVISE_RULE" | "DOWNGRADE_CONSISTENCY";
+  proposedRuleStatement: string | null;
+  proposedFormalPattern: Record<string, string> | null;
+  proposedScopeLimits: string[] | null;
+  proposedApplicationRate: number | null;
+  rationale: string;
+  evidenceConnection: string;
+};
+
+type RevisionSuggestionRun = Omit<PredictionRun, "result"> & {
+  result: RevisionSuggestionResult;
+};
+
+export function fallbackConsistencyRevision(
+  context: RevisionSuggestionContext,
+): RevisionSuggestionResult {
+  const applicationCount = context.observedApplicationCount ?? 0;
+  const opportunityCount = context.observedOpportunityCount ?? 0;
+  const rate = applicationCount / (opportunityCount + 1);
+  return {
+    suggestionKind: "DOWNGRADE_CONSISTENCY",
+    proposedRuleStatement: null,
+    proposedFormalPattern: null,
+    proposedScopeLimits: null,
+    proposedApplicationRate: rate,
+    rationale:
+      "Keep the observable rule hypothesis, but lower its expected application rate because the later work did not match the locked prediction.",
+    evidenceConnection: `The model predicted ${context.predictedAnswer}; the later response was ${context.actualAnswer}.`,
+  };
+}
+
+export function persistRevisionSuggestion(input: {
+  context: RevisionSuggestionContext;
+  result: RevisionSuggestionResult;
+  run: RevisionSuggestionRun | null;
+}) {
+  const database = getDatabase();
+  const suggestionId = randomUUID();
+  const runId = input.run ? randomUUID() : null;
+  const createdAt = new Date().toISOString();
+  database.transaction(() => {
+    if (input.run && runId) {
+      database
+        .prepare(
+          [
+            "INSERT INTO ai_runs",
+            "(id, class_id, purpose, status, model_name, prompt_version, schema_version, input_hash, output_hash,",
+            "openai_response_id, input_tokens, output_tokens, latency_ms, started_at, completed_at)",
+            "VALUES (?, ?, 'STUDENT_MODEL', 'SUCCEEDED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          ].join(" "),
+        )
+        .run(
+          runId,
+          input.context.classId,
+          input.run.modelName,
+          input.run.promptVersion,
+          input.run.schemaVersion,
+          input.run.inputHash,
+          input.run.outputHash,
+          input.run.responseId,
+          input.run.inputTokens,
+          input.run.outputTokens,
+          input.run.latencyMs,
+          createdAt,
+          createdAt,
+        );
+    }
+    database
+      .prepare(
+        [
+          "INSERT INTO student_model_revision_suggestions",
+          "(id, class_id, membership_id, student_model_version_id, prediction_id, contradicting_diagnosis_id,",
+          "suggestion_kind, proposed_rule_statement, proposed_formal_pattern_json, proposed_scope_limits_json, proposed_application_rate,",
+          "rationale, evidence_connection, ai_run_id, model_name, prompt_version, schema_version, created_at)",
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ].join(" "),
+      )
+      .run(
+        suggestionId,
+        input.context.classId,
+        input.context.membershipId,
+        input.context.modelVersionId,
+        input.context.predictionId,
+        input.context.diagnosisId,
+        input.result.suggestionKind,
+        input.result.proposedRuleStatement,
+        input.result.proposedFormalPattern
+          ? JSON.stringify(input.result.proposedFormalPattern)
+          : null,
+        input.result.proposedScopeLimits
+          ? JSON.stringify(input.result.proposedScopeLimits)
+          : null,
+        input.result.proposedApplicationRate,
+        input.result.rationale,
+        input.result.evidenceConnection,
+        runId,
+        input.run?.modelName ?? null,
+        input.run?.promptVersion ?? null,
+        input.run?.schemaVersion ?? null,
+        createdAt,
+      );
+  })();
+  return { id: suggestionId };
+}
+
+export function decideRevisionSuggestion(input: {
+  suggestionId: string;
+  action: "CONFIRM" | "DISMISS";
+  note: string | null;
+}) {
+  const suggestionId = idSchema.parse(input.suggestionId);
+  const database = getDatabase();
+  const suggestion = database
+    .prepare(
+      [
+        "SELECT suggestion.*, model.hypothesis_id, model.version, model.rule_statement, model.formal_pattern_json,",
+        "model.scope_limits_json, model.confidence, model.observed_application_count, model.observed_opportunity_count,",
+        "model.observed_application_rate, model.mastery_evidence_count, model.superseded_at,",
+        "prediction.prediction_kind, prediction.rule_applied, problem.prompt, diagnosis.outcome AS diagnosis_outcome",
+        "FROM student_model_revision_suggestions AS suggestion",
+        "JOIN student_model_versions AS model ON model.id = suggestion.student_model_version_id",
+        "JOIN predictions AS prediction ON prediction.id = suggestion.prediction_id",
+        "JOIN problems AS problem ON problem.id = prediction.problem_id",
+        "JOIN diagnoses AS diagnosis ON diagnosis.id = suggestion.contradicting_diagnosis_id",
+        "WHERE suggestion.id = ?",
+      ].join(" "),
+    )
+    .get(suggestionId) as
+    | {
+        id: string;
+        class_id: string;
+        membership_id: string;
+        student_model_version_id: string;
+        contradicting_diagnosis_id: string;
+        suggestion_kind: "REVISE_RULE" | "DOWNGRADE_CONSISTENCY";
+        proposed_rule_statement: string | null;
+        proposed_formal_pattern_json: string | null;
+        proposed_scope_limits_json: string | null;
+        proposed_application_rate: number | null;
+        ai_run_id: string | null;
+        model_name: string | null;
+        prompt_version: string | null;
+        schema_version: string | null;
+        hypothesis_id: string;
+        version: number;
+        rule_statement: string;
+        formal_pattern_json: string;
+        scope_limits_json: string;
+        confidence: number;
+        observed_application_count: number | null;
+        observed_opportunity_count: number | null;
+        observed_application_rate: number | null;
+        mastery_evidence_count: number | null;
+        superseded_at: string | null;
+        prediction_kind: "FLAWED_RULE_APPLIES" | "MASTERY" | "ABSTAIN" | null;
+        rule_applied: 0 | 1;
+        prompt: string;
+        diagnosis_outcome: "CORRECT" | "MISCONCEPTION";
+      }
+    | undefined;
+  if (!suggestion) {
+    throw new PredictionRepositoryError(
+      "REVISION_NOT_FOUND",
+      "That revision suggestion is no longer available.",
+    );
+  }
+  if (
+    database
+      .prepare("SELECT 1 FROM student_model_revision_decisions WHERE suggestion_id = ?")
+      .get(suggestionId)
+  ) {
+    throw new PredictionRepositoryError(
+      "REVISION_ALREADY_DECIDED",
+      "That revision suggestion has already been decided.",
+    );
+  }
+  if (input.action === "DISMISS") {
+    database
+      .prepare(
+        "INSERT INTO student_model_revision_decisions (id, suggestion_id, action, note) VALUES (?, ?, 'DISMISS', ?)",
+      )
+      .run(randomUUID(), suggestionId, input.note);
+    return { action: input.action, modelVersionId: null };
+  }
+  if (suggestion.superseded_at !== null) {
+    throw new PredictionRepositoryError(
+      "REVISION_MODEL_CHANGED",
+      "The Student Model changed before this suggestion was confirmed.",
+    );
+  }
+
+  const modelVersionId = randomUUID();
+  const createdAt = new Date().toISOString();
+  const effectiveKind = effectivePredictionKind({
+    predictionKind: suggestion.prediction_kind,
+    ruleApplied: suggestion.rule_applied === 1,
+  });
+  const oldOpportunity = database
+    .prepare(
+      [
+        "SELECT count(*) AS opportunity_count,",
+        "sum(CASE WHEN application_state = 'APPLIED_RULE' THEN 1 ELSE 0 END) AS application_count",
+        "FROM student_model_opportunities WHERE student_model_version_id = ?",
+      ].join(" "),
+    )
+    .get(suggestion.student_model_version_id) as {
+    opportunity_count: number;
+    application_count: number | null;
+  };
+  const addsOpportunity = effectiveKind === "FLAWED_RULE_APPLIES";
+  const opportunityCount = oldOpportunity.opportunity_count
+    ? oldOpportunity.opportunity_count + (addsOpportunity ? 1 : 0)
+    : suggestion.observed_opportunity_count === null
+      ? null
+      : suggestion.observed_opportunity_count + (addsOpportunity ? 1 : 0);
+  const applicationCount = oldOpportunity.opportunity_count
+    ? (oldOpportunity.application_count ?? 0)
+    : suggestion.observed_application_count;
+  const applicationRate =
+    opportunityCount && applicationCount !== null
+      ? applicationCount / opportunityCount
+      : null;
+  const ruleStatement =
+    suggestion.suggestion_kind === "REVISE_RULE"
+      ? (suggestion.proposed_rule_statement as string)
+      : suggestion.rule_statement;
+  const formalPattern =
+    suggestion.suggestion_kind === "REVISE_RULE"
+      ? (suggestion.proposed_formal_pattern_json as string)
+      : suggestion.formal_pattern_json;
+  const scopeLimits =
+    suggestion.suggestion_kind === "REVISE_RULE"
+      ? (suggestion.proposed_scope_limits_json as string)
+      : suggestion.scope_limits_json;
+
+  database.transaction(() => {
+    const superseded = database
+      .prepare(
+        "UPDATE student_model_versions SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL",
+      )
+      .run(createdAt, suggestion.student_model_version_id);
+    if (superseded.changes !== 1) {
+      throw new PredictionRepositoryError(
+        "REVISION_MODEL_CHANGED",
+        "The Student Model changed before this suggestion was confirmed.",
+      );
+    }
+    database
+      .prepare(
+        [
+          "INSERT INTO student_model_versions",
+          "(id, hypothesis_id, version, status, rule_statement, formal_pattern_json, scope_limits_json, confidence,",
+          "support_count, contradiction_count, observed_application_count, observed_opportunity_count, observed_application_rate, mastery_evidence_count,",
+          "ai_run_id, model_name, prompt_version, schema_version, created_at)",
+          "VALUES (?, ?, ?, 'PROVISIONAL', ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ].join(" "),
+      )
+      .run(
+        modelVersionId,
+        suggestion.hypothesis_id,
+        suggestion.version + 1,
+        ruleStatement,
+        formalPattern,
+        scopeLimits,
+        suggestion.confidence,
+        applicationCount,
+        opportunityCount,
+        applicationRate,
+        suggestion.mastery_evidence_count,
+        suggestion.ai_run_id,
+        suggestion.model_name,
+        suggestion.prompt_version,
+        suggestion.schema_version,
+        createdAt,
+      );
+    database
+      .prepare(
+        [
+          "INSERT INTO student_model_evidence (student_model_version_id, diagnosis_id, role, weight, rationale)",
+          "SELECT ?, diagnosis_id, role, weight, 'Retained for teacher-confirmed revision: ' || rationale",
+          "FROM student_model_evidence WHERE student_model_version_id = ?",
+        ].join(" "),
+      )
+      .run(modelVersionId, suggestion.student_model_version_id);
+    database
+      .prepare(
+        [
+          "INSERT INTO student_model_opportunities (student_model_version_id, diagnosis_id, application_state, rationale)",
+          "SELECT ?, diagnosis_id, application_state, 'Retained for teacher-confirmed revision: ' || rationale",
+          "FROM student_model_opportunities WHERE student_model_version_id = ?",
+        ].join(" "),
+      )
+      .run(modelVersionId, suggestion.student_model_version_id);
+    database
+      .prepare(
+        [
+          "INSERT INTO student_model_mastery_evidence (student_model_version_id, diagnosis_id, skill_key, rationale)",
+          "SELECT ?, diagnosis_id, skill_key, 'Retained for teacher-confirmed revision: ' || rationale",
+          "FROM student_model_mastery_evidence WHERE student_model_version_id = ?",
+        ].join(" "),
+      )
+      .run(modelVersionId, suggestion.student_model_version_id);
+    if (addsOpportunity) {
+      database
+        .prepare(
+          [
+            "INSERT OR IGNORE INTO student_model_opportunities",
+            "(student_model_version_id, diagnosis_id, application_state, rationale)",
+            "VALUES (?, ?, 'DID_NOT_APPLY', ?)",
+          ].join(" "),
+        )
+        .run(
+          modelVersionId,
+          suggestion.contradicting_diagnosis_id,
+          "The teacher-confirmed revision includes the later outcome that contradicted the locked flawed-rule prediction.",
+        );
+    }
+    if (suggestion.diagnosis_outcome === "CORRECT") {
+      database
+        .prepare(
+          [
+            "INSERT OR IGNORE INTO student_model_mastery_evidence",
+            "(student_model_version_id, diagnosis_id, skill_key, rationale)",
+            "VALUES (?, ?, ?, ?)",
+          ].join(" "),
+        )
+        .run(
+          modelVersionId,
+          suggestion.contradicting_diagnosis_id,
+          mathematicalSkillKey(suggestion.prompt),
+          "The later response demonstrated correct reasoning on the prediction target.",
+        );
+    }
+    database
+      .prepare(
+        [
+          "INSERT INTO student_model_revision_decisions",
+          "(id, suggestion_id, action, note, resulting_model_version_id, created_at)",
+          "VALUES (?, ?, 'CONFIRM', ?, ?, ?)",
+        ].join(" "),
+      )
+      .run(randomUUID(), suggestionId, input.note, modelVersionId, createdAt);
+  })();
+  return { action: input.action, modelVersionId };
 }

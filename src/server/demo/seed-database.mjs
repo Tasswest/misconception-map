@@ -71,6 +71,9 @@ const baselineProblems = [
   { exerciseLabel: "Exercice 1 — Développer", questionLabel: "1.1", sharedContext: "Développer chaque expression en appliquant le facteur à tous les termes.", prompt: "Développer −(x + 6).", correct: "−x − 6" },
   { exerciseLabel: "Exercice 1 — Développer", questionLabel: "1.2", sharedContext: "Développer chaque expression en appliquant le facteur à tous les termes.", prompt: "Développer −2(y + 5).", correct: "−2y − 10" },
   { exerciseLabel: "Exercice 1 — Développer", questionLabel: "1.3", sharedContext: "Développer chaque expression en appliquant le facteur à tous les termes.", prompt: "Développer 3(a + 4).", correct: "3a + 12" },
+  { exerciseLabel: "Exercice 1 — Développer", questionLabel: "1.4", sharedContext: "Développer chaque expression en appliquant le facteur à tous les termes.", prompt: "Développer −3(b + 2).", correct: "−3b − 6" },
+  { exerciseLabel: "Exercice 1 — Développer", questionLabel: "1.5", sharedContext: "Développer chaque expression en appliquant le facteur à tous les termes.", prompt: "Développer −4(c − 3).", correct: "−4c + 12" },
+  { exerciseLabel: "Exercice 1 — Développer", questionLabel: "1.6", sharedContext: "Développer chaque expression en appliquant le facteur à tous les termes.", prompt: "Développer −5(d + 1).", correct: "−5d − 5" },
   { exerciseLabel: "Exercice 2 — Équation", questionLabel: "2.1", sharedContext: null, prompt: "Résoudre x + 7 = 12.", correct: "x = 5" },
   { exerciseLabel: "Exercice 3 — Réduire", questionLabel: "3.1", sharedContext: null, prompt: "Réduire 2x + 3 + x.", correct: "3x + 3" },
 ];
@@ -84,11 +87,11 @@ const followupProblems = [
 ];
 
 const predictedAnswers = [
-  { applied: true, answer: "−3x + 12", canonical: "-3x+12" },
-  { applied: true, answer: "−2y − 5", canonical: "-2y-5" },
-  { applied: true, answer: "−2a + 14", canonical: "-2a+14" },
-  { applied: true, answer: "−4m − 12", canonical: "-4m-12" },
-  { applied: false, answer: null, canonical: null },
+  { kind: "FLAWED_RULE_APPLIES", answer: "−3x + 12", canonical: "-3x+12" },
+  { kind: "FLAWED_RULE_APPLIES", answer: "−2y − 5", canonical: "-2y-5" },
+  { kind: "FLAWED_RULE_APPLIES", answer: "−2a + 14", canonical: "-2a+14" },
+  { kind: "FLAWED_RULE_APPLIES", answer: "−4m − 12", canonical: "-4m-12" },
+  { kind: "MASTERY", answer: "x = 6", canonical: "x=6" },
 ];
 
 /** @param {number} number */
@@ -132,13 +135,19 @@ function demoOutcome(studentIndex, problemIndex, phase) {
     if (studentIndex === 1 && problemIndex === 1) {
       return misconception("SIGN_ERROR_DISTRIBUTION", "−2y + 10", 3);
     }
+    if (studentIndex === 1 && problemIndex === 3) {
+      return misconception("SIGN_ERROR_DISTRIBUTION", "−3b + 6", 3);
+    }
+    if (studentIndex === 1 && problemIndex === 4) {
+      return misconception("SIGN_ERROR_DISTRIBUTION", "−4c − 12", 3);
+    }
     if (studentIndex >= 9 && studentIndex <= 12 && problemIndex === 2) {
       return misconception("DISTRIBUTION_ONE_TERM_ONLY", "3a + 4", 2);
     }
-    if (studentIndex >= 13 && studentIndex <= 15 && problemIndex === 3) {
+    if (studentIndex >= 13 && studentIndex <= 15 && problemIndex === 6) {
       return misconception("INVERSE_OPERATION_CONFUSION", "x = 19", 2);
     }
-    if (studentIndex >= 16 && studentIndex <= 18 && problemIndex === 4) {
+    if (studentIndex >= 16 && studentIndex <= 18 && problemIndex === 7) {
       return misconception("UNLIKE_TERMS_CONJOINED", "6x", 2);
     }
     return correct(problem.correct);
@@ -237,21 +246,14 @@ export function seedDemoDatabase(database) {
   if (existing) {
     database.transaction(() => {
       database
-        .prepare(
-          "UPDATE classes SET name = ?, archived_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
-        )
-        .run(CLASS_NAME, DEMO_CLASS_ID);
+        .prepare("DELETE FROM classes WHERE id = ?")
+        .run(DEMO_CLASS_ID);
       database
         .prepare(
-          "UPDATE assignments SET status = 'READY', archived_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE class_id = ?",
+          "DELETE FROM students WHERE is_demo = 1 AND NOT EXISTS (SELECT 1 FROM class_memberships WHERE student_id = students.id)",
         )
-        .run(DEMO_CLASS_ID);
+        .run();
     })();
-    return {
-      classId: DEMO_CLASS_ID,
-      assignmentId: DEMO_FOLLOWUP_ASSIGNMENT_ID,
-      created: false,
-    };
   }
 
   database.transaction(() => {
@@ -335,7 +337,7 @@ export function seedDemoDatabase(database) {
       );
     database
       .prepare(
-        "INSERT INTO student_model_versions (id, hypothesis_id, version, status, rule_statement, formal_pattern_json, scope_limits_json, confidence, support_count, contradiction_count, model_name, prompt_version, schema_version, created_at) VALUES (?, ?, 1, 'PROVISIONAL', ?, ?, ?, 0.93, 0, 0, 'gpt-5.6', 'demo-seed-v1', 'student-model-v1', ?)",
+        "INSERT INTO student_model_versions (id, hypothesis_id, version, status, rule_statement, formal_pattern_json, scope_limits_json, confidence, support_count, contradiction_count, observed_application_count, observed_opportunity_count, observed_application_rate, mastery_evidence_count, model_name, prompt_version, schema_version, created_at) VALUES (?, ?, 1, 'PROVISIONAL', ?, ?, ?, 0.93, 0, 0, 4, 5, 0.8, 2, 'gpt-5.6', 'demo-seed-v2', 'student-model-v1.1', ?)",
       )
       .run(
         modelId,
@@ -370,6 +372,42 @@ export function seedDemoDatabase(database) {
       "The same signed transformation repeats on a structurally different problem.",
       "2026-01-15T08:03:00.000Z",
     );
+    const insertOpportunity = database.prepare(
+      "INSERT INTO student_model_opportunities (student_model_version_id, diagnosis_id, application_state, rationale, created_at) VALUES (?, ?, ?, ?, ?)",
+    );
+    [1, 2, 4, 5].forEach((questionNumber, index) => {
+      insertOpportunity.run(
+        modelId,
+        diagnosisIds.get(`baseline:1:${questionNumber}`),
+        "APPLIED_RULE",
+        "The synthetic learner applied the signed-distribution rule on this observed opportunity.",
+        `2026-01-15T08:0${index + 1}:30.000Z`,
+      );
+    });
+    insertOpportunity.run(
+      modelId,
+      diagnosisIds.get("baseline:1:6"),
+      "DID_NOT_APPLY",
+      "The same structure offered an opportunity, but the synthetic learner distributed the sign correctly.",
+      "2026-01-15T08:04:30.000Z",
+    );
+    const insertMastery = database.prepare(
+      "INSERT INTO student_model_mastery_evidence (student_model_version_id, diagnosis_id, skill_key, rationale, created_at) VALUES (?, ?, ?, ?, ?)",
+    );
+    insertMastery.run(
+      modelId,
+      diagnosisIds.get("baseline:1:6"),
+      "DISTRIBUTION",
+      "Demonstrated correct signed distribution on a related problem.",
+      "2026-01-15T08:04:31.000Z",
+    );
+    insertMastery.run(
+      modelId,
+      diagnosisIds.get("baseline:1:7"),
+      "EQUATION_SOLVING",
+      "Demonstrated correct one-step equation solving before the held-out check.",
+      "2026-01-15T08:04:32.000Z",
+    );
     database
       .prepare(
         "INSERT INTO student_model_finalizations (student_model_version_id, final_status, support_count, contradiction_count, ambiguous_count, finalizer_type, note, finalized_at) VALUES (?, 'SUPPORTED', 2, 0, 0, 'SYSTEM', ?, ?)",
@@ -399,6 +437,7 @@ export function seedDemoDatabase(database) {
     });
 
     insertPredictionOutcomes(database);
+    insertRevisionSuggestion(database, modelId, diagnosisIds);
     insertTeachingBrief(database, diagnosisIds);
     insertDemoWorksheet(database, modelId);
   })();
@@ -653,7 +692,7 @@ function misconceptionNote(misconceptionId, correctAnswer) {
 /** @param {Database} database @param {string} modelId */
 function insertPredictions(database, modelId) {
   const insert = database.prepare(
-    "INSERT INTO predictions (id, class_id, membership_id, student_model_version_id, problem_id, target_assignment_item_id, rule_applied, predicted_answer, canonical_predicted_answer, correct_answer_snapshot, canonical_correct_answer, trace_json, confidence, abstention_reason, model_name, prompt_version, schema_version, locked_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gpt-5.6', 'demo-seed-v1', 'prediction-v1', ?, ?)",
+    "INSERT INTO predictions (id, class_id, membership_id, student_model_version_id, problem_id, target_assignment_item_id, rule_applied, predicted_answer, canonical_predicted_answer, correct_answer_snapshot, canonical_correct_answer, trace_json, confidence, abstention_reason, model_name, prompt_version, schema_version, locked_at, created_at, prediction_kind, consistency_snapshot, mastery_evidence_summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gpt-5.6', 'demo-seed-v2', 'prediction-v2', ?, ?, ?, 0.8, ?)",
   );
   followupProblems.forEach((problem, index) => {
     const prediction = predictedAnswers[index];
@@ -664,29 +703,34 @@ function insertPredictions(database, modelId) {
       modelId,
       id(4001 + index),
       id(4101 + index),
-      prediction.applied ? 1 : 0,
+      prediction.kind === "ABSTAIN" ? 0 : 1,
       prediction.answer,
       prediction.canonical,
       problem.correct,
       canonical(problem.correct),
       JSON.stringify({
-        inputFormMatched: prediction.applied
-          ? "A negative factor multiplies a two-term grouped expression."
-          : "No grouped negative factor is present.",
-        appliedTransformation: prediction.applied
-          ? "Change the first sign and preserve the later sign."
-          : "No transformation was applied.",
+        inputFormMatched:
+          prediction.kind === "FLAWED_RULE_APPLIES"
+            ? "A negative factor multiplies a two-term grouped expression."
+            : "A one-step equation matches demonstrated equation-solving evidence.",
+        appliedTransformation:
+          prediction.kind === "FLAWED_RULE_APPLIES"
+            ? "Change the first sign and preserve the later sign."
+            : "Use the demonstrated inverse-operation strategy.",
         predictedResult: prediction.answer,
-        scopeCheck: prediction.applied
-          ? "Inside the supported model scope."
-          : "Outside the versioned model scope.",
+        scopeCheck:
+          prediction.kind === "FLAWED_RULE_APPLIES"
+            ? "Inside the supported flawed-rule scope."
+            : "Outside the flawed-rule scope but supported by matching mastery evidence.",
       }),
-      prediction.applied ? 0.93 : 0.91,
-      prediction.applied
-        ? null
-        : "This equation has no negative factor outside parentheses, so the model abstains.",
+      prediction.kind === "FLAWED_RULE_APPLIES" ? 0.8 : 0.92,
+      null,
       PREDICTION_LOCKED,
       PREDICTION_LOCKED,
+      prediction.kind,
+      prediction.kind === "MASTERY"
+        ? "Correct equation solving was demonstrated on Ex. 2 · Q2.1 in the baseline assignment."
+        : null,
     );
   });
 }
@@ -696,7 +740,7 @@ function insertPredictionOutcomes(database) {
   const insert = database.prepare(
     "INSERT INTO prediction_outcome_versions (id, prediction_id, version, answer_version_id, actual_answer_snapshot, canonical_actual_answer, match_state, evaluation_method, confidence, note, observed_at, evaluated_at, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, 'DETERMINISTIC', 1, ?, ?, ?, ?)",
   );
-  for (let problemIndex = 0; problemIndex < 4; problemIndex += 1) {
+  for (let problemIndex = 0; problemIndex < 5; problemIndex += 1) {
     const answerOffset = problemIndex + 1;
     const result = demoOutcome(1, problemIndex, "followup");
     const prediction = predictedAnswers[problemIndex];
@@ -716,6 +760,32 @@ function insertPredictionOutcomes(database) {
       "2026-01-21T09:05:00.000Z",
     );
   }
+}
+
+/** @param {Database} database @param {string} modelId @param {Map<string, string>} diagnosisIds */
+function insertRevisionSuggestion(database, modelId, diagnosisIds) {
+  database
+    .prepare(
+      [
+        "INSERT INTO student_model_revision_suggestions",
+        "(id, class_id, membership_id, student_model_version_id, prediction_id, contradicting_diagnosis_id,",
+        "suggestion_kind, proposed_rule_statement, proposed_formal_pattern_json, proposed_scope_limits_json, proposed_application_rate,",
+        "rationale, evidence_connection, model_name, prompt_version, schema_version, created_at)",
+        "VALUES (?, ?, ?, ?, ?, ?, 'DOWNGRADE_CONSISTENCY', NULL, NULL, NULL, ?, ?, ?, 'gpt-5.6', 'demo-seed-v2', 'model-revision-v1', ?)",
+      ].join(" "),
+    )
+    .run(
+      id(7501),
+      DEMO_CLASS_ID,
+      id(2001),
+      modelId,
+      id(6004),
+      diagnosisIds.get("followup:1:4"),
+      4 / 6,
+      "Keep the observable signed-distribution rule, but lower its expected application rate after the later strategy differed.",
+      "The locked answer was −4m − 12; the later response was 4m − 12, so this outcome becomes new evidence only if the teacher confirms it.",
+      "2026-01-21T09:06:30.000Z",
+    );
 }
 
 /** @param {Database} database @param {Map<string, string>} diagnosisIds */

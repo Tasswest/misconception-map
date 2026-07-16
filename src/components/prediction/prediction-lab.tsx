@@ -122,6 +122,25 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
     }
   }
 
+  async function decideRevision(
+    suggestionId: string,
+    action: "CONFIRM" | "DISMISS",
+  ) {
+    const key = `revision:${suggestionId}`;
+    setBusy(key);
+    setError(null);
+    try {
+      await postJson(
+        `/api/model-revision-suggestions/${encodeURIComponent(suggestionId)}`,
+        { action, note: null },
+      );
+      window.location.reload();
+    } catch (cause) {
+      setError(messageFromError(cause));
+      setBusy(null);
+    }
+  }
+
   if (!data) {
     return (
       <div className="mx-auto grid min-h-[calc(100vh-64px)] max-w-3xl place-items-center px-6 py-12 text-center">
@@ -151,8 +170,24 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
       scorable: sum.scorable + row.metrics.scorable,
       matched: sum.matched + row.metrics.matched,
       invalidated: sum.invalidated + row.metrics.invalidated,
+      expectedFlawed: sum.expectedFlawed + row.metrics.expectedFlawedMatches,
+      flawedScorable: sum.flawedScorable + row.metrics.flawedScorable,
+      flawedMatched: sum.flawedMatched + row.metrics.flawedMatched,
+      mastery: sum.mastery + row.metrics.mastery,
+      abstentions: sum.abstentions + row.metrics.abstentions,
     }),
-    { valid: 0, attempted: 0, scorable: 0, matched: 0, invalidated: 0 },
+    {
+      valid: 0,
+      attempted: 0,
+      scorable: 0,
+      matched: 0,
+      invalidated: 0,
+      expectedFlawed: 0,
+      flawedScorable: 0,
+      flawedMatched: 0,
+      mastery: 0,
+      abstentions: 0,
+    },
   );
 
   return (
@@ -166,7 +201,18 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
             Prediction Lab
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--muted)]">
-            Turn a repeated misconception into a falsifiable claim. Predictions are locked to one Student Model version and one unseen problem before work is collected; invalidated trials remain visible and never inflate accuracy.
+            Model what a learner does wrong and right, then test it on unseen work. Every prediction is timestamped and locked; misses revise the hypothesis instead of becoming a label.
+          </p>
+          <p className="mt-2 max-w-3xl text-xs leading-5 text-[var(--muted)]">
+            Consistency is an observed strategy rate, not certainty: learners often vary strategies within the same topic.{" "}
+            <a
+              className="font-semibold text-[var(--sage)] underline decoration-[var(--sage)]/35 underline-offset-2"
+              href="https://doi.org/10.1037/a0031200"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Siegler &amp; Pyke (2013)
+            </a>
           </p>
         </div>
         <button
@@ -214,9 +260,19 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
 
       <section className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          detail={totals.scorable ? `${Math.round((totals.matched / totals.scorable) * 100)}% accuracy` : "Waiting for actual work"}
-          label="Model accuracy"
-          value={`${totals.matched} of ${totals.scorable} matched`}
+          detail={
+            totals.flawedScorable
+              ? Math.abs(totals.flawedMatched - totals.expectedFlawed) <= 1
+                ? "Consistent with the observed application rate"
+                : "The evidence warrants model revision"
+              : "Waiting for actual flawed-rule outcomes"
+          }
+          label="Expected vs actual"
+          value={
+            totals.flawedScorable
+              ? `${totals.flawedMatched} actual · ${totals.expectedFlawed.toFixed(1)} expected`
+              : "—"
+          }
         />
         <MetricCard
           detail="Rules applied ÷ valid locked trials"
@@ -224,14 +280,14 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
           value={percentage(totals.attempted, totals.valid)}
         />
         <MetricCard
-          detail="Out-of-scope trials are not guessed"
-          label="Abstentions"
-          value={String(Math.max(0, totals.valid - totals.attempted))}
+          detail="Correct outcomes predicted from demonstrated related skill"
+          label="Mastery predictions"
+          value={String(totals.mastery)}
         />
         <MetricCard
-          detail="Preserved in history, excluded from scores"
-          label="Invalidated"
-          value={String(totals.invalidated)}
+          detail={`${totals.abstentions} abstained · ${totals.invalidated} invalidated`}
+          label="Guarded claims"
+          value={String(totals.abstentions + totals.invalidated)}
         />
       </section>
 
@@ -260,7 +316,7 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
                   Coverage {percentage(row.metrics.attempted, row.metrics.valid)}
                 </span>
                 <span className="rounded-full bg-[var(--amber)]/15 px-2.5 py-1 text-[#765725]">
-                  {Math.max(0, row.metrics.valid - row.metrics.attempted)} {Math.max(0, row.metrics.valid - row.metrics.attempted) === 1 ? "abstention" : "abstentions"}
+                  {row.metrics.mastery} {row.metrics.mastery === 1 ? "mastery prediction" : "mastery predictions"}
                 </span>
               </div>
             </div>
@@ -307,6 +363,22 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
                     (item) => item.misconceptionId === model.misconceptionId,
                   );
                   const predictionKey = `prediction:${model.id}`;
+                  const consistencyTrials = row.predictions.filter(
+                    (prediction) =>
+                      prediction.modelVersionId === model.id &&
+                      prediction.predictionKind === "FLAWED_RULE_APPLIES" &&
+                      prediction.consistencySnapshot !== null &&
+                      prediction.invalidation === null &&
+                      (prediction.outcome?.matchState === "MATCH" ||
+                        prediction.outcome?.matchState === "MISMATCH"),
+                  );
+                  const actualMatches = consistencyTrials.filter(
+                    (prediction) => prediction.outcome?.matchState === "MATCH",
+                  ).length;
+                  const expectedMatches = consistencyTrials.reduce(
+                    (sum, prediction) => sum + prediction.confidence,
+                    0,
+                  );
                   return (
                     <article
                       className="rounded-2xl border border-[var(--sage)]/15 bg-[var(--soft-mint)]/55 p-4"
@@ -324,6 +396,23 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
                       <p className="mt-2 text-[11px] leading-5 text-[var(--muted)]">
                         {model.misconceptionLabel} · {model.distinctSupportContent} distinct supporting {model.distinctSupportContent === 1 ? "problem" : "problems"} · {Math.round(model.confidence * 100)}% synthesis confidence
                       </p>
+                      <div className="mt-3 rounded-xl border border-[var(--sage)]/15 bg-white/70 px-3 py-2.5 text-xs leading-5">
+                        <p className="font-semibold text-[var(--sidebar)]">
+                          {model.observedApplicationRate === null ||
+                          model.observedApplicationCount === null ||
+                          model.observedOpportunityCount === null
+                            ? "Consistency unknown for this legacy model"
+                            : `Applies this rule in ${model.observedApplicationCount} of ${model.observedOpportunityCount} observed opportunities (${Math.round(model.observedApplicationRate * 100)}%).`}
+                        </p>
+                        <p className="mt-0.5 text-[var(--muted)]">
+                          {model.masteryEvidenceCount ?? 0} demonstrated-correct {model.masteryEvidenceCount === 1 ? "skill example" : "skill examples"} attached
+                        </p>
+                        {consistencyTrials.length ? (
+                          <p className="mt-1 font-semibold text-[var(--sage)]">
+                            Expected {expectedMatches.toFixed(1)} of {consistencyTrials.length} · actual {actualMatches} · {Math.abs(actualMatches - expectedMatches) <= 1 ? "CONSISTENT WITH MODEL" : "REVISION WARRANTED"}
+                          </p>
+                        ) : null}
+                      </div>
 
                       {model.status === "SUPPORTED" && candidate ? (
                         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -480,7 +569,12 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
                 {row.predictions.length ? (
                   <div className="mt-3 space-y-3">
                     {row.predictions.map((prediction) => (
-                      <PredictionRecord key={prediction.id} prediction={prediction} />
+                      <PredictionRecord
+                        busy={busy}
+                        key={prediction.id}
+                        onDecision={decideRevision}
+                        prediction={prediction}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -504,11 +598,19 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
 }
 
 function PredictionRecord({
+  busy,
+  onDecision,
   prediction,
 }: {
+  busy: string | null;
+  onDecision: (
+    suggestionId: string,
+    action: "CONFIRM" | "DISMISS",
+  ) => Promise<void>;
   prediction: NonNullable<Props["data"]>["rows"][number]["predictions"][number];
 }) {
   const invalid = prediction.invalidation !== null;
+  const predictsAnswer = prediction.predictionKind !== "ABSTAIN";
   return (
     <article
       className={`rounded-2xl border p-4 ${
@@ -544,7 +646,7 @@ function PredictionRecord({
           >
             {prediction.outcome.matchState === "MATCH" ? "Matched" : "Did not match"}
           </span>
-        ) : prediction.ruleApplied ? (
+        ) : predictsAnswer ? (
           <span className="rounded-full bg-[var(--amber)]/20 px-2.5 py-1 text-[10px] font-bold text-[#765725]">
             Actual pending
           </span>
@@ -555,7 +657,15 @@ function PredictionRecord({
         )}
       </div>
 
-      {prediction.ruleApplied ? (
+      <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--sage)]">
+        {prediction.predictionKind === "FLAWED_RULE_APPLIES"
+          ? `Flawed rule · ${Math.round(prediction.confidence * 100)}% observed consistency`
+          : prediction.predictionKind === "MASTERY"
+            ? `Mastery · ${Math.round(prediction.confidence * 100)}% confidence`
+            : "Abstain · insufficient evidence"}
+      </p>
+
+      {predictsAnswer ? (
         <div className="mt-3 grid gap-2 sm:grid-cols-3">
           <AnswerBox label="Model predicted" value={prediction.predictedAnswer ?? "—"} />
           <AnswerBox label="Actual answer" value={prediction.outcome?.actualAnswer ?? "Pending"} />
@@ -568,12 +678,69 @@ function PredictionRecord({
         </p>
       )}
 
+      {prediction.predictionKind === "MASTERY" &&
+      prediction.masteryEvidenceSummary ? (
+        <p className="mt-2 rounded-xl bg-[var(--soft-mint)] px-3 py-2 text-xs leading-5 text-[var(--sidebar)]">
+          <span className="font-semibold">Why predict success:</span>{" "}
+          {prediction.masteryEvidenceSummary}
+        </p>
+      ) : null}
+
+      {prediction.revisionSuggestion ? (
+        <div className="mt-3 rounded-xl border border-[var(--coral)]/20 bg-white/75 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#8e402d]">
+            Revision suggestion · teacher decision required
+          </p>
+          <p className="mt-1 text-xs font-semibold leading-5">
+            {prediction.revisionSuggestion.kind === "DOWNGRADE_CONSISTENCY"
+              ? `Downgrade consistency to ${Math.round((prediction.revisionSuggestion.proposedApplicationRate ?? 0) * 100)}%`
+              : prediction.revisionSuggestion.proposedRuleStatement}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+            {prediction.revisionSuggestion.rationale}
+          </p>
+          {prediction.revisionSuggestion.decision ? (
+            <p className="mt-2 text-xs font-semibold text-[var(--sage)]">
+              {prediction.revisionSuggestion.decision.action === "CONFIRM"
+                ? "Confirmed · a provisional next version was created"
+                : "Dismissed · the current model history is unchanged"}
+            </p>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                className="rounded-lg bg-[var(--sidebar)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-45"
+                disabled={busy !== null}
+                onClick={() =>
+                  void onDecision(prediction.revisionSuggestion!.id, "CONFIRM")
+                }
+                type="button"
+              >
+                {busy === `revision:${prediction.revisionSuggestion.id}` ? (
+                  <SpinnerIcon className="mr-1 inline size-3.5 animate-spin" />
+                ) : null}
+                Confirm as provisional v+1
+              </button>
+              <button
+                className="rounded-lg border border-black/10 bg-white px-3 py-2 text-xs font-semibold disabled:opacity-45"
+                disabled={busy !== null}
+                onClick={() =>
+                  void onDecision(prediction.revisionSuggestion!.id, "DISMISS")
+                }
+                type="button"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       {invalid ? (
         <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-[var(--muted)]">
           <AlertIcon className="mt-0.5 size-3.5 shrink-0" />
           {prediction.invalidation?.reason.replaceAll("_", " ").toLowerCase()}: {prediction.invalidation?.note}
         </p>
-      ) : !prediction.outcome && prediction.ruleApplied ? (
+      ) : !prediction.outcome && predictsAnswer ? (
         <Link
           className="mt-3 inline-flex text-xs font-semibold text-[var(--sage)] hover:text-[var(--ink)]"
           href={`/assignments/${prediction.assignmentId}/diagnose`}

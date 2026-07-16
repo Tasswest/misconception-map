@@ -8,6 +8,10 @@ import {
   misconceptionIdSchema,
 } from "@/domain/misconception-taxonomy.mjs";
 import { exerciseQuestionReference } from "@/domain/exam-labels";
+import {
+  couldApplyObservedRule,
+  mathematicalSkillKey,
+} from "@/domain/student-model-predictions.mjs";
 import { getDatabase } from "@/lib/db";
 
 const idSchema = z.string().uuid();
@@ -90,6 +94,10 @@ export type StudentModelRecord = {
   formalPattern: Record<string, string>;
   scopeLimits: string[];
   confidence: number;
+  observedApplicationCount: number | null;
+  observedOpportunityCount: number | null;
+  observedApplicationRate: number | null;
+  masteryEvidenceCount: number | null;
   taxonomyVersion: string;
   misconceptionId: MisconceptionId;
   createdAt: string;
@@ -219,6 +227,10 @@ function mapStudentModel(row: {
   formal_pattern_json: string;
   scope_limits_json: string;
   confidence: number;
+  observed_application_count: number | null;
+  observed_opportunity_count: number | null;
+  observed_application_rate: number | null;
+  mastery_evidence_count: number | null;
   taxonomy_version: string;
   misconception_id: MisconceptionId;
   created_at: string;
@@ -232,6 +244,10 @@ function mapStudentModel(row: {
     formalPattern: JSON.parse(row.formal_pattern_json) as Record<string, string>,
     scopeLimits: JSON.parse(row.scope_limits_json) as string[],
     confidence: row.confidence,
+    observedApplicationCount: row.observed_application_count,
+    observedOpportunityCount: row.observed_opportunity_count,
+    observedApplicationRate: row.observed_application_rate,
+    masteryEvidenceCount: row.mastery_evidence_count,
     taxonomyVersion: row.taxonomy_version,
     misconceptionId: row.misconception_id,
     createdAt: row.created_at,
@@ -244,6 +260,7 @@ function getStudentModelById(modelId: string) {
       [
         "SELECT model.id, model.hypothesis_id, model.version, model.status, model.rule_statement,",
         "model.formal_pattern_json, model.scope_limits_json, model.confidence,",
+        "model.observed_application_count, model.observed_opportunity_count, model.observed_application_rate, model.mastery_evidence_count,",
         "hypothesis.taxonomy_version, hypothesis.misconception_id, model.created_at",
         "FROM student_model_versions AS model",
         "JOIN student_model_hypotheses AS hypothesis ON hypothesis.id = model.hypothesis_id",
@@ -260,6 +277,10 @@ function getStudentModelById(modelId: string) {
         formal_pattern_json: string;
         scope_limits_json: string;
         confidence: number;
+        observed_application_count: number | null;
+        observed_opportunity_count: number | null;
+        observed_application_rate: number | null;
+        mastery_evidence_count: number | null;
         taxonomy_version: string;
         misconception_id: MisconceptionId;
         created_at: string;
@@ -274,6 +295,7 @@ export function findReusableStudentModel(context: DiagnosisContextRow) {
       [
         "SELECT model.id, model.hypothesis_id, model.version, model.status, model.rule_statement,",
         "model.formal_pattern_json, model.scope_limits_json, model.confidence,",
+        "model.observed_application_count, model.observed_opportunity_count, model.observed_application_rate, model.mastery_evidence_count,",
         "hypothesis.taxonomy_version, hypothesis.misconception_id, model.created_at",
         "FROM student_model_versions AS model",
         "JOIN student_model_hypotheses AS hypothesis ON hypothesis.id = model.hypothesis_id",
@@ -299,6 +321,10 @@ export function findReusableStudentModel(context: DiagnosisContextRow) {
         formal_pattern_json: string;
         scope_limits_json: string;
         confidence: number;
+        observed_application_count: number | null;
+        observed_opportunity_count: number | null;
+        observed_application_rate: number | null;
+        mastery_evidence_count: number | null;
         taxonomy_version: string;
         misconception_id: MisconceptionId;
         created_at: string;
@@ -383,8 +409,9 @@ export function persistStudentModel(input: {
         [
           "INSERT INTO student_model_versions",
           "(id, hypothesis_id, version, status, rule_statement, formal_pattern_json, scope_limits_json, confidence,",
-          "support_count, contradiction_count, ai_run_id, model_name, prompt_version, schema_version, created_at)",
-          "VALUES (?, ?, 1, 'PROVISIONAL', ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)",
+          "support_count, contradiction_count, observed_application_count, observed_opportunity_count, observed_application_rate, mastery_evidence_count,",
+          "ai_run_id, model_name, prompt_version, schema_version, created_at)",
+          "VALUES (?, ?, 1, 'PROVISIONAL', ?, ?, ?, ?, 0, 0, 1, 1, 1, 0, ?, ?, ?, ?, ?)",
         ].join(" "),
       )
       .run(
@@ -414,6 +441,19 @@ export function persistStudentModel(input: {
         input.context.confidence,
         input.run.result.evidenceConnection,
       );
+    database
+      .prepare(
+        [
+          "INSERT INTO student_model_opportunities",
+          "(student_model_version_id, diagnosis_id, application_state, rationale)",
+          "VALUES (?, ?, 'APPLIED_RULE', ?)",
+        ].join(" "),
+      )
+      .run(
+        modelId,
+        input.context.diagnosis_id,
+        "The diagnosed transformation is a direct observed application of this provisional rule.",
+      );
     result = {
       id: modelId,
       hypothesisId,
@@ -423,6 +463,10 @@ export function persistStudentModel(input: {
       formalPattern: input.run.result.formalPattern,
       scopeLimits: input.run.result.scopeLimits,
       confidence: input.run.result.confidence,
+      observedApplicationCount: 1,
+      observedOpportunityCount: 1,
+      observedApplicationRate: 1,
+      masteryEvidenceCount: 0,
       taxonomyVersion: input.context.taxonomy_version,
       misconceptionId: input.context.misconception_id,
       createdAt,
@@ -513,8 +557,9 @@ export function persistRevisedStudentModel(input: {
           [
             "INSERT INTO student_model_versions",
             "(id, hypothesis_id, version, status, rule_statement, formal_pattern_json, scope_limits_json, confidence,",
-            "support_count, contradiction_count, ai_run_id, model_name, prompt_version, schema_version, created_at)",
-            "VALUES (?, ?, ?, 'PROVISIONAL', ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)",
+            "support_count, contradiction_count, observed_application_count, observed_opportunity_count, observed_application_rate, mastery_evidence_count,",
+            "ai_run_id, model_name, prompt_version, schema_version, created_at)",
+            "VALUES (?, ?, ?, 'PROVISIONAL', ?, ?, ?, ?, 0, 0, 1, 1, 1, 0, ?, ?, ?, ?, ?)",
           ].join(" "),
         )
         .run(
@@ -544,6 +589,19 @@ export function persistRevisedStudentModel(input: {
           input.context.diagnosis_id,
           input.context.confidence,
           input.run.result.evidenceConnection,
+        );
+      database
+        .prepare(
+          [
+            "INSERT INTO student_model_opportunities",
+            "(student_model_version_id, diagnosis_id, application_state, rationale)",
+            "VALUES (?, ?, 'APPLIED_RULE', ?)",
+          ].join(" "),
+        )
+        .run(
+          modelId,
+          input.context.diagnosis_id,
+          "The new diagnosis directly exhibits the revised provisional rule.",
         );
     })();
   } catch (error) {
@@ -623,6 +681,81 @@ export function synchronizeStudentModelEvidence(input: {
           ? `The same observable rule pattern recurs in: ${diagnosis.evidence_quote}`
           : "The same taxonomy-grounded transformation recurs in this response.",
       );
+    }
+
+    const insertOpportunity = database.prepare(
+      [
+        "INSERT OR IGNORE INTO student_model_opportunities",
+        "(student_model_version_id, diagnosis_id, application_state, rationale)",
+        "VALUES (?, ?, ?, ?)",
+      ].join(" "),
+    );
+    for (const diagnosis of supportingDiagnoses) {
+      insertOpportunity.run(
+        input.model.id,
+        diagnosis.id,
+        "APPLIED_RULE",
+        "This diagnosed response applies the same versioned transformation rule.",
+      );
+    }
+
+    const correctDiagnoses = database
+      .prepare(
+        [
+          "SELECT diagnosis.id, problem.prompt, problem.correct_answer",
+          "FROM submissions AS submission",
+          "JOIN submission_answers AS answer ON answer.submission_id = submission.id",
+          "JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id",
+          "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id",
+          "JOIN assignment_items AS item ON item.id = answer.assignment_item_id",
+          "JOIN problems AS problem ON problem.id = item.problem_id",
+          "WHERE submission.class_id = ? AND submission.membership_id = ?",
+          "AND problem.domain = ? AND diagnosis.outcome = 'CORRECT'",
+          "AND julianday(diagnosis.created_at) <= julianday(?)",
+          "AND diagnosis.id = (",
+          "SELECT latest.id FROM diagnoses AS latest",
+          "JOIN answer_versions AS latest_version ON latest_version.id = latest.answer_version_id",
+          "JOIN submission_answers AS latest_answer ON latest_answer.id = latest_version.submission_answer_id",
+          "WHERE latest_answer.id = answer.id",
+          "ORDER BY latest.created_at DESC, latest.version DESC, latest.id DESC LIMIT 1",
+          ") ORDER BY diagnosis.created_at, diagnosis.id",
+        ].join(" "),
+      )
+      .all(
+        input.context.class_id,
+        input.context.membership_id,
+        input.context.domain,
+        input.model.createdAt,
+      ) as Array<{ id: string; prompt: string; correct_answer: string }>;
+    const insertMastery = database.prepare(
+      [
+        "INSERT OR IGNORE INTO student_model_mastery_evidence",
+        "(student_model_version_id, diagnosis_id, skill_key, rationale)",
+        "VALUES (?, ?, ?, ?)",
+      ].join(" "),
+    );
+    for (const diagnosis of correctDiagnoses) {
+      const skillKey = mathematicalSkillKey(diagnosis.prompt);
+      insertMastery.run(
+        input.model.id,
+        diagnosis.id,
+        skillKey,
+        `Demonstrated correct ${skillKey.toLowerCase().replaceAll("_", " ")} reasoning on a diagnosed problem.`,
+      );
+      if (
+        couldApplyObservedRule({
+          problemPrompt: diagnosis.prompt,
+          ruleStatement: input.model.ruleStatement,
+          formalPattern: input.model.formalPattern,
+        })
+      ) {
+        insertOpportunity.run(
+          input.model.id,
+          diagnosis.id,
+          "DID_NOT_APPLY",
+          "The rule could have applied to this structure, but the diagnosed response instead demonstrated correct reasoning.",
+        );
+      }
     }
 
     const counts = database

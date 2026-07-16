@@ -6,25 +6,32 @@ import {
   LocalRequestBodyError,
   requireDeclaredBodyWithinLimit,
 } from "@/server/http/local-request-guard";
-import { PredictionRepositoryError } from "@/server/repositories/prediction-lab";
-import { synchronizePredictionOutcomes } from "@/server/services/prediction-lab";
+import {
+  decideRevisionSuggestion,
+  PredictionRepositoryError,
+} from "@/server/repositories/prediction-lab";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const requestSchema = z.object({}).strict();
+const requestSchema = z
+  .object({
+    action: z.enum(["CONFIRM", "DISMISS"]),
+    note: z.string().trim().max(1_000).nullable(),
+  })
+  .strict();
 
 export async function POST(
   request: Request,
-  context: { params: Promise<{ classId: string }> },
+  context: { params: Promise<{ suggestionId: string }> },
 ) {
   const guard = guardLocalApiRequest(request);
   if (guard) return guard;
   try {
-    requireDeclaredBodyWithinLimit(request, 1_000);
-    requestSchema.parse(await request.json());
-    const { classId } = await context.params;
-    const result = await synchronizePredictionOutcomes(classId);
+    requireDeclaredBodyWithinLimit(request, 5_000);
+    const input = requestSchema.parse(await request.json());
+    const { suggestionId } = await context.params;
+    const result = decideRevisionSuggestion({ suggestionId, ...input });
     return NextResponse.json({ data: result });
   } catch (error) {
     if (error instanceof LocalRequestBodyError) {
@@ -37,8 +44,8 @@ export async function POST(
       return NextResponse.json(
         {
           error: {
-            code: "INVALID_OUTCOME_SYNC_REQUEST",
-            message: "Outcome reconciliation expects an empty JSON object.",
+            code: "INVALID_REVISION_DECISION",
+            message: error.issues[0]?.message ?? "Check the revision decision.",
           },
         },
         { status: 400 },
@@ -47,14 +54,14 @@ export async function POST(
     if (error instanceof PredictionRepositoryError) {
       return NextResponse.json(
         { error: { code: error.code, message: error.message } },
-        { status: error.code === "CLASS_NOT_FOUND" ? 404 : 500 },
+        { status: error.code === "REVISION_NOT_FOUND" ? 404 : 409 },
       );
     }
     return NextResponse.json(
       {
         error: {
-          code: "OUTCOME_SYNC_FAILED",
-          message: "Prediction outcomes could not be reconciled.",
+          code: "REVISION_DECISION_FAILED",
+          message: "The revision decision could not be saved.",
         },
       },
       { status: 500 },

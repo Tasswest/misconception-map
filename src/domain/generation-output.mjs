@@ -2,10 +2,11 @@ import { z } from "zod";
 
 import { canonicalizeMathAnswer } from "./math-normalization.mjs";
 
-export const STUDENT_MODEL_SCHEMA_VERSION = "1.0.0";
+export const STUDENT_MODEL_SCHEMA_VERSION = "1.1.0";
 export const PRACTICE_SCHEMA_VERSION = "1.0.0";
 export const TEACHING_BRIEF_SCHEMA_VERSION = "1.0.0";
-export const PREDICTION_SCHEMA_VERSION = "1.0.0";
+export const PREDICTION_SCHEMA_VERSION = "2.0.0";
+export const MODEL_REVISION_SCHEMA_VERSION = "1.0.0";
 
 export const studentModelSynthesisSchema = z
   .object({
@@ -114,10 +115,16 @@ export const teachingBriefOutputSchema = z
 
 export const predictionOutputSchema = z
   .object({
+    predictionKind: z.enum([
+      "FLAWED_RULE_APPLIES",
+      "MASTERY",
+      "ABSTAIN",
+    ]),
     ruleApplied: z.boolean(),
     predictedAnswer: z.string().trim().min(1).max(700).nullable(),
     confidence: z.number().min(0).max(1),
     abstentionReason: z.string().trim().min(1).max(500).nullable(),
+    masteryEvidenceUsed: z.string().trim().min(1).max(700).nullable(),
     trace: z
       .object({
         inputFormMatched: z.string().trim().min(1).max(500),
@@ -129,8 +136,9 @@ export const predictionOutputSchema = z
   })
   .strict()
   .superRefine((prediction, context) => {
+    const predictsAnswer = prediction.predictionKind !== "ABSTAIN";
     if (
-      prediction.ruleApplied &&
+      predictsAnswer &&
       (prediction.predictedAnswer === null || prediction.abstentionReason !== null)
     ) {
       context.addIssue({
@@ -140,7 +148,7 @@ export const predictionOutputSchema = z
       });
     }
     if (
-      !prediction.ruleApplied &&
+      !predictsAnswer &&
       (prediction.predictedAnswer !== null || prediction.abstentionReason === null)
     ) {
       context.addIssue({
@@ -150,7 +158,7 @@ export const predictionOutputSchema = z
       });
     }
     if (
-      prediction.ruleApplied &&
+      predictsAnswer &&
       prediction.trace.predictedResult !== prediction.predictedAnswer
     ) {
       context.addIssue({
@@ -159,11 +167,82 @@ export const predictionOutputSchema = z
         path: ["trace", "predictedResult"],
       });
     }
-    if (!prediction.ruleApplied && prediction.trace.predictedResult !== null) {
+    if (!predictsAnswer && prediction.trace.predictedResult !== null) {
       context.addIssue({
         code: "custom",
         message: "An abstention cannot claim a predicted result.",
         path: ["trace", "predictedResult"],
+      });
+    }
+    if (
+      prediction.ruleApplied !==
+      (prediction.predictionKind === "FLAWED_RULE_APPLIES")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Only a flawed-rule prediction may report that the flawed rule applied.",
+        path: ["ruleApplied"],
+      });
+    }
+    if (
+      (prediction.predictionKind === "MASTERY") !==
+      (prediction.masteryEvidenceUsed !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Mastery predictions require an explicit demonstrated-correct evidence summary.",
+        path: ["masteryEvidenceUsed"],
+      });
+    }
+  });
+
+export const modelRevisionSuggestionSchema = z
+  .object({
+    suggestionKind: z.enum(["REVISE_RULE", "DOWNGRADE_CONSISTENCY"]),
+    proposedRuleStatement: z.string().trim().min(12).max(500).nullable(),
+    proposedFormalPattern: z
+      .object({
+        inputForm: z.string().trim().min(1).max(300),
+        flawedTransformation: z.string().trim().min(1).max(300),
+        predictedOutputForm: z.string().trim().min(1).max(300),
+        contrastWithCorrectRule: z.string().trim().min(1).max(500),
+      })
+      .strict()
+      .nullable(),
+    proposedScopeLimits: z
+      .array(z.string().trim().min(1).max(300))
+      .max(6)
+      .nullable(),
+    proposedApplicationRate: z.number().min(0).max(1).nullable(),
+    rationale: z.string().trim().min(1).max(900),
+    evidenceConnection: z.string().trim().min(1).max(900),
+  })
+  .strict()
+  .superRefine((suggestion, context) => {
+    const revisesRule = suggestion.suggestionKind === "REVISE_RULE";
+    const hasCompleteRule =
+      suggestion.proposedRuleStatement !== null &&
+      suggestion.proposedFormalPattern !== null &&
+      suggestion.proposedScopeLimits !== null;
+    const hasNoRule =
+      suggestion.proposedRuleStatement === null &&
+      suggestion.proposedFormalPattern === null &&
+      suggestion.proposedScopeLimits === null;
+    if ((revisesRule && !hasCompleteRule) || (!revisesRule && !hasNoRule)) {
+      context.addIssue({
+        code: "custom",
+        message: "Rule revisions require a complete proposed rule, pattern, and scope.",
+        path: ["proposedRuleStatement"],
+      });
+    }
+    if (
+      (!revisesRule && suggestion.proposedApplicationRate === null) ||
+      (revisesRule && suggestion.proposedApplicationRate !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Only a consistency downgrade carries a proposed application rate.",
+        path: ["proposedApplicationRate"],
       });
     }
   });

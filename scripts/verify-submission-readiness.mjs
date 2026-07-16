@@ -38,7 +38,7 @@ function verifyFreshAndSeededDatabases() {
   try {
     assert.equal(
       fresh.prepare("SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1").pluck().get(),
-      "016_extraction_cache_provenance.sql",
+      "018_consistency_metric_scope.sql",
     );
     assert.deepEqual(
       fresh
@@ -76,6 +76,32 @@ function verifyFreshAndSeededDatabases() {
         .get() > 0,
     );
     assert.ok(seeded.prepare("SELECT count(*) FROM diagnoses").pluck().get() > 0);
+    assert.deepEqual(
+      seeded
+        .prepare(
+          [
+            "SELECT observed_application_count AS applicationCount,",
+            "observed_opportunity_count AS opportunityCount, observed_application_rate AS applicationRate",
+            "FROM student_model_versions WHERE observed_application_rate IS NOT NULL LIMIT 1",
+          ].join(" "),
+        )
+        .get(),
+      { applicationCount: 4, opportunityCount: 5, applicationRate: 0.8 },
+    );
+    assert.equal(
+      seeded
+        .prepare("SELECT count(*) FROM predictions WHERE prediction_kind = 'MASTERY'")
+        .pluck()
+        .get(),
+      1,
+    );
+    assert.equal(
+      seeded
+        .prepare("SELECT count(*) FROM student_model_revision_suggestions")
+        .pluck()
+        .get(),
+      1,
+    );
   } finally {
     seeded.close();
   }
@@ -117,6 +143,11 @@ function verifyIntentionalStates() {
   assert.match(workbench, /const diagnosableItems = actionableItems\.filter/);
   assert.match(workbench, /persistAndDiagnose\(diagnosableItems\)/);
   assert.match(workbench, /diagnosableItems\.length === 0/);
+
+  const predictionLab = read("src/components/prediction/prediction-lab.tsx");
+  assert.match(predictionLab, /Siegler &amp; Pyke \(2013\)/);
+  assert.match(predictionLab, /CONSISTENT WITH MODEL/);
+  assert.match(predictionLab, /teacher decision required/);
 }
 
 function verifyCopyAndHierarchy() {

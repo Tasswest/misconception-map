@@ -2,11 +2,42 @@ import assert from "node:assert/strict";
 
 import {
   practiceWorksheetOutputSchema,
+  modelRevisionSuggestionSchema,
   predictionOutputSchema,
   studentModelSynthesisSchema,
   teachingBriefOutputSchema,
 } from "../src/domain/generation-output.mjs";
 import { extractStudentFinalAnswer } from "../src/domain/student-final-answer.mjs";
+import {
+  consistencyFit,
+  effectivePredictionKind,
+  mathematicalSkillKey,
+  observedApplicationSummary,
+} from "../src/domain/student-model-predictions.mjs";
+
+assert.deepEqual(
+  observedApplicationSummary([
+    "APPLIED_RULE",
+    "APPLIED_RULE",
+    "APPLIED_RULE",
+    "APPLIED_RULE",
+    "DID_NOT_APPLY",
+  ]),
+  { applicationCount: 4, opportunityCount: 5, applicationRate: 0.8 },
+);
+assert.deepEqual(
+  consistencyFit({ expectedRate: 0.8, matched: 3, scorable: 4 }),
+  {
+    expectedMatches: 3.2,
+    actualRate: 0.75,
+    interpretation: "CONSISTENT_WITH_MODEL",
+  },
+);
+assert.equal(mathematicalSkillKey("Résoudre 2x + 5 = 17."), "EQUATION_SOLVING");
+assert.equal(
+  effectivePredictionKind({ predictionKind: null, ruleApplied: true }),
+  "FLAWED_RULE_APPLIES",
+);
 
 assert.deepEqual(
   extractStudentFinalAnswer({
@@ -83,10 +114,12 @@ assert.equal(
 );
 
 const prediction = predictionOutputSchema.parse({
+  predictionKind: "FLAWED_RULE_APPLIES",
   ruleApplied: true,
   predictedAnswer: "−4x + 3",
   confidence: 0.91,
   abstentionReason: null,
+  masteryEvidenceUsed: null,
   trace: {
     inputFormMatched: "A leading negative multiplies a two-term sum.",
     appliedTransformation: "Negate the first term and preserve the second sign.",
@@ -104,10 +137,12 @@ assert.equal(
 );
 
 const abstention = predictionOutputSchema.parse({
+  predictionKind: "ABSTAIN",
   ruleApplied: false,
   predictedAnswer: null,
   confidence: 0.86,
   abstentionReason: "The target is fraction division, outside this algebra rule's scope.",
+  masteryEvidenceUsed: null,
   trace: {
     inputFormMatched: "No supported input form matched.",
     appliedTransformation: "No transformation was applied.",
@@ -116,6 +151,34 @@ const abstention = predictionOutputSchema.parse({
   },
 });
 assert.equal(abstention.ruleApplied, false);
+
+const mastery = predictionOutputSchema.parse({
+  predictionKind: "MASTERY",
+  ruleApplied: false,
+  predictedAnswer: "x = 6",
+  confidence: 0.9,
+  abstentionReason: null,
+  masteryEvidenceUsed:
+    "A related one-step equation was previously diagnosed as correct.",
+  trace: {
+    inputFormMatched: "One-step linear equation.",
+    appliedTransformation: "Use the demonstrated inverse operation.",
+    predictedResult: "x = 6",
+    scopeCheck: "Matching equation-solving mastery evidence is available.",
+  },
+});
+assert.equal(mastery.predictionKind, "MASTERY");
+
+const revision = modelRevisionSuggestionSchema.parse({
+  suggestionKind: "DOWNGRADE_CONSISTENCY",
+  proposedRuleStatement: null,
+  proposedFormalPattern: null,
+  proposedScopeLimits: null,
+  proposedApplicationRate: 4 / 6,
+  rationale: "One later outcome did not apply the previously observed rule.",
+  evidenceConnection: "The locked wrong answer differed from the later answer.",
+});
+assert.equal(revision.suggestionKind, "DOWNGRADE_CONSISTENCY");
 assert.equal(
   practiceWorksheetOutputSchema.safeParse({
     ...practice,
@@ -142,5 +205,5 @@ assert.equal(
 );
 
 console.log(
-  "Phase 4 output verification passed: provisional rule, five-step difficulty ramp, discrepant answers, one-paragraph teaching brief, and prediction abstention contract.",
+  "Phase 4 output verification passed: 4-of-5 consistency, expected-versus-actual fit, flawed-rule/mastery/abstain prediction kinds, teacher-reviewed revision, worksheet ramp, and teaching brief.",
 );
