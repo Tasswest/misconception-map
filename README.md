@@ -21,7 +21,7 @@ There are no grades or points. The product corrects what it can support from vis
 - A class summary by exercise before the full misconception heatmap.
 - Corrected copies grouped by exercise, with shared context shown once and feedback written in the language of the exam.
 - Targeted five-question micro-practice, a teacher answer key, and a short “Teach This Tomorrow” intervention.
-- A Prediction Lab that locks a prediction from a supported Student Model before held-out work exists, then scores or invalidates that prediction transparently.
+- A Prediction Lab that locks flawed-rule, demonstrated-mastery, or abstain predictions before held-out work exists, then scores, revises, or invalidates them transparently.
 
 Misconception Map is built for the Education category of OpenAI Build Week. Next.js and SQLite run on the teacher’s machine. Only live extraction, diagnosis, model synthesis, practice, briefs, and predictions call the OpenAI API.
 
@@ -59,7 +59,7 @@ Leave `OPENAI_API_KEY` empty, run `npm run seed`, and open the app. The determin
 - exercise-grouped corrected copies with French prompts and French step feedback;
 - a printable targeted worksheet and teacher answer key linked to `Ex. 2 · Q2.2`;
 - a Teach This Tomorrow brief;
-- supported and provisional Student Models, locked held-out predictions, abstentions, matches, mismatches, and invalidation history.
+- a 4-of-5 consistency-weighted Student Model, a locked mastery prediction, a teacher-reviewed revision suggestion, abstentions, matches, mismatches, and invalidation history.
 
 Live-only controls remain visibly disabled and explain that `OPENAI_API_KEY` must be added to `.env.local`. There are no dead clicks; seeded views remain readable.
 
@@ -135,11 +135,11 @@ All surfaces use the same `Ex. 1 · Q1.2` reference formatter: queue, triage, he
 
 ## Student Model and Prediction Lab
 
-A Student Model is a versioned, falsifiable strategy hypothesis tied to exact work. One response can create only a provisional version. Support requires evidence from at least two distinct problem fingerprints without contradiction.
+A Student Model is a versioned, falsifiable learner hypothesis tied to exact work. One response can create only a provisional version. Support requires evidence from at least two distinct problem fingerprints without contradiction. Each new version separately records how often the flawed rule appeared when it could have applied and which related skills were demonstrated correctly; legacy versions keep those nullable fields as “consistency unknown.”
 
-Prediction Lab applies one supported model version to unseen content without sending the student name or correct answer. Each prediction is locked and timestamped before held-out work exists. It stores the predicted answer or an explicit abstention, confidence, transformation trace, target, model version, and AI provenance. Later work appends a deterministic match/mismatch outcome. Updating a model invalidates its older locks without deleting history or silently moving trials to the new version.
+Prediction Lab applies one supported model version to unseen content without sending the student name. Each prediction is locked and timestamped before held-out work exists as one of three kinds: `FLAWED_RULE_APPLIES`, `MASTERY`, or `ABSTAIN`. Flawed-rule confidence snapshots the observed application rate; mastery requires matching demonstrated-correct skill evidence and predicts the expected correct answer. Later work appends the same deterministic match/mismatch outcome for every answer prediction. A miss creates a strict, null-based revision suggestion; only a teacher confirmation creates a provisional v+1. Updating a model invalidates its older locks without deleting history or silently moving trials to the new version.
 
-The Prediction Lab is deliberately not weakened for demo convenience: abstentions remain in coverage, invalid trials remain visible, and syntactically nonidentical equivalent forms are not silently counted as matches.
+Expected-versus-actual reporting treats a 3-of-4 result as consistent with a 0.8-application model rather than implying deterministic failure. This follows the within-student strategy variability documented by Siegler & Pyke (2013). The Prediction Lab is deliberately not weakened for demo convenience: abstentions remain visible, invalid trials remain visible, and syntactically nonidentical equivalent forms are not silently counted as matches.
 
 ## Status, costs, and verification
 
@@ -160,7 +160,7 @@ Useful commands:
 | `npm run verify:images` | Faint-ink, crop, and handwritten-equals regression fixtures. |
 | `npm run verify:pdf` | PDF signatures, generated API filenames, and local persistence. |
 | `npm run verify:diagnosis-contracts` | Compile-time-safe single/full-page persistence contracts. |
-| `npm run verify:phase4` | Student Models, five-problem practice, briefs, and predictions. |
+| `npm run verify:phase4` | 4-of-5 consistency, expected/actual fit, all three prediction kinds, revision suggestions, practice, and briefs. |
 | `npm run verify:readiness` | Fresh/seeded DBs, no-key states, language, print, accessibility, cost, cache, and status ledger. |
 | `npm run check` | Lint, typecheck, every verifier, and production build. |
 
@@ -185,7 +185,7 @@ OPENAI_API_KEY= npm run check
 OPENAI_API_KEY= npm run dev -- --port 3200
 ~~~
 
-The no-key browser smoke covered Overview, Assignments, the 18/1/1 triage, exercise dashboard, grouped corrected copy, Prediction Lab (`3 of 4 matched`, 80% coverage, one abstention), diagnostic setup, and `/status`. Live-only controls were disabled with the `.env.local` explanation.
+The no-key browser smoke covered Overview, Assignments, the 18/1/1 triage, exercise dashboard, grouped corrected copy, Prediction Lab (4 of 5 observed applications, 3 actual versus 3.2 expected flawed-rule hits, one mastery prediction, and one revision suggestion), diagnostic setup, and `/status`. Live-only controls were disabled with the `.env.local` explanation.
 
 For the live smoke, the local key was added to the clone’s ignored `.env.local`, the server was restarted, and `sample-work/01-negative-distribution.jpeg` was uploaded for a new synthetic learner against `Ex. 1 · Q1.1`. GPT-5.6 returned a grounded French `NEEDS_REVIEW` result instead of forcing a taxonomy match. The run saved 6,151 input and 1,393 output tokens; `/status` displayed 7,544 total. Repeating the identical diagnosis returned the persisted result while the database remained at exactly one diagnosis run.
 
@@ -196,10 +196,10 @@ For the live smoke, the local key was added to the clone’s ignored `.env.local
 - Small client islands for intake, review, heatmap drawers, Prediction Lab, and print actions.
 - Node.js route handlers for local file processing and OpenAI Responses API calls.
 - `gpt-5.6` is the only live model.
-- Strict structured output on worksheet extraction, page segmentation, diagnosis, Student Model synthesis, practice, teaching briefs, and predictions.
+- Strict structured output on worksheet extraction, page segmentation, diagnosis, Student Model synthesis, practice, teaching briefs, three-kind predictions, and outcome-driven model-revision suggestions.
 - Append-oriented answer versions, diagnoses, Student Models, prediction locks/outcomes, teacher reviews, and AI provenance.
 
-The data graph covers classes, memberships, exercises, reusable problems, assignment items, protected assets, upload batches, submissions, answer versions, diagnosis steps/candidates, teacher review notes, Student Model evidence, worksheets, teaching briefs, frozen predictions, token provenance, and redacted audit events. Composite foreign keys and triggers keep every record inside its class and assignment.
+The data graph covers classes, memberships, exercises, reusable problems, assignment items, protected assets, upload batches, submissions, answer versions, diagnosis steps/candidates, teacher review notes, Student Model evidence/opportunities/mastery, append-only revision decisions, worksheets, teaching briefs, frozen predictions, token provenance, and redacted audit events. Composite foreign keys and triggers keep every record inside its class and assignment.
 
 ## Accessibility and print
 
@@ -253,7 +253,7 @@ Codex also diagnosed a full-page persistence contract failure: spreading the com
 
 The verification suite was built adversarially around failure modes, not only happy paths: faint ink, handwritten equals signs, implausible steps, PDF signatures, oversized or unsafe intake, stale runs, evidence grounding, cross-domain labels, confidence thresholds, strict persistence, legacy flat migrations, all-six-exercise extraction, ambiguous label matching, no-key routes, cache reuse, A4 page fragmentation, and Prediction Lab invalidation. `npm run check` runs every `verify:*` script plus lint, typecheck, and a production build.
 
-GPT-5.6 powers every live model call and no other model is used. Every call has a strict root-object Structured Output: teacher-source vision extraction; full-page exercise/question segmentation; single and booklet diagnosis; Student Model synthesis; five-question discrepant-event practice; Teach This Tomorrow briefs; and held-out predictions. Printed teacher sources use low image detail and low reasoning effort; handwritten diagnosis uses high detail and medium effort. Identical extraction hashes and persisted submission diagnoses are reused before another call is considered, while `/status` makes per-run token counts and cache hits visible.
+GPT-5.6 powers every live model call and no other model is used. Every call has a strict root-object Structured Output: teacher-source vision extraction; full-page exercise/question segmentation; single and booklet diagnosis; Student Model synthesis and revision suggestions; five-question discrepant-event practice; Teach This Tomorrow briefs; and three-kind held-out predictions. Printed teacher sources use low image detail and low reasoning effort; handwritten diagnosis uses high detail and medium effort. Identical extraction hashes and persisted submission diagnoses are reused before another call is considered, while `/status` makes per-run token counts and cache hits visible.
 
 > **TODO (author):** Add one short paragraph in your own voice distinguishing the moments where you rejected or redirected Codex’s proposal, and include the final `/feedback` Session ID.
 
