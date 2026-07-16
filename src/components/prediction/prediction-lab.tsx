@@ -379,7 +379,7 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
                               >
                                 {model.eligibleTargets.map((target) => (
                                   <option key={target.id} value={target.id}>
-                                    {target.assignmentTitle}: {target.prompt}
+                                    {target.questionReference} · {target.assignmentTitle}: {target.prompt}
                                   </option>
                                 ))}
                               </select>
@@ -521,7 +521,7 @@ function PredictionRecord({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.11em] text-[var(--muted)]">
-            Model v{prediction.modelVersion} · locked {formatDate(prediction.lockedAt)}
+            {prediction.questionReference} · Model v{prediction.modelVersion} · locked {formatDate(prediction.lockedAt)}
           </p>
           <p className="mt-1 text-sm font-semibold leading-6">
             {prediction.problemPrompt}

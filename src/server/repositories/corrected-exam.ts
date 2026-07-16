@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import { MISCONCEPTION_BY_ID, misconceptionIdSchema } from "@/domain/misconception-taxonomy.mjs";
+import { exerciseQuestionReference, shortExerciseLabel } from "@/domain/exam-labels";
 import { normalizeProblemRegion } from "@/domain/problem-region.mjs";
 import { getDatabase } from "@/lib/db";
 
@@ -69,17 +70,24 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
   const items = database
     .prepare(
       [
-        "SELECT item.id AS assignment_item_id, item.position, problem.prompt, problem.correct_answer",
+        "SELECT item.id AS assignment_item_id, item.position, item.question_label, problem.prompt, problem.correct_answer,",
+        "exercise.id AS exercise_id, exercise.position AS exercise_position, exercise.exercise_label, exercise.shared_context",
         "FROM assignment_items AS item",
         "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
-        "WHERE item.assignment_id = ? AND item.class_id = ? ORDER BY item.position",
+        "JOIN exercises AS exercise ON exercise.id = item.exercise_id AND exercise.assignment_id = item.assignment_id",
+        "WHERE item.assignment_id = ? AND item.class_id = ? ORDER BY exercise.position, item.position",
       ].join(" "),
     )
     .all(assignmentId, header.class_id) as Array<{
     assignment_item_id: string;
     position: number;
+    question_label: string;
     prompt: string;
     correct_answer: string;
+    exercise_id: string;
+    exercise_position: number;
+    exercise_label: string;
+    shared_context: string | null;
   }>;
 
   const diagnosisRows = database
@@ -179,6 +187,15 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
     return {
       assignmentItemId: item.assignment_item_id,
       position: item.position,
+      exerciseId: item.exercise_id,
+      exercisePosition: item.exercise_position,
+      exerciseLabel: item.exercise_label,
+      questionLabel: item.question_label,
+      questionReference: exerciseQuestionReference(
+        item.exercise_label,
+        item.question_label,
+      ),
+      sharedContext: item.shared_context,
       problemPrompt: item.prompt,
       correctAnswer: item.correct_answer,
       diagnosis: diagnosis
@@ -213,6 +230,33 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
     };
   });
 
+  const exercises = [...new Set(correctedItems.map((item) => item.exerciseId))].map(
+    (exerciseId) => {
+      const exerciseItems = correctedItems.filter(
+        (item) => item.exerciseId === exerciseId,
+      );
+      const first = exerciseItems[0];
+      const counts = exerciseItems.reduce(
+        (summary, item) => {
+          if (item.diagnosis?.outcome === "CORRECT") summary.correct += 1;
+          else if (item.diagnosis?.outcome === "MISCONCEPTION") summary.incorrect += 1;
+          else summary.flagged += 1;
+          return summary;
+        },
+        { correct: 0, incorrect: 0, flagged: 0 },
+      );
+      return {
+        id: exerciseId,
+        position: first.exercisePosition,
+        label: first.exerciseLabel,
+        shortLabel: shortExerciseLabel(first.exerciseLabel),
+        sharedContext: first.sharedContext,
+        counts,
+        items: exerciseItems,
+      };
+    },
+  );
+
   return {
     assignmentId: header.assignment_id,
     assignmentTitle: header.assignment_title,
@@ -246,10 +290,17 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
           : correctedItems.flatMap((item) =>
               item.diagnosis?.sourceSubmissionId === source.submission_id &&
               item.diagnosis.region
-                ? [{ position: item.position, region: item.diagnosis.region }]
+                ? [
+                    {
+                      position: item.position,
+                      questionReference: item.questionReference,
+                      region: item.diagnosis.region,
+                    },
+                  ]
                 : [],
             ),
     })),
+    exercises,
     items: correctedItems,
   };
 }

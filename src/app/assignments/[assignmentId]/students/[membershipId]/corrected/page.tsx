@@ -3,23 +3,63 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
+import { AssignmentStepper } from "@/components/assignment-stepper";
 import { PrintButton } from "@/components/practice/print-button";
 import { isOpenAIConfigured } from "@/lib/config";
-import { getCorrectedExam } from "@/server/repositories/corrected-exam";
+import {
+  getCorrectedExam,
+  type CorrectedExam,
+} from "@/server/repositories/corrected-exam";
 
 export const dynamic = "force-dynamic";
 
-function verdictLabel(outcome: string) {
-  if (outcome === "CORRECT") return "Correct";
-  if (outcome === "MISCONCEPTION") return "Correction needed";
-  return "Needs teacher review";
+function verdictLabel(outcome: string, french = false) {
+  if (outcome === "CORRECT") return french ? "Correct" : "Correct";
+  if (outcome === "MISCONCEPTION")
+    return french ? "Correction nécessaire" : "Correction needed";
+  return french ? "À vérifier par l’enseignant" : "Needs teacher review";
 }
 
-function reviewReasonLabel(reason: string) {
+const FRENCH_REVIEW_REASONS: Record<string, string> = {
+  MODEL_REQUESTED_REVIEW: "L’IA demande une vérification",
+  LOW_CONFIDENCE: "Confiance insuffisante",
+  LOW_REASONING_CONFIDENCE: "Raisonnement incertain",
+  LOW_TRANSCRIPTION_CONFIDENCE: "Transcription incertaine",
+  POOR_IMAGE_QUALITY: "Qualité d’image insuffisante",
+  IMAGE_QUALITY_NOT_ASSESSED: "Qualité d’image non évaluée",
+  UNREADABLE_TRANSCRIPTION: "Transcription illisible",
+  IMPLAUSIBLE_TRANSCRIPTION_STEP: "Étape transcrite peu plausible",
+  INSUFFICIENT_WORK_SHOWN: "Travail présenté insuffisant",
+  MULTIPLE_PLAUSIBLE_RULES: "Plusieurs interprétations possibles",
+  NO_TAXONOMY_MATCH: "Hors du référentiel de notions pris en charge",
+  MISSING_EVIDENCE: "Preuve visible manquante",
+  UNGROUNDED_EVIDENCE: "Conclusion non étayée par la copie",
+  DOMAIN_MISMATCH: "Hors du domaine de l’évaluation",
+  INCONSISTENT_OUTPUT: "Résultats contradictoires",
+};
+
+function reviewReasonLabel(reason: string, french: boolean) {
+  if (french && FRENCH_REVIEW_REASONS[reason]) {
+    return FRENCH_REVIEW_REASONS[reason];
+  }
   return reason
     .toLowerCase()
     .replaceAll("_", " ")
     .replace(/^./u, (character) => character.toUpperCase());
+}
+
+function isFrenchExam(exam: CorrectedExam) {
+  const text = [
+    exam.assignmentTitle,
+    ...exam.exercises.flatMap((exercise) => [
+      exercise.label,
+      exercise.sharedContext ?? "",
+      ...exercise.items.map((item) => item.problemPrompt),
+    ]),
+  ].join(" ");
+  return /[àâçéèêëîïôùûüÿœ]|\b(?:calculer|développer|montrer|résoudre|trouver|vérifier|quelle?s?|trajet|dépenses|élève)\b/iu.test(
+    text,
+  );
 }
 
 export default async function CorrectedExamPage({
@@ -30,10 +70,16 @@ export default async function CorrectedExamPage({
   const { assignmentId, membershipId } = await params;
   const exam = getCorrectedExam(assignmentId, membershipId);
   if (!exam) notFound();
+  const french = isFrenchExam(exam);
 
   return (
     <AppShell activeNav="Dashboard" liveAiReady={isOpenAIConfigured()}>
       <div className="corrected-copy-root print-root mx-auto max-w-5xl px-5 py-7 md:px-8 lg:px-10 lg:py-9">
+        <AssignmentStepper
+          assignmentId={assignmentId}
+          className="print-hidden mb-7"
+          currentStep={4}
+        />
         <div className="print-hidden mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <Link
@@ -81,6 +127,48 @@ export default async function CorrectedExamPage({
               <p>Teacher diagnostic copy</p>
             </div>
           </header>
+
+          <nav
+            aria-label="Results by exercise"
+            className="corrected-copy-summary mt-5"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
+              At a glance
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {exam.exercises.map((exercise) => {
+                const summary = (
+                  <>
+                    {exam.exercises.length > 1 ? (
+                      <span className="font-bold text-[var(--ink)]">
+                        {exercise.shortLabel}
+                      </span>
+                    ) : (
+                      <span className="font-bold text-[var(--ink)]">Whole copy</span>
+                    )}
+                    <span className="text-[#426d5b]">✓ {exercise.counts.correct}</span>
+                    <span className="text-[#8e402d]">✕ {exercise.counts.incorrect}</span>
+                    <span className="text-[#70501f]">⚠ {exercise.counts.flagged}</span>
+                  </>
+                );
+                const classes =
+                  "inline-flex items-center gap-2 rounded-xl border border-black/[0.07] bg-[var(--canvas)] px-3 py-2 text-xs";
+                return exam.exercises.length > 1 ? (
+                  <a
+                    className={`${classes} transition hover:border-[var(--sage)]/35 hover:bg-[var(--soft-mint)]`}
+                    href={`#exercise-${exercise.position}`}
+                    key={exercise.id}
+                  >
+                    {summary}
+                  </a>
+                ) : (
+                  <span className={classes} key={exercise.id}>
+                    {summary}
+                  </span>
+                );
+              })}
+            </div>
+          </nav>
 
           {exam.sourcePages.length > 0 ? (
             <div className="corrected-copy-sources mt-6 space-y-6">
@@ -150,7 +238,7 @@ export default async function CorrectedExamPage({
                       />
                       {source.markers.map((marker) => (
                         <div
-                          aria-label={`Problem ${marker.position} location on submitted page`}
+                          aria-label={`${marker.questionReference} location on submitted page`}
                           className="corrected-copy-marker absolute rounded-md border-2 border-[var(--coral)] bg-[var(--soft-coral)]/15"
                           key={`${source.submissionId}-${marker.position}`}
                           style={{
@@ -160,8 +248,8 @@ export default async function CorrectedExamPage({
                             height: `${marker.region.height * 100}%`,
                           }}
                         >
-                          <span className="absolute left-1 top-1 grid size-6 place-items-center rounded-full bg-[var(--coral)] text-[11px] font-bold text-white shadow-sm">
-                            {marker.position}
+                          <span className="absolute left-1 top-1 grid min-h-6 min-w-6 place-items-center rounded-full bg-[var(--coral)] px-2 text-[9px] font-bold text-white shadow-sm">
+                            {marker.questionReference}
                           </span>
                         </div>
                       ))}
@@ -190,147 +278,58 @@ export default async function CorrectedExamPage({
               </div>
             </div>
 
-            {exam.items.map((item) => {
-              const diagnosis = item.diagnosis;
-              const needsReview =
-                diagnosis !== null &&
-                diagnosis.outcome !== "CORRECT" &&
-                diagnosis.outcome !== "MISCONCEPTION";
-
-              return (
-                <article
-                  className="corrected-copy-problem break-inside-avoid rounded-2xl border border-black/[0.08] bg-white/55 p-5"
-                  key={item.assignmentItemId}
-                >
-                  <div className="flex items-start gap-4">
-                    <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-[var(--sidebar)] text-sm font-bold text-white">
-                      {item.position}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="whitespace-pre-wrap font-mono text-sm font-semibold leading-6">
-                        {item.problemPrompt}
-                      </p>
-
-                      {!diagnosis ? (
-                        <div className="mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
-                          <span className="font-semibold">
-                            Needs teacher review —
-                          </span>{" "}
-                          no student work was matched safely to this problem.
+            {exam.exercises.map((exercise) => (
+              <details
+                className={`corrected-copy-exercise group rounded-[22px] border border-black/[0.08] bg-white/35 ${
+                  exam.exercises.length === 1 ? "border-0 bg-transparent" : ""
+                }`}
+                id={`exercise-${exercise.position}`}
+                key={exercise.id}
+                open
+              >
+                {exam.exercises.length > 1 ? (
+                  <summary className="cursor-pointer list-none px-5 py-4 marker:hidden">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-lg font-semibold tracking-[-0.02em]">
+                          {exercise.label}
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          {exercise.items.length} {exercise.items.length === 1 ? "question" : "questions"}
+                        </p>
                       </div>
-                      ) : (
-                        <>
-                          <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-[0.1em]">
-                            <span
-                              className={`rounded-full px-2.5 py-1 ${
-                                diagnosis.outcome === "CORRECT"
-                                  ? "bg-[var(--soft-mint)] text-[#426d5b]"
-                                  : diagnosis.outcome === "MISCONCEPTION"
-                                    ? "bg-[var(--soft-coral)] text-[#8e402d]"
-                                    : "bg-[var(--amber)]/18 text-[#70501f]"
-                              }`}
-                            >
-                              {verdictLabel(diagnosis.outcome)}
-                            </span>
-                            {diagnosis.misconceptionLabel ? (
-                              <span className="rounded-full bg-[var(--soft-coral)] px-2.5 py-1 text-[#8e402d]">
-                                {diagnosis.misconceptionLabel}
-                              </span>
-                            ) : null}
-                          </div>
-
-                          {needsReview ? (
-                            <div className="mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
-                              <span className="font-semibold">
-                                Needs teacher review —
-                              </span>{" "}
-                              {diagnosis.reviewReasons.length > 0
-                                ? diagnosis.reviewReasons
-                                    .map(reviewReasonLabel)
-                                    .join("; ")
-                                : "the available evidence does not support a safe automatic verdict."}
-                            </div>
-                          ) : null}
-
-                          <div className="mt-4 rounded-xl bg-[var(--canvas)] px-3 py-3">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">
-                              Transcribed student work
-                            </p>
-                            <p className="mt-1 whitespace-pre-wrap font-mono text-sm leading-6">
-                              {diagnosis.transcription}
-                            </p>
-                          </div>
-
-                          <ol className="mt-4 space-y-2">
-                            {diagnosis.steps.map((step) => {
-                              const note =
-                                step.correctness === "CORRECT"
-                                  ? step.correctNote ??
-                                    "This step is mathematically consistent with the previous work."
-                                  : step.errorNote ??
-                                    "This step needs teacher review.";
-                              return (
-                                <li
-                                  className={`rounded-xl border px-3 py-3 ${
-                                    step.correctness === "CORRECT"
-                                      ? "border-[var(--sage)]/20 bg-[var(--soft-mint)]/65"
-                                      : step.correctness === "INCORRECT"
-                                        ? "border-[var(--coral)]/30 bg-[var(--soft-coral)]/65"
-                                        : "border-[var(--amber)]/35 bg-[var(--amber)]/10"
-                                  }`}
-                                  key={`${item.assignmentItemId}-${step.position}`}
-                                >
-                                  <div className="flex items-start gap-3">
-                                    <span
-                                      aria-hidden="true"
-                                      className="text-sm font-bold"
-                                    >
-                                      {step.correctness === "CORRECT"
-                                        ? "✓"
-                                        : step.correctness === "INCORRECT"
-                                          ? "✕"
-                                          : "?"}
-                                    </span>
-                                    <div>
-                                      <p className="font-mono text-sm leading-6">
-                                        {step.step}
-                                      </p>
-                                      <p
-                                        className={`mt-1 text-xs leading-5 ${
-                                          step.correctness === "CORRECT"
-                                            ? "text-[#426d5b]"
-                                            : step.correctness === "INCORRECT"
-                                              ? "text-[#8e402d]"
-                                              : "text-[#70501f]"
-                                        }`}
-                                      >
-                                        <span className="font-semibold">
-                                          {step.correctness === "CORRECT"
-                                            ? "Why correct: "
-                                            : step.correctness === "INCORRECT"
-                                              ? "Why wrong: "
-                                              : "Teacher check: "}
-                                        </span>
-                                        {note}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </li>
-                              );
-                            })}
-                          </ol>
-                        </>
-                      )}
-
-                      <div className="mt-4 rounded-xl border border-[var(--sage)]/15 bg-[var(--soft-mint)] px-3 py-2 text-xs leading-5">
-                        <span className="font-semibold">Expected answer:</span>{" "}
-                        <span className="font-mono">{item.correctAnswer}</span>
-                      </div>
+                      <span className="print-hidden text-xs font-semibold text-[var(--sage)] group-open:hidden">
+                        Show
+                      </span>
+                      <span className="print-hidden hidden text-xs font-semibold text-[var(--sage)] group-open:inline">
+                        Hide
+                      </span>
                     </div>
+                  </summary>
+                ) : null}
+                <div className={exam.exercises.length > 1 ? "border-t border-black/[0.07] p-5" : ""}>
+                  {exercise.sharedContext ? (
+                    <div className="mb-4 rounded-xl border border-[var(--sage)]/15 bg-[var(--soft-mint)]/60 px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.11em] text-[var(--sage)]">
+                        Shared context
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6">
+                        {exercise.sharedContext}
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="space-y-4">
+                    {exercise.items.map((item) => (
+                      <CorrectedQuestion
+                        french={french}
+                        item={item}
+                        key={item.assignmentItemId}
+                      />
+                    ))}
                   </div>
-                </article>
-              );
-            })}
+                </div>
+              </details>
+            ))}
           </div>
 
           <p className="corrected-copy-footer mt-6 border-t border-black/10 pt-4 text-[10px] leading-5 text-[var(--muted)]">
@@ -341,5 +340,162 @@ export default async function CorrectedExamPage({
         </section>
       </div>
     </AppShell>
+  );
+}
+
+function CorrectedQuestion({
+  french,
+  item,
+}: {
+  french: boolean;
+  item: CorrectedExam["items"][number];
+}) {
+  const diagnosis = item.diagnosis;
+  const needsReview =
+    diagnosis !== null &&
+    diagnosis.outcome !== "CORRECT" &&
+    diagnosis.outcome !== "MISCONCEPTION";
+  return (
+    <article className="corrected-copy-problem break-inside-avoid rounded-2xl border border-black/[0.08] bg-white/70 p-5">
+      <div className="flex items-start gap-4">
+        <span className="grid min-w-12 shrink-0 place-items-center rounded-xl bg-[var(--sidebar)] px-2 py-2 text-[10px] font-bold text-white">
+          {item.questionReference}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="whitespace-pre-wrap font-mono text-sm font-semibold leading-6">
+            {item.problemPrompt}
+          </p>
+
+          {!diagnosis ? (
+            <div className="mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
+              <span className="font-semibold">
+                {french ? "À vérifier par l’enseignant —" : "Needs teacher review —"}
+              </span>{" "}
+              {french
+                ? "aucun travail n’a pu être associé avec certitude à cette question."
+                : "no student work was matched safely to this question."}
+            </div>
+          ) : (
+            <>
+              <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-[0.1em]">
+                <span
+                  className={`rounded-full px-2.5 py-1 ${
+                    diagnosis.outcome === "CORRECT"
+                      ? "bg-[var(--soft-mint)] text-[#426d5b]"
+                      : diagnosis.outcome === "MISCONCEPTION"
+                        ? "bg-[var(--soft-coral)] text-[#8e402d]"
+                        : "bg-[var(--amber)]/18 text-[#70501f]"
+                  }`}
+                >
+                  {verdictLabel(diagnosis.outcome, french)}
+                </span>
+                {diagnosis.misconceptionLabel ? (
+                  <span className="rounded-full bg-[var(--soft-coral)] px-2.5 py-1 text-[#8e402d]">
+                    {diagnosis.misconceptionLabel}
+                  </span>
+                ) : null}
+              </div>
+
+              {needsReview ? (
+                <div className="mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
+                  <span className="font-semibold">
+                    {french ? "À vérifier par l’enseignant —" : "Needs teacher review —"}
+                  </span>{" "}
+                  {diagnosis.reviewReasons.length > 0
+                    ? diagnosis.reviewReasons
+                        .map((reason) => reviewReasonLabel(reason, french))
+                        .join(" ; ")
+                    : french
+                      ? "les éléments disponibles ne permettent pas une conclusion automatique fiable."
+                      : "the available evidence does not support a safe automatic verdict."}
+                </div>
+              ) : null}
+
+              <div className="mt-4 rounded-xl bg-[var(--canvas)] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">
+                  {french ? "Travail de l’élève transcrit" : "Transcribed student work"}
+                </p>
+                <p className="mt-1 whitespace-pre-wrap font-mono text-sm leading-6">
+                  {diagnosis.transcription}
+                </p>
+              </div>
+
+              <ol className="mt-4 space-y-2">
+                {diagnosis.steps.map((step) => {
+                  const note =
+                    step.correctness === "CORRECT"
+                      ? step.correctNote ??
+                        (french
+                          ? "Cette étape est mathématiquement cohérente avec le travail précédent."
+                          : "This step is mathematically consistent with the previous work.")
+                      : step.errorNote ??
+                        (french
+                          ? "Cette étape doit être vérifiée par l’enseignant."
+                          : "This step needs teacher review.");
+                  return (
+                    <li
+                      className={`rounded-xl border px-3 py-3 ${
+                        step.correctness === "CORRECT"
+                          ? "border-[var(--sage)]/20 bg-[var(--soft-mint)]/65"
+                          : step.correctness === "INCORRECT"
+                            ? "border-[var(--coral)]/30 bg-[var(--soft-coral)]/65"
+                            : "border-[var(--amber)]/35 bg-[var(--amber)]/10"
+                      }`}
+                      key={`${item.assignmentItemId}-${step.position}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span aria-hidden="true" className="text-sm font-bold">
+                          {step.correctness === "CORRECT"
+                            ? "✓"
+                            : step.correctness === "INCORRECT"
+                              ? "✕"
+                              : "?"}
+                        </span>
+                        <div>
+                          <p className="font-mono text-sm leading-6">
+                            {step.step}
+                          </p>
+                          <p
+                            className={`mt-1 text-xs leading-5 ${
+                              step.correctness === "CORRECT"
+                                ? "text-[#426d5b]"
+                                : step.correctness === "INCORRECT"
+                                  ? "text-[#8e402d]"
+                                  : "text-[#70501f]"
+                            }`}
+                          >
+                            <span className="font-semibold">
+                              {step.correctness === "CORRECT"
+                                ? french
+                                  ? "Pourquoi c’est correct : "
+                                  : "Why correct: "
+                                : step.correctness === "INCORRECT"
+                                  ? french
+                                    ? "À corriger : "
+                                    : "Why wrong: "
+                                  : french
+                                    ? "Vérification enseignant : "
+                                    : "Teacher check: "}
+                            </span>
+                            {note}
+                          </p>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </>
+          )}
+
+          <div className="mt-4 rounded-xl border border-[var(--sage)]/15 bg-[var(--soft-mint)] px-3 py-2 text-xs leading-5">
+            <span className="font-semibold">
+              {french ? "Réponse attendue :" : "Expected answer:"}
+            </span>{" "}
+            <span className="font-mono">{item.correctAnswer}</span>
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }

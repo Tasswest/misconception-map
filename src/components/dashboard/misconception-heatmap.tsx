@@ -11,6 +11,7 @@ import {
   SpinnerIcon,
   XIcon,
 } from "@/components/icons";
+import { AssignmentStepper } from "@/components/assignment-stepper";
 import type {
   HeatmapDashboard,
   HeatmapDiagnosisDetail,
@@ -106,6 +107,11 @@ export function MisconceptionHeatmap({
 
   return (
     <div className="mx-auto max-w-[1500px] px-5 py-7 md:px-8 lg:px-10 lg:py-9">
+      <AssignmentStepper
+        assignmentId={dashboard.assignment.id}
+        className="mb-7"
+        currentStep={4}
+      />
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--muted)]">
@@ -131,6 +137,69 @@ export function MisconceptionHeatmap({
           Review results
         </Link>
       </div>
+
+      <section className="mt-6 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
+        <div className="border-b border-black/[0.06] px-5 py-4 md:px-6">
+          <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
+            Class by exercise
+          </p>
+          <h2 className="mt-1 text-xl font-semibold tracking-[-0.025em]">
+            {dashboard.exercises.length === 1
+              ? "Overall performance"
+              : `${dashboard.exercises.length} exercises at a glance`}
+          </h2>
+        </div>
+        <div className="divide-y divide-black/[0.06]">
+          {dashboard.exercises.map((exercise) => (
+            <div
+              className="grid gap-3 px-5 py-4 md:grid-cols-[minmax(150px,0.8fr)_110px_minmax(220px,1.4fr)_110px] md:items-center md:px-6"
+              key={exercise.id}
+            >
+              <div>
+                <p className="text-sm font-semibold">
+                  {dashboard.exercises.length === 1
+                    ? dashboard.assignment.title
+                    : exercise.label}
+                </p>
+                <p className="mt-0.5 text-[10px] text-[var(--muted)]">
+                  {exercise.questionCount} {exercise.questionCount === 1 ? "question" : "questions"}
+                </p>
+              </div>
+              <div>
+                <p className="text-2xl font-semibold tracking-[-0.04em] text-[var(--sidebar)]">
+                  {exercise.successRate === null ? "—" : `${exercise.successRate}%`}
+                </p>
+                <p className="text-[10px] font-medium text-[var(--muted)]">
+                  success · {exercise.assessedCount} safe
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">
+                  Dominant misconception
+                </p>
+                <p className="mt-1 text-sm font-semibold">
+                  {exercise.dominantMisconception
+                    ? `${exercise.dominantMisconception.shortLabel} · ${exercise.dominantMisconception.count}`
+                    : "No repeated misconception"}
+                </p>
+              </div>
+              <div className="md:text-right">
+                <span
+                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    exercise.flaggedCount
+                      ? "bg-[var(--amber)]/18 text-[#765725]"
+                      : "bg-[var(--soft-mint)] text-[var(--sage)]"
+                  }`}
+                >
+                  {exercise.flaggedCount
+                    ? `${exercise.flaggedCount} flagged`
+                    : "No flags"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {dashboard.largestCluster ? (
         <section className="mt-6 flex flex-col gap-3 rounded-[22px] border border-[var(--coral)]/20 bg-[var(--soft-coral)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -319,7 +388,9 @@ export function MisconceptionHeatmap({
                             ) : (
                               <SparkIcon className="size-3" />
                             )}
-                            {practiceBusy === key ? "Generating…" : "Generate practice"}
+                            {practiceBusy === key
+                              ? "Generating…"
+                              : `Practice · ${row.practiceTarget.sourceReference}`}
                           </button>
                         )
                       ) : null}
@@ -442,7 +513,7 @@ function DiagnosisDrawer({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--sage)]">
-              {selected.studentName} · Problem {detail.problemPosition}
+              {selected.studentName} · {detail.questionReference}
             </p>
             <h2 className="mt-2 text-xl font-semibold tracking-[-0.025em]">
               {detail.outcome === "MISCONCEPTION"
@@ -554,7 +625,7 @@ function cellTooltip(
   student: string,
 ) {
   if (cell.state === "MISCONCEPTION") {
-    return `${student}: ${misconception}, severity ${cell.severity}${cell.frequency > 1 ? `, seen ${cell.frequency} times` : ""}${cell.evidenceQuote ? `. Evidence: ${cell.evidenceQuote}` : ""}`;
+    return `${student}: ${cell.detail?.questionReference ? `${cell.detail.questionReference}, ` : ""}${misconception}, severity ${cell.severity}${cell.frequency > 1 ? `, seen ${cell.frequency} times` : ""}${cell.evidenceQuote ? `. Evidence: ${cell.evidenceQuote}` : ""}`;
   }
   if (cell.state === "CLEAR") return `${student}: no evidence of ${misconception} in diagnosed work`;
   if (cell.state === "REVIEW") return `${student}: work needs teacher review`;

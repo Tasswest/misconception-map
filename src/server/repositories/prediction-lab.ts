@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import type { MisconceptionId } from "@/domain/contracts";
+import { exerciseQuestionReference } from "@/domain/exam-labels";
 import { canonicalizeMathAnswer } from "@/domain/math-normalization.mjs";
 import { extractStudentFinalAnswer } from "@/domain/student-final-answer.mjs";
 import {
@@ -522,11 +523,12 @@ export function getPredictionLabData(classIdInput: string) {
   const targets = database
     .prepare(
       [
-        "SELECT item.id, item.assignment_id, assignment.title AS assignment_title, problem.id AS problem_id,",
-        "problem.domain, problem.prompt, problem.answer_format, problem.content_hash",
+        "SELECT item.id, item.assignment_id, item.question_label, assignment.title AS assignment_title, problem.id AS problem_id,",
+        "exercise.exercise_label, problem.domain, problem.prompt, problem.answer_format, problem.content_hash",
         "FROM assignment_items AS item",
         "JOIN assignments AS assignment ON assignment.id = item.assignment_id AND assignment.class_id = item.class_id",
         "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
+        "JOIN exercises AS exercise ON exercise.id = item.exercise_id AND exercise.assignment_id = item.assignment_id",
         "WHERE item.class_id = ? AND assignment.status = 'READY' AND assignment.archived_at IS NULL",
         "AND problem.content_hash IS NOT NULL",
         "ORDER BY assignment.created_at DESC, item.position",
@@ -536,6 +538,8 @@ export function getPredictionLabData(classIdInput: string) {
     id: string;
     assignment_id: string;
     assignment_title: string;
+    exercise_label: string;
+    question_label: string;
     problem_id: string;
     domain: "ALGEBRA" | "FRACTIONS";
     prompt: string;
@@ -553,7 +557,7 @@ export function getPredictionLabData(classIdInput: string) {
         "SELECT prediction.id, prediction.membership_id, prediction.student_model_version_id, model.version AS model_version,",
         "hypothesis.misconception_id, prediction.rule_applied, prediction.predicted_answer,",
         "prediction.correct_answer_snapshot, prediction.trace_json, prediction.confidence, prediction.abstention_reason, prediction.locked_at,",
-        "item.id AS target_item_id, assignment.id AS assignment_id, assignment.title AS assignment_title, problem.prompt, problem.content_hash AS problem_content_hash,",
+        "item.id AS target_item_id, item.question_label, exercise.exercise_label, assignment.id AS assignment_id, assignment.title AS assignment_title, problem.prompt, problem.content_hash AS problem_content_hash,",
         "invalidation.reason AS invalidation_reason, invalidation.note AS invalidation_note, invalidation.invalidated_at,",
         "outcome.actual_answer_snapshot, outcome.match_state, outcome.observed_at, outcome.evaluated_at",
         "FROM predictions AS prediction",
@@ -561,6 +565,7 @@ export function getPredictionLabData(classIdInput: string) {
         "JOIN student_model_hypotheses AS hypothesis ON hypothesis.id = model.hypothesis_id",
         "JOIN assignment_items AS item ON item.id = prediction.target_assignment_item_id",
         "JOIN assignments AS assignment ON assignment.id = item.assignment_id",
+        "JOIN exercises AS exercise ON exercise.id = item.exercise_id AND exercise.assignment_id = item.assignment_id",
         "JOIN problems AS problem ON problem.id = prediction.problem_id",
         "LEFT JOIN prediction_invalidations AS invalidation ON invalidation.prediction_id = prediction.id",
         "LEFT JOIN latest_outcome AS outcome ON outcome.prediction_id = prediction.id",
@@ -583,6 +588,8 @@ export function getPredictionLabData(classIdInput: string) {
     target_item_id: string;
     assignment_id: string;
     assignment_title: string;
+    exercise_label: string;
+    question_label: string;
     prompt: string;
     problem_content_hash: string;
     invalidation_reason: string | null;
@@ -662,6 +669,10 @@ export function getPredictionLabData(classIdInput: string) {
               id: target.id,
               assignmentId: target.assignment_id,
               assignmentTitle: target.assignment_title,
+              questionReference: exerciseQuestionReference(
+                target.exercise_label,
+                target.question_label,
+              ),
               prompt: target.prompt,
               answerFormat: target.answer_format,
             })),
@@ -700,6 +711,10 @@ export function getPredictionLabData(classIdInput: string) {
             problemPrompt: prediction.prompt,
             assignmentId: prediction.assignment_id,
             assignmentTitle: prediction.assignment_title,
+            questionReference: exerciseQuestionReference(
+              prediction.exercise_label,
+              prediction.question_label,
+            ),
             targetAssignmentItemId: prediction.target_item_id,
             ruleApplied: prediction.rule_applied === 1,
             predictedAnswer: prediction.predicted_answer,

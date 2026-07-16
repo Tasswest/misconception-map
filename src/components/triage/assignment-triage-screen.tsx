@@ -339,7 +339,7 @@ function ReviewView({
       <div className="flex flex-col gap-3 border-b border-black/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-7">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">Item {reviewIndex + 1} of {total}</p>
-          <h2 className="mt-1 text-xl font-semibold">{currentItem.studentName}{currentItem.itemPosition ? ` · Question ${currentItem.itemPosition}` : " · Unmatched work"}</h2>
+          <h2 className="mt-1 text-xl font-semibold">{currentItem.studentName}{currentItem.questionReference ? ` · ${currentItem.questionReference}` : " · Unmatched work"}</h2>
         </div>
         <div className="flex items-center gap-2">
           <button aria-label="Previous flagged item" className="grid size-10 place-items-center rounded-xl border border-black/10 bg-white disabled:opacity-30" disabled={reviewIndex === 0} onClick={() => setReviewIndex(reviewIndex - 1)} title="Previous (Left arrow)" type="button"><ChevronIcon className="size-4 rotate-90" /></button>
@@ -396,7 +396,7 @@ function SourcePreview({ item }: { item: TriageReviewItem }) {
     return (
       <div className="mx-auto min-h-[520px] max-w-xl rotate-[-0.5deg] rounded-md bg-[#fffef9] px-10 py-12 shadow-[0_18px_45px_rgba(35,51,46,0.16)]">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/35">Synthetic student page</p>
-        <p className="mt-12 text-sm text-black/55">{item.itemPosition ? `${item.itemPosition}. ${item.problemPrompt}` : "Unmatched exercise work"}</p>
+        <p className="mt-12 text-sm text-black/55">{item.questionReference ? `${item.questionReference} · ${item.problemPrompt}` : "Unmatched exercise work"}</p>
         <p className="mt-14 whitespace-pre-wrap font-mono text-2xl italic leading-10 text-[#2d3d5c]">{item.transcription}</p>
       </div>
     );
@@ -422,7 +422,7 @@ function OutOfScopeItems({ triage }: { triage: AssignmentTriage }) {
   return (
     <section className="mt-7 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)]">
       {triage.outOfScope.length ? triage.outOfScope.map((item) => (
-        <article className="border-b border-black/[0.06] px-5 py-5 last:border-b-0" key={item.targetKey}><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="text-sm font-semibold">{item.studentName}{item.itemPosition ? ` · Question ${item.itemPosition}` : ""}</h2><p className="mt-1 text-xs leading-5 text-[var(--muted)]">{item.reasons.join(" ")}</p></div><span className="self-start rounded-full bg-[var(--canvas)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.09em] text-[var(--muted)]">No label assigned</span></div></article>
+        <article className="border-b border-black/[0.06] px-5 py-5 last:border-b-0" key={item.targetKey}><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="text-sm font-semibold">{item.studentName}{item.questionReference ? ` · ${item.questionReference}` : ""}</h2><p className="mt-1 text-xs leading-5 text-[var(--muted)]">{item.reasons.join(" ")}</p></div><span className="self-start rounded-full bg-[var(--canvas)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.09em] text-[var(--muted)]">No label assigned</span></div></article>
       )) : <EmptyList title="No out-of-scope items" />}
     </section>
   );

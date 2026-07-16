@@ -574,7 +574,7 @@ function insertClassWork(database, input) {
           input.diagnosedAt,
           "ANSWER",
           null,
-          `This answer is equivalent to the expected result ${problem.correct}.`,
+          `Cette réponse est équivalente au résultat attendu ${problem.correct}.`,
         );
       } else if (result.outcome === "MISCONCEPTION") {
         insertStep.run(
@@ -589,7 +589,7 @@ function insertClassWork(database, input) {
           input.diagnosedAt,
           "EXPRESSION",
           null,
-          "The problem was copied and the intended operation was identified correctly.",
+          "L’énoncé a été recopié et l’opération demandée a été correctement identifiée.",
         );
         insertStep.run(
           id(input.stepIdStart + offset * 2),
@@ -613,11 +613,11 @@ function insertClassWork(database, input) {
           result.response,
           null,
           "UNCLEAR",
-          "The marks do not reliably distinguish an equals sign from a minus sign.",
+          "Les traces ne permettent pas de distinguer avec certitude un signe égal d’un signe moins.",
           null,
           input.diagnosedAt,
           "UNPARSEABLE",
-          "No plausible equation can be confirmed from the final line.",
+          "Aucune équation plausible ne peut être confirmée à partir de la dernière ligne.",
           null,
         );
       }
@@ -634,20 +634,20 @@ function misconceptionNote(misconceptionId, correctAnswer) {
   /** @type {Record<string, string>} */
   const notes = {
     SIGN_ERROR_DISTRIBUTION:
-      "The negative factor must multiply every term, including the constant.",
+      "Le facteur négatif doit multiplier chaque terme, y compris la constante.",
     DISTRIBUTION_ONE_TERM_ONLY:
-      "The outside factor reaches every term inside the parentheses.",
+      "Le facteur extérieur doit multiplier chaque terme entre parenthèses.",
     INVERSE_OPERATION_CONFUSION:
-      "Undo addition before dividing so the equation stays balanced.",
+      "Il faut annuler l’addition avant de diviser afin de conserver l’équilibre de l’équation.",
     UNLIKE_TERMS_CONJOINED:
-      "Unlike constants and variable terms cannot be combined into one term.",
+      "Une constante et un terme avec une variable ne peuvent pas être réduits en un seul terme.",
     EQUALITY_AS_OPERATOR:
-      "The equal sign states that both sides have the same value; it is not an instruction to copy the right side.",
+      "Le signe égal indique que les deux membres ont la même valeur ; il ne demande pas de recopier le membre de droite.",
   };
   const explanation = misconceptionId
     ? notes[misconceptionId]
     : undefined;
-  return `${explanation ?? "The observed rule does not preserve equivalence."} The expected answer is ${correctAnswer}.`;
+  return `${explanation ?? "La règle observée ne conserve pas l’équivalence."} La réponse attendue est ${correctAnswer}.`;
 }
 
 /** @param {Database} database @param {string} modelId */

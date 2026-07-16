@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { MisconceptionId } from "@/domain/contracts";
+import { exerciseQuestionReference, shortExerciseLabel } from "@/domain/exam-labels";
 import { MISCONCEPTION_BY_ID, misconceptionIdSchema } from "@/domain/misconception-taxonomy.mjs";
 import { getDatabase } from "@/lib/db";
 import {
@@ -36,7 +37,18 @@ type DiagnosisRow = {
   review_reasons_json: string;
   problem_position: number;
   problem_prompt: string;
+  exercise_id: string;
+  exercise_position: number;
+  exercise_label: string;
+  question_label: string;
   created_at: string;
+};
+
+type ExerciseRow = {
+  id: string;
+  position: number;
+  exercise_label: string;
+  question_count: number;
 };
 
 type StepRow = {
@@ -56,6 +68,9 @@ export type HeatmapDiagnosisDetail = {
   confidence: number;
   severity: 0 | 1 | 2 | 3;
   problemPosition: number;
+  exerciseLabel: string;
+  questionLabel: string;
+  questionReference: string;
   problemPrompt: string;
   transcription: string;
   evidenceQuote: string | null;
@@ -87,6 +102,22 @@ export type HeatmapDashboard = {
     affectedCount: number;
   } | null;
   teachingBrief: TeachingBriefRecord | null;
+  exercises: Array<{
+    id: string;
+    position: number;
+    label: string;
+    shortLabel: string;
+    questionCount: number;
+    successRate: number | null;
+    assessedCount: number;
+    flaggedCount: number;
+    dominantMisconception: {
+      misconceptionId: MisconceptionId;
+      label: string;
+      shortLabel: string;
+      count: number;
+    } | null;
+  }>;
   columns: Array<{
     misconceptionId: MisconceptionId;
     label: string;
@@ -104,6 +135,7 @@ export type HeatmapDashboard = {
       misconceptionId: MisconceptionId;
       misconceptionLabel: string;
       shortLabel: string;
+      sourceReference: string;
     } | null;
     practice: PracticeSummary | null;
     cells: Array<{
@@ -131,6 +163,18 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
     .get(assignmentId) as AssignmentRow | undefined;
   if (!assignment) return null;
 
+  const exerciseRows = database
+    .prepare(
+      [
+        "SELECT exercise.id, exercise.position, exercise.exercise_label, count(item.id) AS question_count",
+        "FROM exercises AS exercise",
+        "LEFT JOIN assignment_items AS item ON item.exercise_id = exercise.id",
+        "WHERE exercise.assignment_id = ? AND exercise.class_id = ?",
+        "GROUP BY exercise.id ORDER BY exercise.position",
+      ].join(" "),
+    )
+    .all(assignment.id, assignment.class_id) as ExerciseRow[];
+
   const memberships = database
     .prepare(
       [
@@ -149,12 +193,14 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
         "SELECT diagnosis.id AS diagnosis_id, submission.id AS submission_id, submission.membership_id,",
         "diagnosis.outcome, diagnosis.misconception_id, diagnosis.confidence, diagnosis.severity,",
         "diagnosis.transcription, diagnosis.evidence_quote, diagnosis.review_reasons_json, diagnosis.created_at,",
-        "item.position AS problem_position, problem.prompt AS problem_prompt",
+        "item.position AS problem_position, problem.prompt AS problem_prompt,",
+        "exercise.id AS exercise_id, exercise.position AS exercise_position, exercise.exercise_label, item.question_label",
         "FROM submissions AS submission",
         "JOIN submission_answers AS answer ON answer.submission_id = submission.id",
         "JOIN assignment_items AS item ON item.id = answer.assignment_item_id",
         "AND item.assignment_id = answer.assignment_id AND item.class_id = answer.class_id",
         "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
+        "JOIN exercises AS exercise ON exercise.id = item.exercise_id AND exercise.assignment_id = item.assignment_id",
         "JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id",
         "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id",
         "WHERE submission.assignment_id = ? AND submission.class_id = ?",
@@ -262,6 +308,12 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
     confidence: diagnosis.confidence,
     severity: diagnosis.severity,
     problemPosition: diagnosis.problem_position,
+    exerciseLabel: diagnosis.exercise_label,
+    questionLabel: diagnosis.question_label,
+    questionReference: exerciseQuestionReference(
+      diagnosis.exercise_label,
+      diagnosis.question_label,
+    ),
     problemPrompt: diagnosis.problem_prompt,
     transcription: diagnosis.transcription,
     evidenceQuote: diagnosis.evidence_quote,
@@ -350,6 +402,9 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
               misconceptionId: targetCell.misconceptionId,
               misconceptionLabel: targetColumn.label,
               shortLabel: targetColumn.shortLabel,
+              sourceReference:
+                targetCell.detail?.questionReference ??
+                shortExerciseLabel("Exercise"),
             }
           : null,
       practice: null,
@@ -383,6 +438,58 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
   });
 
   const largest = columns[0];
+  const exercises: HeatmapDashboard["exercises"] = exerciseRows.map((exercise) => {
+    const exerciseDiagnoses = diagnoses.filter(
+      (diagnosis) => diagnosis.exercise_id === exercise.id,
+    );
+    const assessed = exerciseDiagnoses.filter((diagnosis) =>
+      ["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+    );
+    const correctCount = assessed.filter(
+      (diagnosis) => diagnosis.outcome === "CORRECT",
+    ).length;
+    const misconceptionCounts = new Map<MisconceptionId, number>();
+    for (const diagnosis of exerciseDiagnoses) {
+      const parsed = misconceptionIdSchema.safeParse(diagnosis.misconception_id);
+      if (diagnosis.outcome === "MISCONCEPTION" && parsed.success) {
+        misconceptionCounts.set(
+          parsed.data,
+          (misconceptionCounts.get(parsed.data) ?? 0) + 1,
+        );
+      }
+    }
+    const dominant = [...misconceptionCounts.entries()].sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    )[0];
+    const dominantTerm = dominant
+      ? MISCONCEPTION_BY_ID.get(dominant[0]) ?? null
+      : null;
+    return {
+      id: exercise.id,
+      position: exercise.position,
+      label: exercise.exercise_label,
+      shortLabel: shortExerciseLabel(exercise.exercise_label),
+      questionCount: exercise.question_count,
+      successRate:
+        assessed.length > 0
+          ? Math.round((correctCount / assessed.length) * 100)
+          : null,
+      assessedCount: assessed.length,
+      flaggedCount: exerciseDiagnoses.filter(
+        (diagnosis) =>
+          !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+      ).length,
+      dominantMisconception:
+        dominant && dominantTerm
+          ? {
+              misconceptionId: dominant[0],
+              label: dominantTerm.label,
+              shortLabel: dominantTerm.shortLabel,
+              count: dominant[1],
+            }
+          : null,
+    };
+  });
   return {
     assignment: {
       id: assignment.id,
@@ -401,6 +508,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
         }
       : null,
     teachingBrief: getLatestTeachingBrief(assignment.id),
+    exercises,
     columns,
     rows,
   };

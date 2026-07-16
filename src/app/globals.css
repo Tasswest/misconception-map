@@ -107,6 +107,11 @@ button {
     page-break-after: avoid;
   }
 
+  .corrected-copy-summary {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
   .corrected-copy-sources {
     break-after: page;
     page-break-after: always;
@@ -139,6 +144,19 @@ button {
 
   .corrected-copy-feedback {
     margin-top: 0 !important;
+  }
+
+  .corrected-copy-exercise > summary {
+    cursor: default !important;
+  }
+
+  .corrected-copy-exercise:not([open]) > *:not(summary) {
+    display: block !important;
+  }
+
+  .corrected-copy-exercise + .corrected-copy-exercise {
+    break-before: page;
+    page-break-before: always;
   }
 
   .corrected-copy-problem {

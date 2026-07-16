@@ -15,6 +15,10 @@ import {
   studentPageDiagnosisAIOutputSchema,
 } from "../src/domain/student-page-diagnosis-ai-output.mjs";
 import {
+  exerciseQuestionReference,
+  shortExerciseLabel,
+} from "../src/domain/exam-labels.ts";
+import {
   WORKSHEET_EXTRACTION_SCHEMA_VERSION,
   worksheetExtractionAIOutputSchema,
 } from "../src/domain/worksheet-extraction.ts";
@@ -32,6 +36,11 @@ const tempDirectory = fs.mkdtempSync(
 function verifyStructuredOutputs() {
   assert.equal(WORKSHEET_EXTRACTION_SCHEMA_VERSION, "2.0.0");
   assert.equal(STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION, "2.0.0");
+  assert.equal(shortExerciseLabel("Exercice n° 2 — Transport"), "Ex. 2");
+  assert.equal(
+    exerciseQuestionReference("Exercice n° 2 — Transport", "1."),
+    "Ex. 2 · Q1",
+  );
 
   const hierarchicalExtraction = {
     sourceSummary: "Two exercises with preserved printed numbering.",
@@ -297,6 +306,45 @@ function verifySeededHierarchy() {
       0,
     );
 
+    const exercisePerformance = db
+      .prepare(
+        [
+          "SELECT exercise.exercise_label,",
+          "sum(CASE WHEN diagnosis.outcome = 'CORRECT' THEN 1 ELSE 0 END) AS correct_count,",
+          "sum(CASE WHEN diagnosis.outcome IN ('CORRECT', 'MISCONCEPTION') THEN 1 ELSE 0 END) AS assessed_count,",
+          "sum(CASE WHEN diagnosis.outcome NOT IN ('CORRECT', 'MISCONCEPTION') THEN 1 ELSE 0 END) AS flagged_count",
+          "FROM exercises AS exercise",
+          "JOIN assignment_items AS item ON item.exercise_id = exercise.id",
+          "JOIN submission_answers AS answer ON answer.assignment_item_id = item.id",
+          "JOIN answer_versions AS version ON version.submission_answer_id = answer.id",
+          "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = version.id",
+          "WHERE exercise.assignment_id = ? GROUP BY exercise.id ORDER BY exercise.position",
+        ].join(" "),
+      )
+      .all(DEMO_FOLLOWUP_ASSIGNMENT_ID)
+      .map((row) => ({
+        label: row.exercise_label,
+        successRate: Math.round((row.correct_count / row.assessed_count) * 100),
+        flaggedCount: row.flagged_count,
+      }));
+    assert.deepEqual(exercisePerformance, [
+      {
+        label: "Exercice 1 — Signe et parenthèses",
+        successRate: 77,
+        flaggedCount: 1,
+      },
+      {
+        label: "Exercice 2 — Distribution",
+        successRate: 85,
+        flaggedCount: 0,
+      },
+      {
+        label: "Exercice 3 — Équation",
+        successRate: 68,
+        flaggedCount: 1,
+      },
+    ]);
+
     const reviewReasons = db
       .prepare(
         "SELECT diagnosis.review_reasons_json FROM diagnoses AS diagnosis JOIN answer_versions AS version ON version.id = diagnosis.answer_version_id JOIN submission_answers AS answer ON answer.id = version.submission_answer_id WHERE answer.assignment_id = ? AND diagnosis.outcome = 'NEEDS_REVIEW'",
@@ -308,15 +356,113 @@ function verifySeededHierarchy() {
       reviewReasons.filter((reasons) => reasons.includes("NO_TAXONOMY_MATCH")).length,
       1,
     );
+
+    const flaggedMembershipCount = db
+      .prepare(
+        [
+          "SELECT count(DISTINCT submission.membership_id) AS count",
+          "FROM submissions AS submission",
+          "JOIN submission_answers AS answer ON answer.submission_id = submission.id",
+          "JOIN answer_versions AS version ON version.submission_answer_id = answer.id",
+          "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = version.id",
+          "WHERE submission.assignment_id = ? AND diagnosis.outcome NOT IN ('CORRECT', 'MISCONCEPTION')",
+        ].join(" "),
+      )
+      .get(DEMO_FOLLOWUP_ASSIGNMENT_ID).count;
+    assert.equal(flaggedMembershipCount, 2);
+    assert.equal(20 - flaggedMembershipCount, 18);
+
+    const learnerTwentyExerciseCounts = db
+      .prepare(
+        [
+          "SELECT exercise.exercise_label,",
+          "sum(CASE WHEN diagnosis.outcome = 'CORRECT' THEN 1 ELSE 0 END) AS correct_count,",
+          "sum(CASE WHEN diagnosis.outcome = 'MISCONCEPTION' THEN 1 ELSE 0 END) AS incorrect_count,",
+          "sum(CASE WHEN diagnosis.outcome NOT IN ('CORRECT', 'MISCONCEPTION') THEN 1 ELSE 0 END) AS flagged_count",
+          "FROM submissions AS submission",
+          "JOIN submission_answers AS answer ON answer.submission_id = submission.id",
+          "JOIN assignment_items AS item ON item.id = answer.assignment_item_id",
+          "JOIN exercises AS exercise ON exercise.id = item.exercise_id",
+          "JOIN answer_versions AS version ON version.submission_answer_id = answer.id",
+          "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = version.id",
+          "WHERE submission.assignment_id = ? AND submission.membership_id = ?",
+          "GROUP BY exercise.id ORDER BY exercise.position",
+        ].join(" "),
+      )
+      .all(
+        DEMO_FOLLOWUP_ASSIGNMENT_ID,
+        "00000000-0000-4000-8000-000000002020",
+      )
+      .map((row) => [
+        row.exercise_label,
+        row.correct_count,
+        row.incorrect_count,
+        row.flagged_count,
+      ]);
+    assert.deepEqual(learnerTwentyExerciseCounts, [
+      ["Exercice 1 — Signe et parenthèses", 1, 0, 1],
+      ["Exercice 2 — Distribution", 2, 0, 0],
+      ["Exercice 3 — Équation", 1, 0, 0],
+    ]);
   } finally {
     db.close();
   }
+}
+
+function verifyGuidedAndGroupedSurfaces() {
+  const stepper = fs.readFileSync(
+    path.join(root, "src", "components", "assignment-stepper.tsx"),
+    "utf8",
+  );
+  for (const label of [
+    "Exam source",
+    "Student copies",
+    "AI correction",
+    "Results",
+  ]) {
+    assert.match(stepper, new RegExp(label));
+  }
+  const dashboard = fs.readFileSync(
+    path.join(root, "src", "components", "dashboard", "misconception-heatmap.tsx"),
+    "utf8",
+  );
+  assert.match(dashboard, /exercises at a glance/);
+  assert.match(dashboard, /dominantMisconception/);
+  assert.match(dashboard, /flaggedCount/);
+  const correctedCopy = fs.readFileSync(
+    path.join(
+      root,
+      "src",
+      "app",
+      "assignments",
+      "[assignmentId]",
+      "students",
+      "[membershipId]",
+      "corrected",
+      "page.tsx",
+    ),
+    "utf8",
+  );
+  assert.match(correctedCopy, /corrected-copy-summary/);
+  assert.match(correctedCopy, /corrected-copy-exercise/);
+  assert.match(correctedCopy, /exercise\.sharedContext/);
+  assert.match(correctedCopy, /isFrenchExam\(exam\)/);
+  assert.match(correctedCopy, /FRENCH_REVIEW_REASONS/);
+
+  const setupWorkspace = fs.readFileSync(
+    path.join(root, "src", "components", "diagnosis", "setup-workspace.tsx"),
+    "utf8",
+  );
+  assert.match(setupWorkspace, /Enter an assignment title to continue\./);
+  assert.match(setupWorkspace, /titleFromFilename\(file\.name\)/);
+
 }
 
 try {
   verifyStructuredOutputs();
   verifyLegacyMigration();
   verifySeededHierarchy();
+  verifyGuidedAndGroupedSurfaces();
   console.log(
     "Hierarchical extraction, legacy migration, page matching, and deterministic demo verification passed.",
   );

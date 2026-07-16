@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { normalizeProblemRegion } from "@/domain/problem-region.mjs";
+import { exerciseQuestionReference } from "@/domain/exam-labels";
 import { getDatabase } from "@/lib/db";
 
 const entityIdSchema = z.string().trim().min(1).max(200);
@@ -39,6 +40,8 @@ type LatestDiagnosisRow = {
   submission_status: "DIAGNOSED" | "NEEDS_REVIEW";
   assignment_item_id: string;
   item_position: number;
+  exercise_label: string;
+  question_label: string;
   problem_prompt: string;
   correct_answer: string;
   outcome:
@@ -78,6 +81,7 @@ type TriageItemRecord = {
   inputKind: "IMAGE" | "TYPED" | "DEMO";
   assignmentItemId: string | null;
   itemPosition: number | null;
+  questionReference: string | null;
   problemPrompt: string | null;
   correctAnswer: string | null;
   transcription: string;
@@ -152,7 +156,7 @@ export function getAssignmentTriage(assignmentId: string) {
       [
         "SELECT diagnosis.id AS diagnosis_id, submission.id AS submission_id, submission.membership_id,",
         "student.display_name AS student_name, submission.input_kind, submission.status AS submission_status,",
-        "answer.assignment_item_id, item.position AS item_position, problem.prompt AS problem_prompt, problem.correct_answer,",
+        "answer.assignment_item_id, item.position AS item_position, item.question_label, exercise.exercise_label, problem.prompt AS problem_prompt, problem.correct_answer,",
         "diagnosis.outcome, diagnosis.transcription, diagnosis.review_reasons_json,",
         "answer.region_x, answer.region_y, answer.region_width, answer.region_height, asset.media_type,",
         "review.created_at AS reviewed_at, review.note AS teacher_note",
@@ -163,6 +167,7 @@ export function getAssignmentTriage(assignmentId: string) {
         "JOIN assignment_items AS item ON item.id = answer.assignment_item_id",
         "AND item.assignment_id = answer.assignment_id AND item.class_id = answer.class_id",
         "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
+        "JOIN exercises AS exercise ON exercise.id = item.exercise_id AND exercise.assignment_id = item.assignment_id",
         "JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id",
         "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id",
         "LEFT JOIN submission_assets AS asset ON asset.submission_id = submission.id",
@@ -214,6 +219,10 @@ export function getAssignmentTriage(assignmentId: string) {
         inputKind: row.input_kind,
         assignmentItemId: row.assignment_item_id,
         itemPosition: row.item_position,
+        questionReference: exerciseQuestionReference(
+          row.exercise_label,
+          row.question_label,
+        ),
         problemPrompt: row.problem_prompt,
         correctAnswer: row.correct_answer,
         transcription: row.transcription,
@@ -243,6 +252,7 @@ export function getAssignmentTriage(assignmentId: string) {
       inputKind: row.input_kind,
       assignmentItemId: null,
       itemPosition: null,
+      questionReference: null,
       problemPrompt: null,
       correctAnswer: null,
       transcription: "[No problem block was matched safely]",
