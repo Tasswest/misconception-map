@@ -333,12 +333,13 @@ function getOpenAIClient(inputHash: string) {
     throw new DiagnosisServiceError("OPENAI_NOT_CONFIGURED", { inputHash });
   }
 
-  // Keep one request comfortably inside the 120-second route budget. Automatic
-  // SDK retries could otherwise hold both UI diagnosis slots for several
-  // minutes; the saved-submission retry flow is explicit and observable.
+  // Full multi-page booklets can legitimately need longer than the old
+  // 85-second single-question budget. Keep one request inside the route's
+  // 240-second ceiling while leaving enough time to persist a terminal state.
+  // SDK retries remain disabled because retry is explicit and observable.
   openAIClient ??= new OpenAI({
     apiKey,
-    timeout: 85_000,
+    timeout: 210_000,
     maxRetries: 0,
   });
   return openAIClient;

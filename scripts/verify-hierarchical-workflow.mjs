@@ -456,6 +456,15 @@ function verifyGuidedAndGroupedSurfaces() {
   assert.match(setupWorkspace, /Enter an assignment title to continue\./);
   assert.match(setupWorkspace, /titleFromFilename\(file\.name\)/);
 
+  const diagnosisService = fs.readFileSync(
+    path.join(root, "src", "server", "openai", "diagnose-submission.ts"),
+    "utf8",
+  );
+  assert.match(
+    diagnosisService,
+    /timeout: 210_000/,
+    "multi-page student booklets must fit inside the 240-second route budget",
+  );
 }
 
 try {
