@@ -51,7 +51,11 @@ type LatestDiagnosisRow = {
     | "INSUFFICIENT_EVIDENCE"
     | "MULTIPLE_PLAUSIBLE";
   transcription: string;
+  evidence_quote: string | null;
   review_reasons_json: string;
+  segmentation_note: string | null;
+  flagged_step_text: string | null;
+  flagged_step_note: string | null;
   region_x: number | null;
   region_y: number | null;
   region_width: number | null;
@@ -85,11 +89,15 @@ type TriageItemRecord = {
   problemPrompt: string | null;
   correctAnswer: string | null;
   transcription: string;
+  flaggedEvidence: string | null;
+  flaggedEvidenceNote: string | null;
+  confirmedMistake: boolean;
   reasonCodes: string[];
   reasons: string[];
   outOfScope: boolean;
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "application/pdf" | null;
   assetUrl: string | null;
+  suggestedPage: number | null;
   region: { x: number; y: number; width: number; height: number } | null;
   reviewedAt: string | null;
   teacherNote: string | null;
@@ -147,6 +155,17 @@ function reviewReasonLabel(reason: string) {
   return labels[reason] ?? reason.replaceAll("_", " ").toLowerCase();
 }
 
+function inferFirstReferencedPage(...values: Array<string | null>) {
+  for (const value of values) {
+    if (!value) continue;
+    const match = value.match(/\bpages?\s+(\d{1,3})\b/iu);
+    if (!match) continue;
+    const page = Number.parseInt(match[1], 10);
+    if (page > 0 && page <= 500) return page;
+  }
+  return null;
+}
+
 export function getAssignmentTriage(assignmentId: string) {
   const assignment = getAssignment(assignmentId);
   if (!assignment) return null;
@@ -157,7 +176,10 @@ export function getAssignmentTriage(assignmentId: string) {
         "SELECT diagnosis.id AS diagnosis_id, submission.id AS submission_id, submission.membership_id,",
         "student.display_name AS student_name, submission.input_kind, submission.status AS submission_status,",
         "answer.assignment_item_id, item.position AS item_position, item.question_label, exercise.exercise_label, problem.prompt AS problem_prompt, problem.correct_answer,",
-        "diagnosis.outcome, diagnosis.transcription, diagnosis.review_reasons_json,",
+        "diagnosis.outcome, diagnosis.transcription, diagnosis.evidence_quote, diagnosis.review_reasons_json,",
+        "submission.sanitized_error_message AS segmentation_note,",
+        "(SELECT step.step_text FROM diagnosis_steps AS step WHERE step.diagnosis_id = diagnosis.id AND step.correctness = 'INCORRECT' ORDER BY step.position LIMIT 1) AS flagged_step_text,",
+        "(SELECT step.error_note FROM diagnosis_steps AS step WHERE step.diagnosis_id = diagnosis.id AND step.correctness = 'INCORRECT' ORDER BY step.position LIMIT 1) AS flagged_step_note,",
         "answer.region_x, answer.region_y, answer.region_width, answer.region_height, asset.media_type,",
         "review.created_at AS reviewed_at, review.note AS teacher_note",
         "FROM submissions AS submission",
@@ -226,11 +248,15 @@ export function getAssignmentTriage(assignmentId: string) {
         problemPrompt: row.problem_prompt,
         correctAnswer: row.correct_answer,
         transcription: row.transcription,
+        flaggedEvidence: row.flagged_step_text ?? row.evidence_quote,
+        flaggedEvidenceNote: row.flagged_step_note,
+        confirmedMistake: row.flagged_step_text !== null,
         reasonCodes,
         reasons: reasonCodes.map(reviewReasonLabel),
         outOfScope,
         mediaType: row.media_type,
         assetUrl: row.media_type ? `/api/submissions/${row.submission_id}/asset` : null,
+        suggestedPage: inferFirstReferencedPage(row.segmentation_note),
         region: normalizeProblemRegion({
           x: row.region_x,
           y: row.region_y,
@@ -256,6 +282,9 @@ export function getAssignmentTriage(assignmentId: string) {
       problemPrompt: null,
       correctAnswer: null,
       transcription: "[No problem block was matched safely]",
+      flaggedEvidence: null,
+      flaggedEvidenceNote: null,
+      confirmedMistake: false,
       reasonCodes: ["UNMATCHED_WORK"],
       reasons: [
         row.sanitized_error_message ??
@@ -264,6 +293,7 @@ export function getAssignmentTriage(assignmentId: string) {
       outOfScope: false,
       mediaType: row.media_type,
       assetUrl: row.media_type ? `/api/submissions/${row.submission_id}/asset` : null,
+      suggestedPage: inferFirstReferencedPage(row.sanitized_error_message),
       region: null,
       reviewedAt: row.reviewed_at,
       teacherNote: row.teacher_note,

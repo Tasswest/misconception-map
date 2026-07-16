@@ -372,6 +372,8 @@ function ReviewView({
             {currentItem.reasons.map((reason) => <li className="flex gap-2 rounded-xl border border-[var(--amber)]/35 bg-[var(--amber)]/10 px-3 py-2.5 text-xs leading-5 text-[#70501f]" key={reason}><AlertIcon className="mt-0.5 size-3.5 shrink-0" />{reason}</li>)}
           </ul>
 
+          <EvidenceFocus item={currentItem} />
+
           {currentItem.problemPrompt ? (
             <div className="mt-5 rounded-xl border border-black/[0.06] bg-white px-4 py-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">Assignment item</p>
@@ -380,7 +382,16 @@ function ReviewView({
           ) : null}
           <div className="mt-4 rounded-xl bg-[var(--canvas)] px-4 py-3">
             <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">Transcription</p>
-            <p className="mt-2 whitespace-pre-wrap font-mono text-sm leading-6">{currentItem.transcription}</p>
+            <p className="mt-2 whitespace-pre-wrap font-mono text-sm leading-6">
+              {currentItem.diagnosisId ? (
+                <HighlightedTranscription
+                  evidence={currentItem.flaggedEvidence}
+                  transcription={currentItem.transcription}
+                />
+              ) : (
+                "No safe transcription was produced for this unmatched work."
+              )}
+            </p>
           </div>
 
           <label className="mt-5 block text-xs font-semibold" htmlFor="teacher-review-note">Teacher note <span className="font-normal text-[var(--muted)]">(optional)</span></label>
@@ -394,9 +405,107 @@ function ReviewView({
   );
 }
 
+function EvidenceFocus({ item }: { item: TriageReviewItem }) {
+  if (item.confirmedMistake && item.flaggedEvidence) {
+    return (
+      <div className="mt-4 rounded-xl border border-[var(--coral)]/25 bg-[var(--soft-coral)]/65 px-4 py-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#8e402d]">
+          First incorrect step
+        </p>
+        <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white/60 px-3 py-2 font-mono text-sm font-semibold leading-6">
+          {item.flaggedEvidence}
+        </p>
+        {item.flaggedEvidenceNote ? (
+          <p className="mt-2 text-xs leading-5 text-[#8e402d]">
+            {item.flaggedEvidenceNote}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (item.flaggedEvidence) {
+    return (
+      <div className="mt-4 rounded-xl border border-[var(--amber)]/35 bg-[var(--amber)]/10 px-4 py-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#70501f]">
+          Line to verify - not a confirmed mistake
+        </p>
+        <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white/65 px-3 py-2 font-mono text-sm font-semibold leading-6">
+          {item.flaggedEvidence}
+        </p>
+        <p className="mt-2 text-xs leading-5 text-[#70501f]">
+          No incorrect mathematical step was identified. This item was flagged because the AI was uncertain about transcription, layout, or consistency.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-xl border border-black/[0.07] bg-[var(--canvas)] px-4 py-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">
+        No exact line isolated
+      </p>
+      <p className="mt-2 text-xs leading-5 text-[var(--muted)]">
+        The PDF could not be matched safely to one assignment item. Use the referenced page and exercise cues above; no student mistake has been asserted.
+      </p>
+    </div>
+  );
+}
+
+function HighlightedTranscription({
+  evidence,
+  transcription,
+}: {
+  evidence: string | null;
+  transcription: string;
+}) {
+  if (!evidence) return transcription;
+  const evidenceStart = transcription.indexOf(evidence);
+  if (evidenceStart < 0) return transcription;
+  const evidenceEnd = evidenceStart + evidence.length;
+  return (
+    <>
+      {transcription.slice(0, evidenceStart)}
+      <mark className="rounded bg-[var(--amber)]/40 px-0.5 text-inherit">
+        {transcription.slice(evidenceStart, evidenceEnd)}
+      </mark>
+      {transcription.slice(evidenceEnd)}
+    </>
+  );
+}
+
 function SourcePreview({ item }: { item: TriageReviewItem }) {
   if (item.assetUrl && item.mediaType === "application/pdf") {
-    return <object className="h-[640px] w-full rounded-2xl bg-white shadow-sm" data={item.assetUrl} type="application/pdf"><a href={item.assetUrl}>Open submitted PDF</a></object>;
+    const pdfUrl = item.suggestedPage
+      ? `${item.assetUrl}#page=${item.suggestedPage}&view=FitH`
+      : item.assetUrl;
+    return (
+      <div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-[var(--sidebar)]">
+            {item.suggestedPage
+              ? `PDF opened at referenced page ${item.suggestedPage}`
+              : "Review the submitted PDF"}
+          </p>
+          <a
+            className="text-xs font-semibold text-[var(--sage)] underline-offset-4 hover:underline"
+            href={pdfUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            Open PDF in a new tab
+          </a>
+        </div>
+        <object
+          className="h-[640px] w-full rounded-2xl bg-white shadow-sm"
+          data={pdfUrl}
+          key={pdfUrl}
+          type="application/pdf"
+        >
+          <a href={pdfUrl}>Open submitted PDF</a>
+        </object>
+      </div>
+    );
   }
   if (item.assetUrl) {
     return (

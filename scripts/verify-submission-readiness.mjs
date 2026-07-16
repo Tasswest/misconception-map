@@ -190,6 +190,10 @@ function verifyAccessibilityAndPrint() {
   assert.match(triage, /event\.key === "ArrowLeft"/);
   assert.match(triage, /event\.key === "ArrowRight"/);
   assert.match(triage, /event\.key === "Escape"/);
+  assert.match(triage, /First incorrect step/);
+  assert.match(triage, /not a confirmed mistake/);
+  assert.match(triage, /HighlightedTranscription/);
+  assert.match(triage, /#page=\$\{item\.suggestedPage\}/);
 }
 
 function verifyCostCacheAndStatus() {
