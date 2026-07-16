@@ -244,6 +244,44 @@ export function seedDemoDatabase(database) {
     .prepare("SELECT id, archived_at FROM classes WHERE id = ?")
     .get(DEMO_CLASS_ID);
   if (existing) {
+    const core = database
+      .prepare(
+        [
+          "SELECT",
+          "(SELECT count(*) FROM class_memberships WHERE class_id = ?) AS membership_count,",
+          "(SELECT count(*) FROM assignments WHERE id IN (?, ?) AND class_id = ?) AS assignment_count",
+        ].join(" "),
+      )
+      .get(
+        DEMO_CLASS_ID,
+        DEMO_BASELINE_ASSIGNMENT_ID,
+        DEMO_FOLLOWUP_ASSIGNMENT_ID,
+        DEMO_CLASS_ID,
+      );
+    if (core.membership_count >= 20 && core.assignment_count === 2) {
+      database.transaction(() => {
+        database
+          .prepare(
+            "UPDATE classes SET archived_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+          )
+          .run(DEMO_CLASS_ID);
+        database
+          .prepare(
+            "UPDATE assignments SET status = 'READY', archived_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id IN (?, ?) AND class_id = ?",
+          )
+          .run(
+            DEMO_BASELINE_ASSIGNMENT_ID,
+            DEMO_FOLLOWUP_ASSIGNMENT_ID,
+            DEMO_CLASS_ID,
+          );
+      })();
+      return {
+        classId: DEMO_CLASS_ID,
+        assignmentId: DEMO_FOLLOWUP_ASSIGNMENT_ID,
+        created: false,
+      };
+    }
+
     database.transaction(() => {
       database
         .prepare("DELETE FROM classes WHERE id = ?")

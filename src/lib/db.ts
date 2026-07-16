@@ -12,16 +12,25 @@ const databaseGlobal = globalThis as DatabaseGlobal;
 
 function createDatabase() {
   const configuredPath = process.env.MISCONCEPTION_MAP_DB_PATH?.trim();
+  const configuredDataDirectory = process.env.DATA_DIR?.trim();
   const databasePath = configuredPath
     ? path.resolve(
         /* turbopackIgnore: true */ process.cwd(),
         configuredPath,
       )
-    : path.join(
-        /* turbopackIgnore: true */ process.cwd(),
-        "data",
-        "misconception-map.db",
-      );
+    : configuredDataDirectory
+      ? path.join(
+          path.resolve(
+            /* turbopackIgnore: true */ process.cwd(),
+            configuredDataDirectory,
+            "misconception-map.db",
+          ),
+        )
+      : path.join(
+          /* turbopackIgnore: true */ process.cwd(),
+          "data",
+          "misconception-map.db",
+        );
 
   // The roster and student work are sensitive local data. A private process
   // umask also covers SQLite WAL/SHM sidecars created after startup.
@@ -29,7 +38,7 @@ function createDatabase() {
 
   const databaseDirectory = path.dirname(databasePath);
   fs.mkdirSync(databaseDirectory, { recursive: true, mode: 0o700 });
-  if (!configuredPath) {
+  if (!configuredPath && !configuredDataDirectory) {
     fs.chmodSync(databaseDirectory, 0o700);
   }
 

@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "npm run db:migrate && next dev --hostname 127.0.0.1",
     "build": "next build",
-    "start": "npm run db:migrate && next start --hostname 127.0.0.1",
+    "start": "node scripts/start.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck && npm run verify:phase1 && npm run verify:hierarchy && npm run verify:phase2 && npm run verify:images && npm run verify:pdf && npm run verify:phase4 && npm run verify:diagnosis-contracts && npm run verify:readiness && npm run build",
+    "check": "npm run lint && npm run typecheck && npm run verify:privacy && npm run verify:phase1 && npm run verify:hierarchy && npm run verify:phase2 && npm run verify:images && npm run verify:pdf && npm run verify:phase4 && npm run verify:diagnosis-contracts && npm run verify:readiness && npm run build",
     "db:migrate": "node scripts/migrate.mjs",
     "seed": "npm run db:migrate && node scripts/seed.mjs",
     "sample-work": "node scripts/generate-sample-work.mjs",
@@ -21,7 +21,8 @@
     "verify:pdf": "node scripts/verify-pdf-intake.mjs",
     "verify:phase4": "node scripts/verify-phase-four.mjs",
     "verify:diagnosis-contracts": "node scripts/verify-diagnosis-persistence-contracts.mjs",
-    "verify:readiness": "node scripts/verify-submission-readiness.mjs"
+    "verify:readiness": "node scripts/verify-submission-readiness.mjs",
+    "verify:privacy": "node scripts/verify-privacy.mjs"
   },
   "engines": {
     "node": ">=20.9.0"

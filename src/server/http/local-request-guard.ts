@@ -1,5 +1,7 @@
 import "server-only";
 
+import { isHostedMode } from "@/lib/hosted-access";
+
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 export class LocalRequestBodyError extends Error {
@@ -35,6 +37,38 @@ function parseLocalAuthority(authority: string | null) {
  * for explicit local CLI clients such as curl.
  */
 export function guardLocalApiRequest(request: Request): Response | null {
+  if (isHostedMode()) {
+    const forwardedHost =
+      request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+    if (!forwardedHost) {
+      return Response.json(
+        { error: { code: "INVALID_HOST", message: "The request host is missing." } },
+        { status: 403 },
+      );
+    }
+
+    const origin = request.headers.get("origin");
+    if (origin) {
+      try {
+        const originUrl = new URL(origin);
+        if (originUrl.host.toLowerCase() !== forwardedHost.toLowerCase()) {
+          throw new TypeError("Cross-origin hosted request.");
+        }
+      } catch {
+        return Response.json(
+          {
+            error: {
+              code: "CROSS_ORIGIN_REQUEST",
+              message: "Cross-origin requests cannot change this shared workspace.",
+            },
+          },
+          { status: 403 },
+        );
+      }
+    }
+    return null;
+  }
+
   const host = request.headers.get("host")?.toLowerCase() ?? null;
   const localHost = parseLocalAuthority(host);
   if (!localHost) {

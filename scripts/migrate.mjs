@@ -6,15 +6,18 @@ import Database from "better-sqlite3";
 import { TAXONOMY_SNAPSHOT } from "../src/domain/misconception-taxonomy.mjs";
 
 const root = process.cwd();
+const configuredDataDirectory = process.env.DATA_DIR?.trim();
 const databasePath = process.env.MISCONCEPTION_MAP_DB_PATH?.trim()
   ? path.resolve(root, process.env.MISCONCEPTION_MAP_DB_PATH.trim())
-  : path.join(root, "data", "misconception-map.db");
+  : configuredDataDirectory
+    ? path.join(path.resolve(root, configuredDataDirectory), "misconception-map.db")
+    : path.join(root, "data", "misconception-map.db");
 const migrationsPath = path.join(root, "db", "migrations");
 
 process.umask(0o077);
 const databaseDirectory = path.dirname(databasePath);
 fs.mkdirSync(databaseDirectory, { recursive: true, mode: 0o700 });
-if (!process.env.MISCONCEPTION_MAP_DB_PATH?.trim()) {
+if (!process.env.MISCONCEPTION_MAP_DB_PATH?.trim() && !configuredDataDirectory) {
   fs.chmodSync(databaseDirectory, 0o700);
 }
 

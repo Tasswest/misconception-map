@@ -14,9 +14,12 @@ data/*.db-*
 data/*.sqlite
 data/*.sqlite-*
 uploads/
+*.pdf
 
 # Logs and local tooling
 *.log
 .DS_Store
 .vercel/
 *.tsbuildinfo
+.claude/
+tmp/
