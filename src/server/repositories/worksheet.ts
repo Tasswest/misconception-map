@@ -142,7 +142,54 @@ type ExtractionRun = {
   inputTokens: number | null;
   outputTokens: number | null;
   latencyMs: number;
+  cacheHit: boolean;
 };
+
+export function getCachedWorksheetExtractionRun(inputHash: string) {
+  const parsedHash = z.string().regex(/^[a-f0-9]{64}$/).parse(inputHash);
+  const row = getDatabase()
+    .prepare(
+      [
+        "SELECT model_name, prompt_version, schema_version, openai_response_id, output_hash,",
+        "overall_confidence, exercises_json, source_summary, input_tokens, output_tokens",
+        "FROM assignment_source_extractions WHERE input_hash = ?",
+        "ORDER BY created_at DESC, id DESC LIMIT 1",
+      ].join(" "),
+    )
+    .get(parsedHash) as
+    | {
+        model_name: string;
+        prompt_version: string;
+        schema_version: string;
+        openai_response_id: string;
+        output_hash: string;
+        overall_confidence: number;
+        exercises_json: string;
+        source_summary: string;
+        input_tokens: number | null;
+        output_tokens: number | null;
+      }
+    | undefined;
+  if (!row) return null;
+  const result = worksheetExtractionAIOutputSchema.parse({
+    sourceSummary: row.source_summary,
+    overallConfidence: row.overall_confidence,
+    exercises: JSON.parse(row.exercises_json),
+  });
+  return {
+    result,
+    inputHash: parsedHash,
+    outputHash: row.output_hash,
+    responseId: row.openai_response_id,
+    modelName: row.model_name,
+    promptVersion: row.prompt_version,
+    schemaVersion: row.schema_version,
+    inputTokens: 0,
+    outputTokens: 0,
+    latencyMs: 0,
+    cacheHit: true,
+  } satisfies ExtractionRun;
+}
 
 type WorksheetSource =
   | { sourceKind: "TYPED"; sourceText: string }
@@ -231,8 +278,8 @@ export function saveWorksheetExtraction(input: {
         [
           "INSERT INTO assignment_source_extractions",
           "(id, source_id, model_name, prompt_version, schema_version, openai_response_id,",
-          "input_hash, output_hash, overall_confidence, exercises_json, input_tokens, output_tokens, latency_ms)",
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "input_hash, output_hash, overall_confidence, exercises_json, input_tokens, output_tokens, latency_ms, source_summary, cache_hit)",
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         ].join(" "),
       )
       .run(
@@ -249,6 +296,8 @@ export function saveWorksheetExtraction(input: {
         input.run.inputTokens,
         input.run.outputTokens,
         input.run.latencyMs,
+        extraction.sourceSummary,
+        input.run.cacheHit ? 1 : 0,
       );
   })();
 

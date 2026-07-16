@@ -21,6 +21,61 @@ export function getSystemStatus() {
         "SELECT count(*) AS count FROM taxonomy_terms WHERE taxonomy_version = ?",
       )
       .get(TAXONOMY_VERSION) as { count: number };
+    const aiRuns = database
+      .prepare(
+        [
+          "SELECT purpose, status, model_name, input_tokens, output_tokens, latency_ms, created_at",
+          "FROM ai_runs ORDER BY created_at DESC, id DESC LIMIT 25",
+        ].join(" "),
+      )
+      .all() as Array<{
+        purpose: string;
+        status: string;
+        model_name: string;
+        input_tokens: number | null;
+        output_tokens: number | null;
+        latency_ms: number | null;
+        created_at: string;
+      }>;
+    const extractionRuns = database
+      .prepare(
+        [
+          "SELECT 'WORKSHEET_EXTRACTION' AS purpose, 'SUCCEEDED' AS status, extraction.model_name,",
+          "extraction.input_tokens, extraction.output_tokens, extraction.latency_ms, extraction.cache_hit, extraction.created_at",
+          "FROM assignment_source_extractions AS extraction",
+          "ORDER BY extraction.created_at DESC, extraction.id DESC LIMIT 25",
+        ].join(" "),
+      )
+      .all() as Array<{
+        purpose: string;
+        status: string;
+        model_name: string;
+        input_tokens: number | null;
+        output_tokens: number | null;
+        latency_ms: number | null;
+        cache_hit: 0 | 1;
+        created_at: string;
+      }>;
+    const recentRuns = [
+      ...aiRuns.map((run) => ({ ...run, cache_hit: 0 as const })),
+      ...extractionRuns,
+    ]
+      .sort((left, right) => right.created_at.localeCompare(left.created_at))
+      .slice(0, 25)
+      .map((run) => ({
+        purpose: run.purpose,
+        status: run.status,
+        model: run.model_name,
+        inputTokens: run.input_tokens,
+        outputTokens: run.output_tokens,
+        totalTokens:
+          run.input_tokens === null && run.output_tokens === null
+            ? null
+            : (run.input_tokens ?? 0) + (run.output_tokens ?? 0),
+        latencyMs: run.latency_ms,
+        cacheHit: run.cache_hit === 1,
+        createdAt: run.created_at,
+      }));
 
     return {
       healthy: application?.value === "misconception-map",
@@ -31,6 +86,7 @@ export function getSystemStatus() {
       codeMisconceptionCount: MISCONCEPTIONS.length,
       liveAiReady: isOpenAIConfigured(),
       model: OPENAI_MODEL,
+      recentRuns,
     };
   } catch {
     return {
@@ -42,6 +98,7 @@ export function getSystemStatus() {
       codeMisconceptionCount: MISCONCEPTIONS.length,
       liveAiReady: isOpenAIConfigured(),
       model: OPENAI_MODEL,
+      recentRuns: [],
     };
   }
 }

@@ -13,13 +13,16 @@ import {
   requireDeclaredBodyWithinLimit,
 } from "@/server/http/local-request-guard";
 import {
+  createWorksheetExtractionInputHash,
   extractWorksheet,
+  type ExtractWorksheetInput,
   WorksheetExtractionError,
 } from "@/server/openai/extract-worksheet";
 import { containsRosterName } from "@/server/privacy/roster-text";
 import {
   confirmWorksheetExtraction,
   confirmWorksheetInputSchema,
+  getCachedWorksheetExtractionRun,
   getDraftWorksheetAssignment,
   saveWorksheetExtraction,
   WorksheetRepositoryError,
@@ -32,6 +35,11 @@ export const dynamic = "force-dynamic";
 const MAX_WORKSHEET_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_WORKSHEET_REQUEST_BYTES = 16 * 1024 * 1024;
 const MAX_CONFIRM_REQUEST_BYTES = 180_000;
+
+async function extractOrReuseWorksheet(input: ExtractWorksheetInput) {
+  const inputHash = createWorksheetExtractionInputHash(input);
+  return getCachedWorksheetExtractionRun(inputHash) ?? extractWorksheet(input);
+}
 
 function safeFilename(value: string) {
   return (
@@ -139,7 +147,7 @@ export async function POST(
           },
         ]);
       }
-      const run = await extractWorksheet({
+      const run = await extractOrReuseWorksheet({
         sourceKind,
         assignmentDomain: assignment.domain,
         sourceText,
@@ -197,7 +205,7 @@ export async function POST(
         ]);
       }
       const pdfSha256 = createHash("sha256").update(sourceBytes).digest("hex");
-      const run = await extractWorksheet({
+      const run = await extractOrReuseWorksheet({
         sourceKind: "PDF",
         assignmentDomain: assignment.domain,
         pdfBytes: sourceBytes,
@@ -222,7 +230,7 @@ export async function POST(
     const imageSha256 = createHash("sha256")
       .update(prepared.bytes)
       .digest("hex");
-    const run = await extractWorksheet({
+    const run = await extractOrReuseWorksheet({
       sourceKind,
       assignmentDomain: assignment.domain,
       imageBytes: prepared.bytes,
