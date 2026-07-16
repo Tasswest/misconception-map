@@ -171,6 +171,24 @@ MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run seed
 MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
 ~~~
 
+### Clean-install proof
+
+Verified on July 16, 2026 from commit `5a9b614` with Node `v24.5.0` and npm `11.13.0`. The proof used a new local clone with no copied database or `node_modules`:
+
+~~~bash
+git clone --no-local "/path/to/Misconception Map" /tmp/misconception-map-clean-install
+cd /tmp/misconception-map-clean-install
+npm install
+cp .env.example .env.local
+OPENAI_API_KEY= npm run seed
+OPENAI_API_KEY= npm run check
+OPENAI_API_KEY= npm run dev -- --port 3200
+~~~
+
+The no-key browser smoke covered Overview, Assignments, the 18/1/1 triage, exercise dashboard, grouped corrected copy, Prediction Lab (`3 of 4 matched`, 80% coverage, one abstention), diagnostic setup, and `/status`. Live-only controls were disabled with the `.env.local` explanation.
+
+For the live smoke, the local key was added to the clone’s ignored `.env.local`, the server was restarted, and `sample-work/01-negative-distribution.jpeg` was uploaded for a new synthetic learner against `Ex. 1 · Q1.1`. GPT-5.6 returned a grounded French `NEEDS_REVIEW` result instead of forcing a taxonomy match. The run saved 6,151 input and 1,393 output tokens; `/status` displayed 7,544 total. Repeating the identical diagnosis returned the persisted result while the database remained at exactly one diagnosis run.
+
 ## Architecture
 
 - Next.js App Router, React Server Components, TypeScript, and Tailwind CSS.
