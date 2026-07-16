@@ -15,6 +15,8 @@ import {
   UploadIcon,
   XIcon,
 } from "@/components/icons";
+import { AssignmentStepper, type AssignmentWorkflowStep } from "@/components/assignment-stepper";
+import { exerciseQuestionReference } from "@/domain/exam-labels";
 import type {
   DiagnosisStep,
   DiagnosisSummary,
@@ -47,6 +49,8 @@ type AssignmentContext = {
   items: Array<{
     id: string;
     position: number;
+    exerciseLabel: string;
+    questionLabel: string;
     prompt: string;
     correctAnswer: string;
     answerFormat: string;
@@ -137,6 +141,7 @@ export function DiagnosisWorkbench({
   const [runError, setRunError] = useState<string | null>(null);
   const [workDeidentificationConfirmed, setWorkDeidentificationConfirmed] =
     useState(false);
+  const [addingMoreCopies, setAddingMoreCopies] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const previewUrls = useRef(new Set<string>());
   const queueSequence = useRef(0);
@@ -175,6 +180,15 @@ export function DiagnosisWorkbench({
     .map((item) => item.submissionId)
     .sort()
     .join("|");
+  const hasCorrectionWork =
+    processing ||
+    actionableItems.length > 0 ||
+    allItems.some((item) => item.status === "FAILED");
+  const currentStep: AssignmentWorkflowStep = hasCorrectionWork
+    ? 3
+    : addingMoreCopies || allItems.length === 0
+      ? 2
+      : 4;
 
   useEffect(() => {
     const urls = previewUrls.current;
@@ -615,6 +629,11 @@ export function DiagnosisWorkbench({
 
   return (
     <div className="mx-auto max-w-[1380px] px-5 py-7 md:px-8 lg:px-10 lg:py-9">
+      <AssignmentStepper
+        assignmentId={assignment.id}
+        className="mb-7"
+        currentStep={currentStep}
+      />
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--muted)]">
@@ -630,16 +649,22 @@ export function DiagnosisWorkbench({
             {assignment.title}
           </h1>
           <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-            Match each piece of work to a student, then diagnose two submissions at a time.
+            {currentStep === 2
+              ? "Add one deidentified booklet or page for each student."
+              : currentStep === 3
+                ? "Check the matches, then let AI correct the queued copies."
+                : "Automatic correction is complete. Review only the items that were flagged."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
-          <Link
-            className="rounded-full border border-black/[0.08] bg-white px-3.5 py-2 text-xs font-semibold text-[var(--ink)] transition hover:bg-[var(--paper)]"
-            href={`/assignments/${assignment.id}/dashboard`}
-          >
-            View heatmap
-          </Link>
+          {currentStep === 4 ? (
+            <Link
+              className="rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#244b42]"
+              href={`/assignments/${assignment.id}/results`}
+            >
+              Review results
+            </Link>
+          ) : null}
           <div className="flex items-center gap-2 rounded-full border border-black/[0.07] bg-white/65 px-3 py-2 text-xs font-semibold text-[var(--muted)]">
             <span
               className={`size-2 rounded-full ${liveAiReady ? "bg-[var(--sage)]" : "bg-[var(--amber)]"}`}
@@ -649,6 +674,34 @@ export function DiagnosisWorkbench({
         </div>
       </div>
 
+      {currentStep === 4 ? (
+        <section className="mt-7 rounded-[24px] border border-[var(--sage)]/20 bg-[var(--soft-mint)] px-6 py-10 text-center shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
+          <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-white text-[var(--sage)]">
+            <CheckIcon className="size-5" />
+          </span>
+          <h2 className="mt-4 text-2xl font-semibold tracking-[-0.03em]">
+            Copies corrected
+          </h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[var(--muted)]">
+            Go to Results for the automatic, review, and out-of-scope piles.
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <Link
+              className="rounded-xl bg-[var(--sidebar)] px-5 py-3 text-sm font-semibold text-white"
+              href={`/assignments/${assignment.id}/results`}
+            >
+              Open results
+            </Link>
+            <button
+              className="rounded-xl border border-black/10 bg-white px-5 py-3 text-sm font-semibold"
+              onClick={() => setAddingMoreCopies(true)}
+              type="button"
+            >
+              Add more copies
+            </button>
+          </div>
+        </section>
+      ) : (
       <div className="mt-7 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 space-y-5">
           {!liveAiReady ? (
@@ -660,6 +713,7 @@ export function DiagnosisWorkbench({
             </div>
           ) : null}
 
+          {currentStep === 2 ? (
           <article className="overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
             <div className="flex border-b border-black/[0.06] px-5 pt-4 md:px-6">
               <TabButton
@@ -759,7 +813,7 @@ export function DiagnosisWorkbench({
                           <option value="">Choose a problem</option>
                           {assignment.items.map((problem) => (
                             <option key={problem.id} value={problem.id}>
-                              {problem.position}. {problem.prompt}
+                              {exerciseQuestionReference(problem.exerciseLabel, problem.questionLabel)} · {problem.prompt}
                             </option>
                           ))}
                         </select>
@@ -823,7 +877,9 @@ export function DiagnosisWorkbench({
               ) : null}
             </div>
           </article>
+          ) : null}
 
+          {currentStep === 3 ? (
           <article className="rounded-[24px] border border-black/[0.06] bg-[var(--paper)] p-5 shadow-[0_18px_45px_rgba(35,51,46,0.05)] md:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -956,6 +1012,7 @@ export function DiagnosisWorkbench({
               </button>
             </div>
           </article>
+          ) : null}
         </section>
 
         <aside className="space-y-5 xl:sticky xl:top-6">
@@ -976,7 +1033,7 @@ export function DiagnosisWorkbench({
                   key={problem.id}
                 >
                   <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--sage)]">
-                    Problem {problem.position}
+                    {exerciseQuestionReference(problem.exerciseLabel, problem.questionLabel)}
                   </p>
                   <p className="mt-2 whitespace-pre-wrap font-mono text-sm leading-6 text-[var(--ink)]">
                     {problem.prompt}
@@ -1005,6 +1062,7 @@ export function DiagnosisWorkbench({
           </article>
         </aside>
       </div>
+      )}
     </div>
   );
 }

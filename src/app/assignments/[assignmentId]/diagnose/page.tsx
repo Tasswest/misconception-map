@@ -32,6 +32,8 @@ export default async function AssignmentDiagnosePage({
           items: assignment.items.map((item) => ({
             id: item.id,
             position: item.position,
+            exerciseLabel: item.exerciseLabel,
+            questionLabel: item.questionLabel,
             prompt: item.prompt,
             correctAnswer: item.correctAnswer,
             answerFormat: item.answerFormat,

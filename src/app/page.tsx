@@ -267,12 +267,14 @@ function ReturningTeacherHome({
                 </div>
               ) : null}
               <div className="mt-5 flex flex-wrap gap-2">
-                <Link className="rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white" href={`/assignments/${latest.id}/dashboard`}>
-                  Open heatmap
+                <Link className="rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white" href={latest.currentStepHref}>
+                  Continue · step {latest.currentStep} of 4
                 </Link>
-                <Link className="rounded-xl border border-black/10 bg-white px-4 py-2.5 text-xs font-semibold" href={`/assignments/${latest.id}/diagnose`}>
-                  Add student work
-                </Link>
+                {latest.currentStep === 4 ? (
+                  <Link className="rounded-xl border border-black/10 bg-white px-4 py-2.5 text-xs font-semibold" href={`/assignments/${latest.id}/dashboard`}>
+                    Class by exercise
+                  </Link>
+                ) : null}
               </div>
             </div>
             <div className="bg-[var(--preview)] p-6 md:p-8">

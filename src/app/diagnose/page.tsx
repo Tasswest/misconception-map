@@ -2,11 +2,28 @@ import { AppShell } from "@/components/app-shell";
 import { SetupWorkspace } from "@/components/diagnosis/setup-workspace";
 import type { ClassWorkspaceOption } from "@/components/diagnosis/types";
 import { isOpenAIConfigured } from "@/lib/config";
+import { getDraftWorksheetSetup } from "@/server/repositories/worksheet";
 import { listWorkspaceOverview } from "@/server/repositories/workspace";
 
 export const dynamic = "force-dynamic";
 
-export default function DiagnoseSetupPage() {
+export default async function DiagnoseSetupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ assignmentId?: string | string[] }>;
+}) {
+  const requestedAssignmentId = (await searchParams).assignmentId;
+  const assignmentId = Array.isArray(requestedAssignmentId)
+    ? requestedAssignmentId[0]
+    : requestedAssignmentId;
+  let initialDraft = null;
+  if (assignmentId) {
+    try {
+      initialDraft = getDraftWorksheetSetup(assignmentId);
+    } catch {
+      initialDraft = null;
+    }
+  }
   const overview = listWorkspaceOverview();
   const initialClasses: ClassWorkspaceOption[] = overview.map((classroom) => ({
     id: classroom.id,
@@ -29,7 +46,10 @@ export default function DiagnoseSetupPage() {
 
   return (
     <AppShell activeNav="Assignments" liveAiReady={isOpenAIConfigured()}>
-      <SetupWorkspace initialClasses={initialClasses} />
+      <SetupWorkspace
+        initialClasses={initialClasses}
+        initialDraft={initialDraft}
+      />
     </AppShell>
   );
 }

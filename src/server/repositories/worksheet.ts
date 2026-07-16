@@ -33,6 +33,7 @@ export const confirmWorksheetInputSchema = z
 
 type AssignmentRow = {
   id: string;
+  title: string;
   class_id: string;
   domain: "ALGEBRA" | "FRACTIONS" | "MIXED";
   status: "DRAFT" | "READY" | "ARCHIVED";
@@ -58,7 +59,7 @@ function getAssignmentRow(assignmentId: string) {
   const row = getDatabase()
     .prepare(
       [
-        "SELECT assignment.id, assignment.class_id, assignment.domain, assignment.status",
+        "SELECT assignment.id, assignment.title, assignment.class_id, assignment.domain, assignment.status",
         "FROM assignments AS assignment",
         "JOIN classes AS class ON class.id = assignment.class_id AND class.archived_at IS NULL",
         "WHERE assignment.id = ? AND assignment.archived_at IS NULL",
@@ -73,6 +74,47 @@ function getAssignmentRow(assignmentId: string) {
   }
   return row;
 }
+
+export function getDraftWorksheetSetup(assignmentId: string) {
+  const assignment = getAssignmentRow(assignmentId);
+  if (assignment.status !== "DRAFT") return null;
+  const extraction = getDatabase()
+    .prepare(
+      [
+        "SELECT source.status, extraction.overall_confidence, extraction.exercises_json",
+        "FROM assignment_sources AS source",
+        "JOIN assignment_source_extractions AS extraction ON extraction.source_id = source.id",
+        "WHERE source.assignment_id = ? AND source.class_id = ?",
+      ].join(" "),
+    )
+    .get(assignment.id, assignment.class_id) as
+    | {
+        status: "EXTRACTED" | "NEEDS_REVIEW";
+        overall_confidence: number;
+        exercises_json: string;
+      }
+    | undefined;
+  return {
+    id: assignment.id,
+    classId: assignment.class_id,
+    title: assignment.title,
+    domain: assignment.domain,
+    review: extraction
+      ? {
+          assignmentId: assignment.id,
+          overallConfidence: extraction.overall_confidence,
+          needsReview: extraction.status === "NEEDS_REVIEW",
+          exercises: z.array(worksheetExerciseSchema).parse(
+            JSON.parse(extraction.exercises_json),
+          ),
+        }
+      : null,
+  };
+}
+
+export type DraftWorksheetSetup = NonNullable<
+  ReturnType<typeof getDraftWorksheetSetup>
+>;
 
 export function getDraftWorksheetAssignment(assignmentId: string) {
   const row = getAssignmentRow(assignmentId);

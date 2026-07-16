@@ -21,7 +21,7 @@ export default function AssignmentsPage() {
               Assignments
             </h1>
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-              Open a heatmap, add work, or archive setup mistakes without deleting evidence.
+              Each assignment reopens at the next action that needs you.
             </p>
           </div>
           <Link
@@ -58,15 +58,13 @@ export default function AssignmentsPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {assignment.status === "READY" ? (
-                    <Link
-                      className="rounded-xl bg-[var(--sidebar)] px-3.5 py-2.5 text-xs font-semibold text-white"
-                      href={`/assignments/${assignment.id}/results`}
-                    >
-                      Open results
-                    </Link>
-                  ) : null}
-                  {assignment.status === "READY" ? (
+                  <Link
+                    className="rounded-xl bg-[var(--sidebar)] px-3.5 py-2.5 text-xs font-semibold text-white"
+                    href={assignment.currentStepHref}
+                  >
+                    Continue · {assignment.currentStep} of 4
+                  </Link>
+                  {assignment.currentStep === 4 ? (
                     <Link
                       className="rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-xs font-semibold"
                       href={`/assignments/${assignment.id}/dashboard`}
@@ -74,12 +72,6 @@ export default function AssignmentsPage() {
                       Class dashboard
                     </Link>
                   ) : null}
-                  <Link
-                    className="rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-xs font-semibold"
-                    href={`/assignments/${assignment.id}/diagnose`}
-                  >
-                    Add work
-                  </Link>
                   <EntityActions
                     currentName={assignment.title}
                     entity="assignment"

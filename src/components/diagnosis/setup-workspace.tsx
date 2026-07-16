@@ -13,14 +13,17 @@ import {
   UploadIcon,
   UsersIcon,
 } from "@/components/icons";
+import { AssignmentStepper } from "@/components/assignment-stepper";
 import type {
   AssignmentOption,
   ClassWorkspaceOption,
   StudentOption,
 } from "@/components/diagnosis/types";
+import type { DraftWorksheetSetup } from "@/server/repositories/worksheet";
 
 type SetupWorkspaceProps = {
   initialClasses: ClassWorkspaceOption[];
+  initialDraft: DraftWorksheetSetup | null;
 };
 
 type ApiValue = Record<string, unknown>;
@@ -60,10 +63,13 @@ const gradeOptions = [
 const fieldClass =
   "mt-2 w-full rounded-xl border border-black/10 bg-white px-3.5 py-3 text-sm text-[var(--ink)] outline-none transition placeholder:text-[var(--muted)]/55 focus:border-[var(--sage)] focus:ring-4 focus:ring-[var(--mint)]/25";
 
-export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
+export function SetupWorkspace({
+  initialClasses,
+  initialDraft,
+}: SetupWorkspaceProps) {
   const [classes, setClasses] = useState(initialClasses);
   const [selectedClassId, setSelectedClassId] = useState(
-    initialClasses.at(0)?.id ?? "",
+    initialDraft?.classId ?? initialClasses.at(0)?.id ?? "",
   );
   const [className, setClassName] = useState("");
   const [gradeBand, setGradeBand] = useState<ClassWorkspaceOption["gradeBand"]>(
@@ -71,13 +77,19 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
   );
   const [schoolYear, setSchoolYear] = useState("");
   const [studentNames, setStudentNames] = useState("");
-  const [assignmentTitle, setAssignmentTitle] = useState("");
-  const [domain, setDomain] = useState<AssignmentOption["domain"]>("ALGEBRA");
+  const [assignmentTitle, setAssignmentTitle] = useState(
+    initialDraft?.title ?? "",
+  );
+  const [domain, setDomain] = useState<AssignmentOption["domain"]>(
+    initialDraft?.domain ?? "ALGEBRA",
+  );
   const [worksheetSourceKind, setWorksheetSourceKind] = useState<"TYPED" | "IMAGE">("TYPED");
   const [worksheetText, setWorksheetText] = useState("");
   const [worksheetFile, setWorksheetFile] = useState<File | null>(null);
   const [worksheetDeidentified, setWorksheetDeidentified] = useState(false);
-  const [worksheetReview, setWorksheetReview] = useState<WorksheetReview | null>(null);
+  const [worksheetReview, setWorksheetReview] = useState<WorksheetReview | null>(
+    initialDraft?.review ?? null,
+  );
   const [busy, setBusy] = useState<"class" | "students" | "assignment" | "confirm" | null>(
     null,
   );
@@ -101,6 +113,20 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
       ),
     [studentNames],
   );
+
+  const extractionBlocker = !selectedClass
+    ? "Create or select a class first."
+    : selectedClass.students.length === 0
+      ? "Add at least one student to the class first."
+      : !assignmentTitle.trim()
+        ? "Enter an assignment title to continue."
+        : worksheetSourceKind === "TYPED" && !worksheetText.trim()
+          ? "Paste the worksheet text to continue."
+          : worksheetSourceKind === "IMAGE" && !worksheetFile
+            ? "Choose a worksheet photo or PDF to continue."
+            : !worksheetDeidentified
+              ? "Confirm that this is a blank teacher copy to continue."
+              : null;
 
   async function createClass(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -195,16 +221,19 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
     setNotice(null);
 
     try {
-      const payload = await postJson(
-        `/api/classes/${encodeURIComponent(selectedClass.id)}/assignments`,
-        {
-          title: assignmentTitle.trim(),
-          description: null,
-          domain,
-        },
-      );
-      const record = unwrapRecord(payload, "assignment");
-      const assignmentId = readString(record, "id");
+      let assignmentId = initialDraft?.id ?? null;
+      if (!assignmentId) {
+        const payload = await postJson(
+          `/api/classes/${encodeURIComponent(selectedClass.id)}/assignments`,
+          {
+            title: assignmentTitle.trim(),
+            description: null,
+            domain,
+          },
+        );
+        const record = unwrapRecord(payload, "assignment");
+        assignmentId = readString(record, "id");
+      }
       const formData = new FormData();
       formData.set("sourceKind", worksheetSourceKind);
       formData.set("deidentified", "true");
@@ -318,6 +347,7 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
 
   return (
     <div className="mx-auto max-w-[1240px] px-5 py-8 md:px-8 lg:px-10 lg:py-10">
+      <AssignmentStepper className="mb-7" currentStep={1} />
       <div className="max-w-3xl">
         <div className="inline-flex items-center gap-2 rounded-full bg-[var(--soft-mint)] px-3 py-1.5 text-xs font-semibold text-[var(--sidebar)]">
           <PlusIcon className="size-3.5" /> New diagnostic
@@ -361,6 +391,7 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
                 Class
                 <select
                   className={fieldClass}
+                  disabled={initialDraft !== null}
                   onChange={(event) => {
                     setSelectedClassId(event.target.value);
                     setError(null);
@@ -667,7 +698,7 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
                 Assignment title
                 <input
                   className={fieldClass}
-                  disabled={!selectedClass}
+                  disabled={!selectedClass || initialDraft !== null}
                   maxLength={160}
                   onChange={(event) => setAssignmentTitle(event.target.value)}
                   placeholder="Distributing negatives check"
@@ -679,7 +710,7 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
                 Domain
                 <select
                   className={fieldClass}
-                  disabled={!selectedClass}
+                  disabled={!selectedClass || initialDraft !== null}
                   onChange={(event) => setDomain(event.target.value as AssignmentOption["domain"])}
                   value={domain}
                 >
@@ -741,7 +772,13 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
                   accept="image/jpeg,image/png,image/webp,application/pdf"
                   className="mt-4 block w-full text-xs font-normal"
                   disabled={!selectedClass}
-                  onChange={(event) => setWorksheetFile(event.target.files?.[0] ?? null)}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setWorksheetFile(file);
+                    if (file && !assignmentTitle.trim()) {
+                      setAssignmentTitle(titleFromFilename(file.name));
+                    }
+                  }}
                   required
                   type="file"
                 />
@@ -771,7 +808,18 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
               </p>
             ) : null}
 
+            {extractionBlocker && selectedClass?.students.length ? (
+              <p
+                className="flex items-start gap-2 rounded-xl border border-[var(--amber)]/25 bg-[var(--amber)]/10 px-4 py-3 text-sm font-medium text-[#765725]"
+                id="extraction-blocker"
+              >
+                <AlertIcon className="mt-0.5 size-4 shrink-0" />
+                {extractionBlocker}
+              </p>
+            ) : null}
+
             <button
+              aria-describedby={extractionBlocker ? "extraction-blocker" : undefined}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--sidebar)] px-5 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#244b42] disabled:cursor-not-allowed disabled:opacity-45"
               disabled={
                 busy !== null ||
@@ -798,6 +846,15 @@ export function SetupWorkspace({ initialClasses }: SetupWorkspaceProps) {
       </section>
     </div>
   );
+}
+
+function titleFromFilename(filename: string) {
+  const withoutExtension = filename.replace(/\.[^.]+$/u, "");
+  const readable = withoutExtension
+    .replace(/[_-]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  return (readable || "Diagnostic assignment").slice(0, 160);
 }
 
 function StepHeading({

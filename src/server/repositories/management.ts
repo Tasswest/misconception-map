@@ -87,7 +87,17 @@ export type ManagedAssignment = {
   studentCount: number;
   diagnosedStudentCount: number;
   needsReviewCount: number;
+  currentStep: 1 | 2 | 3 | 4;
+  currentStepHref: string;
   createdAt: string;
+};
+
+type ManagedAssignmentRow = Omit<
+  ManagedAssignment,
+  "currentStep" | "currentStepHref"
+> & {
+  submissionCount: number;
+  unfinishedSubmissionCount: number;
 };
 
 type ClassRow = Omit<ManagedClass, "isDemo" | "latestAssignment" | "students"> & {
@@ -199,7 +209,7 @@ export function listManagedClasses(): ManagedClass[] {
 }
 
 export function listManagedAssignments(): ManagedAssignment[] {
-  return getDatabase()
+  const rows = getDatabase()
     .prepare(
       `
         SELECT
@@ -229,7 +239,16 @@ export function listManagedAssignments(): ManagedAssignment[] {
             SELECT count(*) FROM submissions AS submission
             WHERE submission.assignment_id = assignment.id
               AND submission.status = 'NEEDS_REVIEW'
-          ) AS needsReviewCount
+          ) AS needsReviewCount,
+          (
+            SELECT count(*) FROM submissions AS submission
+            WHERE submission.assignment_id = assignment.id
+          ) AS submissionCount,
+          (
+            SELECT count(*) FROM submissions AS submission
+            WHERE submission.assignment_id = assignment.id
+              AND submission.status IN ('UPLOADED', 'PROCESSING', 'FAILED')
+          ) AS unfinishedSubmissionCount
         FROM assignments AS assignment
         JOIN classes AS class ON class.id = assignment.class_id
         WHERE class.archived_at IS NULL
@@ -238,7 +257,40 @@ export function listManagedAssignments(): ManagedAssignment[] {
         ORDER BY class.is_demo DESC, assignment.created_at DESC, assignment.title COLLATE NOCASE
       `,
     )
-    .all() as ManagedAssignment[];
+    .all() as ManagedAssignmentRow[];
+
+  return rows.map((row) => {
+    const currentStep = (
+      row.status === "DRAFT"
+        ? 1
+        : row.submissionCount === 0
+          ? 2
+          : row.unfinishedSubmissionCount > 0
+            ? 3
+            : 4
+    ) as ManagedAssignment["currentStep"];
+    return {
+      id: row.id,
+      classId: row.classId,
+      className: row.className,
+      title: row.title,
+      description: row.description,
+      domain: row.domain,
+      status: row.status,
+      itemCount: row.itemCount,
+      studentCount: row.studentCount,
+      diagnosedStudentCount: row.diagnosedStudentCount,
+      needsReviewCount: row.needsReviewCount,
+      createdAt: row.createdAt,
+      currentStep,
+      currentStepHref:
+        currentStep === 4
+          ? `/assignments/${row.id}/results`
+          : currentStep === 1
+            ? `/diagnose?assignmentId=${encodeURIComponent(row.id)}`
+            : `/assignments/${row.id}/diagnose`,
+    };
+  });
 }
 
 export function updateClassDetails(
