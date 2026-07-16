@@ -40,6 +40,11 @@ assert.equal(
   true,
 );
 assert.equal(apiInput.file_data.includes("student-name"), false);
+assert.equal(
+  buildPdfInputFile(pdfBytes, "worksheet.pdf", "low").detail,
+  "low",
+  "printed worksheet extraction must use the low-cost visual tier",
+);
 
 const tempDirectory = fs.mkdtempSync(
   path.join(os.tmpdir(), "misconception-map-pdf-intake-"),

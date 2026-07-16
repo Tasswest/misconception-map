@@ -34,7 +34,7 @@ const tempDirectory = fs.mkdtempSync(
 );
 
 function verifyStructuredOutputs() {
-  assert.equal(WORKSHEET_EXTRACTION_SCHEMA_VERSION, "2.0.0");
+  assert.equal(WORKSHEET_EXTRACTION_SCHEMA_VERSION, "2.1.0");
   assert.equal(STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION, "2.0.0");
   assert.equal(shortExerciseLabel("Exercice n° 2 — Transport"), "Ex. 2");
   assert.equal(
@@ -79,6 +79,23 @@ function verifyStructuredOutputs() {
           },
         ],
       },
+      {
+        exerciseLabel: "Exercice 8 — Géométrie",
+        sharedContext: "ABC est un triangle rectangle en A.",
+        questions: [
+          {
+            questionLabel: "8.1",
+            problemStatement:
+              "ABC est un triangle rectangle en A, avec AB = 3 cm et AC = 4 cm. Calculer BC.",
+            expectedAnswer: "5 cm",
+            answerKind: "NUMBER",
+            domain: null,
+            extractionConfidence: 0.99,
+            answerConfidence: 0.99,
+            reviewNote: null,
+          },
+        ],
+      },
     ],
   };
   assert.deepEqual(
@@ -105,6 +122,16 @@ function verifyStructuredOutputs() {
     }).success,
     false,
     "nullable fields remain required in the strict extraction contract",
+  );
+
+  const extractionService = fs.readFileSync(
+    path.join(root, "src", "server", "openai", "extract-worksheet.ts"),
+    "utf8",
+  );
+  assert.match(extractionService, /reasoning: \{ effort: "low" \}/);
+  assert.match(
+    extractionService,
+    /buildPdfInputFile\(input\.pdfBytes, "worksheet\.pdf", "low"\)/,
   );
 
   const pageResult = {

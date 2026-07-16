@@ -20,8 +20,9 @@ export function hasPdfSignature(bytes) {
  *
  * @param {Uint8Array} bytes
  * @param {"worksheet.pdf" | "student-work.pdf"} safeFilename
+ * @param {"low" | "high"} [detail]
  */
-export function buildPdfInputFile(bytes, safeFilename) {
+export function buildPdfInputFile(bytes, safeFilename, detail = "high") {
   if (!hasPdfSignature(bytes)) {
     throw new TypeError("The file does not contain a valid PDF header.");
   }
@@ -29,6 +30,6 @@ export function buildPdfInputFile(bytes, safeFilename) {
     type: /** @type {const} */ ("input_file"),
     filename: safeFilename,
     file_data: `data:${PDF_MEDIA_TYPE};base64,${Buffer.from(bytes).toString("base64")}`,
-    detail: /** @type {const} */ ("high"),
+    detail,
   };
 }

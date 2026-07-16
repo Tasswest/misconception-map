@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const WORKSHEET_EXTRACTION_SCHEMA_VERSION = "2.0.0";
+export const WORKSHEET_EXTRACTION_SCHEMA_VERSION = "2.1.0";
 
 export const worksheetAnswerKindSchema = z.enum([
   "EXPRESSION",
@@ -16,7 +16,7 @@ export const worksheetQuestionSchema = z
     problemStatement: z.string().trim().min(1).max(4_000),
     expectedAnswer: z.string().trim().min(1).max(1_000),
     answerKind: worksheetAnswerKindSchema,
-    domain: z.enum(["ALGEBRA", "FRACTIONS"]),
+    domain: z.enum(["ALGEBRA", "FRACTIONS"]).nullable(),
     extractionConfidence: z.number().min(0).max(1),
     answerConfidence: z.number().min(0).max(1),
     reviewNote: z.string().trim().min(1).max(500).nullable(),

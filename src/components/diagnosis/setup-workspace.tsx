@@ -31,7 +31,7 @@ type ApiValue = Record<string, unknown>;
 type ExtractedQuestion = {
   questionLabel: string;
   problemStatement: string;
-  domain: "ALGEBRA" | "FRACTIONS";
+  domain: "ALGEBRA" | "FRACTIONS" | null;
   answerKind: "EXPRESSION" | "NUMBER" | "FRACTION" | "MULTIPLE_CHOICE" | "SHORT_TEXT";
   expectedAnswer: string;
   extractionConfidence: number;
@@ -551,7 +551,7 @@ export function SetupWorkspace({
                   Check the extracted worksheet
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                  GPT extracted {worksheetReview.exercises.length} {worksheetReview.exercises.length === 1 ? "exercise" : "exercises"} and {countExtractedQuestions(worksheetReview.exercises)} questions at {Math.round(worksheetReview.overallConfidence * 100)}% overall confidence. Your confirmation makes this structure the shared reference for every student submission.
+                  GPT extracted {worksheetReview.exercises.length} {worksheetReview.exercises.length === 1 ? "exercise" : "exercises"} and {countExtractedQuestions(worksheetReview.exercises)} questions at {Math.round(worksheetReview.overallConfidence * 100)}% overall confidence. {countOutOfScopeQuestions(worksheetReview.exercises, domain) > 0 ? `${countOutOfScopeQuestions(worksheetReview.exercises, domain)} ${countOutOfScopeQuestions(worksheetReview.exercises, domain) === 1 ? "question is" : "questions are"} preserved as out of scope and will not be forced into algebra/fractions diagnosis. ` : ""}Your confirmation makes this structure the shared reference for every student submission.
                 </p>
               </div>
 
@@ -645,13 +645,20 @@ export function SetupWorkspace({
                                 className={fieldClass}
                                 onChange={(event) =>
                                   updateExtractedQuestion(exerciseIndex, questionIndex, {
-                                    domain: event.target.value as ExtractedQuestion["domain"],
+                                    domain:
+                                      event.target.value === "OUT_OF_SCOPE"
+                                        ? null
+                                        : (event.target.value as Exclude<
+                                            ExtractedQuestion["domain"],
+                                            null
+                                          >),
                                   })
                                 }
-                                value={question.domain}
+                                value={question.domain ?? "OUT_OF_SCOPE"}
                               >
                                 <option value="ALGEBRA">Algebra</option>
                                 <option value="FRACTIONS">Fractions</option>
+                                <option value="OUT_OF_SCOPE">Out of scope (preserve only)</option>
                               </select>
                             </label>
                             <label className="block text-sm font-semibold">
@@ -987,13 +994,14 @@ function readExtractedExercises(value: unknown): ExtractedExercise[] {
       const questionRecord = question as ApiValue;
       const questionLabel = readString(questionRecord, "questionLabel");
       const problemStatement = readString(questionRecord, "problemStatement");
-      const domain = readString(questionRecord, "domain");
+      const rawDomain = questionRecord.domain;
+      const domain = rawDomain === null ? null : readString(questionRecord, "domain");
       const answerKind = readString(questionRecord, "answerKind");
       const expectedAnswer = readString(questionRecord, "expectedAnswer");
       if (
         !questionLabel ||
         !problemStatement ||
-        (domain !== "ALGEBRA" && domain !== "FRACTIONS") ||
+        (domain !== null && domain !== "ALGEBRA" && domain !== "FRACTIONS") ||
         ![
           "EXPRESSION",
           "NUMBER",
@@ -1030,6 +1038,22 @@ function readExtractedExercises(value: unknown): ExtractedExercise[] {
 function countExtractedQuestions(exercises: ExtractedExercise[]) {
   return exercises.reduce(
     (count, exercise) => count + exercise.questions.length,
+    0,
+  );
+}
+
+function countOutOfScopeQuestions(
+  exercises: ExtractedExercise[],
+  assignmentDomain: AssignmentOption["domain"],
+) {
+  return exercises.reduce(
+    (count, exercise) =>
+      count +
+      exercise.questions.filter(
+        (question) =>
+          question.domain === null ||
+          (assignmentDomain !== "MIXED" && question.domain !== assignmentDomain),
+      ).length,
     0,
   );
 }

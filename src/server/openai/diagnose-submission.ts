@@ -386,7 +386,7 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
                 image_url: `data:${prepared.imageMediaType};base64,${Buffer.from(
                   prepared.imageBytes,
                 ).toString("base64")}`,
-                detail: "original" as const,
+                detail: "high" as const,
               },
         ];
   const startedAt = performance.now();
@@ -587,7 +587,7 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
                   image_url: `data:${prepared.imageMediaType};base64,${Buffer.from(
                     prepared.imageBytes,
                   ).toString("base64")}`,
-                  detail: "original" as const,
+                  detail: "high" as const,
                 },
           ],
         },

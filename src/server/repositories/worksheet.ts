@@ -292,6 +292,23 @@ export function confirmWorksheetExtraction(
 
   database.transaction(() => {
     const assignment = getDraftWorksheetAssignment(assignmentId);
+    const supportedQuestionCount = input.exercises.reduce(
+      (count, exercise) =>
+        count +
+        exercise.questions.filter(
+          (question) =>
+            question.domain !== null &&
+            (assignment.domain === "MIXED" ||
+              question.domain === assignment.domain),
+        ).length,
+      0,
+    );
+    if (supportedQuestionCount === 0) {
+      throw new WorksheetRepositoryError(
+        "DOMAIN_MISMATCH",
+        "No extracted question matches this assignment’s diagnostic domain. Change at least one question domain before confirming.",
+      );
+    }
     const source = database
       .prepare(
         "SELECT id FROM assignment_sources WHERE assignment_id = ? AND class_id = ?",
@@ -325,16 +342,14 @@ export function confirmWorksheetExtraction(
         );
 
       for (const question of exercise.questions) {
-        itemPosition += 1;
         if (
-          assignment.domain !== "MIXED" &&
-          question.domain !== assignment.domain
+          question.domain === null ||
+          (assignment.domain !== "MIXED" &&
+            question.domain !== assignment.domain)
         ) {
-          throw new WorksheetRepositoryError(
-            "DOMAIN_MISMATCH",
-            "An extracted question falls outside the assignment domain.",
-          );
+          continue;
         }
+        itemPosition += 1;
         const problemId = randomUUID();
         const itemId = randomUUID();
         database
