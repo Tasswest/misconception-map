@@ -1,160 +1,243 @@
 # Misconception Map
 
-Misconception Map is a teacher-facing diagnostic workspace for middle-school algebra and fractions. The complete product turns student work into evidence-backed misconception hypotheses, targeted practice, and predictions that can be tested against later answers. The app implements worksheet-aware assignment setup, local work intake, live diagnosis, a recoverable diagnosis queue, a clustered class misconception heatmap, returnable corrected-copy PDFs, targeted micro-practice, a Teach This Tomorrow brief, and the complete Prediction Lab signature flow.
+Misconception Map is a local, teacher-facing diagnostic workspace for middle-school algebra and fractions. It turns a structured exam and deidentified student work into four answers a teacher can read quickly:
 
-The project is being built for the Education category of OpenAI Build Week. It is intentionally local-first: the web app and SQLite database run on one machine, while live diagnosis and generation use the OpenAI API.
+1. Where am I?
+2. What needs my review?
+3. How is the class doing, exercise by exercise?
+4. What happened on this copy?
 
-## Setup
+There are no grades or points. The product corrects what it can support from visible work, abstains when evidence is weak, and treats every Student Model as a versioned, testable hypothesis rather than a fixed learner attribute.
 
-Prerequisites:
+![Results triage showing 18 automatically corrected copies, one flagged item, and one out-of-scope item](docs/screenshots/triage-screen.jpg)
 
-- Node.js 24 is recommended; Node.js 20.9 or newer is required.
-- An OpenAI API key is required only for live AI features.
+![A corrected copy grouped by exercise with an at-a-glance strip and French feedback](docs/screenshots/grouped-corrected-copy.jpg)
+
+## What the demo proves
+
+- A visible four-step assignment path: **Exam source → Student copies → AI correction → Results**.
+- Hierarchical extraction that preserves every printed exercise, shared stimulus, and question label. The real six-page French brevet fixture returns all six exercises; unsupported geometry, probability, and statistics questions remain visible as out of scope instead of disappearing.
+- A results triage that asks the teacher to review only ambiguous, unreadable, unmatched, or out-of-scope work.
+- A class summary by exercise before the full misconception heatmap.
+- Corrected copies grouped by exercise, with shared context shown once and feedback written in the language of the exam.
+- Targeted five-question micro-practice, a teacher answer key, and a short “Teach This Tomorrow” intervention.
+- A Prediction Lab that locks a prediction from a supported Student Model before held-out work exists, then scores or invalidates that prediction transparently.
+
+Misconception Map is built for the Education category of OpenAI Build Week. Next.js and SQLite run on the teacher’s machine. Only live extraction, diagnosis, model synthesis, practice, briefs, and predictions call the OpenAI API.
+
+## Quickstart
+
+Prerequisites: Node.js 20.9 or newer (Node.js 24 recommended) and npm.
 
 ~~~bash
+git clone <your-repository-url>
+cd "Misconception Map"
 npm install
 cp .env.example .env.local
+npm run seed
 npm run dev
 ~~~
 
-Add your API key to .env.local:
+Open [http://localhost:3000](http://localhost:3000).
+
+For live AI features, put one key in `.env.local` before starting the app:
 
 ~~~dotenv
 OPENAI_API_KEY=your_key_here
 ~~~
 
-The development command applies local SQLite migrations before starting the app. Open [http://localhost:3000](http://localhost:3000). Development and production servers bind to `127.0.0.1`; page and API boundaries also reject non-loopback `Host` headers, and state-changing API requests reject cross-origin browser calls. This phase has no user accounts because it is a single-teacher, single-machine workspace—do not expose it through a LAN binding or public reverse proxy.
+`npm run dev` applies checksummed SQLite migrations before starting Next.js. The app binds to `127.0.0.1`; do not expose this single-teacher build through a LAN binding or public reverse proxy.
 
-For an isolated database, provide `MISCONCEPTION_MAP_DB_PATH` in the shell so both migration scripts and Next.js receive it; the standalone migration scripts do not load that override from `.env.local`:
+### No API key? Use the judge path
 
-~~~bash
-MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
-~~~
+Leave `OPENAI_API_KEY` empty, run `npm run seed`, and open the app. The deterministic synthetic classroom works fully without network access or API spend. It includes exactly:
 
-## Commands
+- 20 synthetic learners and two completed assignments;
+- the four-step assignment path, reopening at Results;
+- a triage with **18 copies corrected automatically, 1 item needing review, and 1 out of scope**;
+- a three-exercise dashboard with success rates, dominant misconceptions, and flagged counts;
+- exercise-grouped corrected copies with French prompts and French step feedback;
+- a printable targeted worksheet and teacher answer key linked to `Ex. 2 · Q2.2`;
+- a Teach This Tomorrow brief;
+- supported and provisional Student Models, locked held-out predictions, abstentions, matches, mismatches, and invalidation history.
 
-- **npm run dev** — migrate the local database and start development mode.
-- **npm start** — migrate the local database and serve a completed production build on loopback.
-- **npm run db:migrate** — apply pending SQL migrations.
-- **npm run seed** — developer-only command that idempotently loads a synthetic verification classroom. It is not exposed in the product UI and is not run during normal setup.
-- **npm run sample-work** — regenerate eight synthetic handwritten-style JPEG fixtures in `sample-work/` using Sharp.
-- **npm run db:check** — verify database integrity and required bootstrap tables.
-- **npm run verify:phase1** — test taxonomy invariants, schema constraints, model versioning, frozen predictions, outcome matching, and model-update invalidation in an isolated temporary database.
-- **npm run verify:phase2** — test the strict model-facing schema plus evidence grounding, domain, confidence, and abstention policies without calling the API.
-- **npm run verify:images** — verify the exact handwriting regression fixture and the earlier algebra/fraction samples retain their complete, high-detail ink regions.
-- **npm run verify:pdf** — verify PDF signature validation, generated API filenames, and PDF persistence for both teacher sources and student work.
-- **npm run verify:diagnosis-contracts** — verify that both full-page and single-response service results map explicitly into their strict persistence contracts, including optional normalized problem regions.
-- **npm run verify:phase4** — verify Student Model output, the exact five-problem difficulty ramp, discrepant answers, the one-paragraph brief, final-answer extraction, and prediction/abstention contracts without calling the API.
-- **npm run lint** — run ESLint.
-- **npm run typecheck** — run TypeScript without emitting files.
-- **npm run build** — create a production build.
-- **npm run check** — run lint, typecheck, all deterministic verifiers, and the production build.
+Live-only controls remain visibly disabled and explain that `OPENAI_API_KEY` must be added to `.env.local`. There are no dead clicks; seeded views remain readable.
 
-Normal setup starts with an empty workspace ready for the teacher's own class. The optional deterministic seed remains isolated behind the developer CLI for repeatable verification. Eight name-free, synthetic handwritten-style images in `sample-work/` remain available as local OCR fixtures without adding classroom records.
+## Five-minute product tour
 
-## Architecture
+1. Open **Assignments**, then **Unit 3 follow-up · Held-out check**. The assignment resumes at step 4.
+2. Read the triage sentence, open **Review flagged items**, inspect the transcription, page preview, and reasons, add an optional note, then mark it reviewed. Left/right arrows navigate; `Esc` returns to triage.
+3. Open **Class dashboard**. The three exercise rows identify the difficult exercise before the heatmap. Open a heatmap cell to inspect exact evidence; `Esc` closes the drawer and returns focus to the cell.
+4. Open a learner’s **Corrected exam**. Use the summary chips to jump to an exercise. Print to PDF to see the A4 layout without application chrome.
+5. Open **Prediction Lab**. Inspect predictions that were timestamped and locked before the held-out responses, including visible abstentions and invalidated historical trials.
 
-- Next.js App Router and React Server Components for database-backed pages.
-- Small client-side islands for the upload queue, progress, worksheet review, interactive heatmap evidence drawer, generation actions, and corrected-copy PDF printing.
-- SQLite through better-sqlite3, with versioned SQL migrations stored in db/migrations.
-- Node.js Route Handlers for local file processing and OpenAI calls.
-- OpenAI Responses API with gpt-5.6, vision inputs, and strict structured outputs.
-- Class and assignment setup, saved diagnoses, heatmaps, corrected exams, prediction history, and seeded artifacts remain usable without an API key; only new live AI actions require it.
+## Run one live correction
 
-### Live diagnosis path
+All live calls use `gpt-5.6`, strict Structured Outputs, `store: false`, prompt/schema versions, input/output hashes, token counts, and latency provenance.
 
-1. A teacher creates a class and roster, then pastes, photographs, or uploads a PDF of a blank exam/worksheet once for an assignment. `gpt-5.6` extracts its problem statements and expected answers into a strict schema; the teacher reviews and confirms them before any student work is accepted.
-2. A teacher can upload one full worksheet image or PDF per student and let the model match every visible work block to the confirmed assignment problem list. A single-problem image, PDF, or typed response can still target one item explicitly. Every path requires confirmation that student names were removed or covered.
-3. Single-problem images are auto-oriented and cropped to a line-aware ink region. Full student pages deliberately skip pixel cropping. Both use adaptive local-contrast normalization with a soft noise floor, and each saved image also keeps a full-resolution, full-frame, metadata-stripped rendition for one low-confidence OCR retry.
-4. The server sends only the assignment problem context and deidentified work—not the roster name or local filename—to `gpt-5.6` through the Responses API with `store: false`. Images use original-detail vision input; PDFs use a high-detail direct `input_file` with a generated filename, allowing the API to combine extracted text with rendered page images. A full document is sent once with the complete problem list so GPT performs semantic segmentation and diagnosis together. The model may also return a nullable normalized region for each visible image problem; implausible or degenerate regions are discarded without discarding the diagnosis. PDF regions are not overlaid because a multi-page region needs a page number.
-5. The problem-aware prompt warns that handwritten equals signs can resemble short dashes and requires every line to be classified as an equation, expression, answer, annotation, or unparseable fragment. A strict root-object schema captures the exact transcription, observable steps, evidence quote, misconception candidate, confidence, severity, and review signals.
-6. A separate deterministic policy rejects ungrounded quotes, cross-domain labels, poor transcriptions, and definitive diagnoses below `0.72`. For algebra images, an implausible final variable-bearing fragment that is not an equation caps transcription confidence below the review threshold instead of allowing a guessed label.
-7. The successful API run, matched worksheet targets, immutable answer versions, preprocessing provenance, diagnosis, per-step `correctNote`/`errorNote`, ranked candidates, and OCR-attempt hashes, token use, latency, and selected rendition are committed atomically. Transport failures retain the local work in a safe retry state.
+### Synthetic image fixture
 
-Saved queue items reload after navigation or refresh. In-flight jobs are polled by submission ID every two seconds, and runs left stale for three minutes become explicitly retryable. OpenAI calls time out after 85 seconds with no hidden SDK retry. Exact image re-uploads or repeated diagnosis requests replay the persisted result instead of creating duplicate work or duplicate API calls.
+1. Configure the key, seed the demo, and start the app.
+2. Open **Diagnose work** and choose the synthetic class.
+3. Create an Algebra assignment. Paste a short teacher source such as:
 
-A wrong final answer alone never earns a misconception label. A definitive label requires an exact evidence quote, a transcription-grounded incorrect step, a distinct observed transformation tied to that step, and confidence of at least `0.72`; ambiguous, illegible, weakly grounded, or conflicting work is saved for teacher review instead.
+   ~~~text
+   Exercice 1 — Signe et parenthèses
+   1.1 Développer puis réduire −3(x + 4). Réponse : −3x − 12.
+   ~~~
 
-### Heatmap dashboard
+4. Confirm the extracted `Ex. 1 · Q1.1` question.
+5. Upload `sample-work/01-negative-distribution.jpeg` for a demo learner, attest that it contains no identifying information, check the match, and run correction.
+6. The permanent regression fixture `fixtures/student-work/sign-error-equals-regression.jpeg` is also available. It protects the case where a faint handwritten `=` was once read as a dash.
 
-The assignment dashboard uses each problem answer’s latest diagnosis, including every answer segmented from a full page. Misconception columns are sorted by affected-student count, signal frequency, and severity; students in the largest cluster are sorted to the top so the dominant block starts at the upper left. Cells distinguish clear evidence, emerging/strong misconception evidence, teacher review, and not assessed. Opening an evidence cell shows the matched worksheet problem, exact transcription, evidence quote, and the flawed step highlighted in context. Each student row also opens a returnable corrected copy: the student's privately stored image or PDF appears first, with optional numbered markers on images, followed by per-problem verdicts, transcription, ✓/✕/? step feedback, why-correct/why-wrong notes, review reasons, and expected answers. **Download corrected copy (PDF)** uses a dedicated A4 print layout that removes app chrome and prevents feedback cards from splitting across pages; an imported source PDF remains separately returnable alongside the printable feedback report.
+All files in `sample-work/` and `fixtures/student-work/` are synthetic and name-free.
 
-### Accessibility
+### Real six-page French exam and booklet
 
-Heatmap cells are native buttons with descriptive `aria-label` text that includes the student, misconception, signal state, severity, frequency, and evidence availability. Keyboard focus states are visible throughout the sidebar, entity lists, evidence drawer, corrected-exam links, and generation actions. Color is never the only signal: heatmap cells also use icons, numbers, labels, and tooltips, while printable corrected exams pair ✓/✕ marks with explicit “why this is right” or “why this needs revision” copy.
+The real evaluation files are intentionally not committed because they are not synthetic project assets. If you have the local fixtures, use:
 
-### Instructional support path
+- teacher source: `2019_07_Amerique_du_Sud_Serie_generale_SUJET.pdf`;
+- deidentified booklet: `2019_07_Amerique_du_Sud_Cecilia.pdf`.
 
-The dashboard can turn a supported misconception cell into targeted practice. On the first request for that student and misconception, `gpt-5.6` synthesizes a provisional, falsifiable rule hypothesis from the diagnosed transformation and exact evidence—not from the student’s name. The hypothesis records a human-readable action rule, a formal input/transformation/predicted-output pattern, scope limits, confidence, and its evidence link. It remains provisional after one response and is stored as an append-oriented Student Model version.
+Create an Algebra assignment, upload the teacher PDF, and review extraction before confirming. The review must show **Exercices 1–6** with their original numbering. Exercises outside algebra/fractions are preserved and marked out of scope; they are never silently dropped or forced into an algebra misconception. Then upload the booklet as one full-page PDF. Matching uses printed cues such as `1.1` and `Ex 7 Q3`; ambiguous work is sent to teacher review rather than guessed into a slot.
 
-The practice generator uses that exact model version to create five structurally varied problems whose difficulty and position ramp from 1 through 5. Every item stores both the correct answer and the answer the provisional rule predicts; the schema rejects an item when those answers are the same. The printable two-page A4 view includes a student worksheet and teacher answer key with hints, misconception-specific explanations, and the visible mismatch. This is a **discrepant event**: the learner can compare the rule’s prediction with mathematical evidence, creating a concrete reason to revise the rule instead of merely being told it is wrong.
+The verified fixture produced French feedback and a 12-page A4 corrected report with the summary on page 1, exercise boundaries, and no orphaned question headers.
 
-Teach This Tomorrow uses the assignment’s current largest supported cluster, aggregate evidence, and taxonomy repair move to create one paragraph: what the misconception is, a non-blaming account of why it can form, and a timed ten-minute intervention. A worked example is also stored as a generated problem and rendered separately for the board. Each brief freezes its cluster count, diagnosed-student denominator, evidence cutoff, and diagnosis links so the teacher can see which evidence snapshot it summarized.
+## Teacher workflow and evidence model
 
-Both flows use the Responses API with `gpt-5.6`, strict Structured Outputs, `store: false`, bounded inputs, explicit prompt/schema versions, hashes, response identifiers, token counts, and latency provenance. Student display names are added only when the saved worksheet is rendered locally; they are never part of model synthesis, practice, or brief payloads.
+### 1. Exam source
 
-Teacher worksheet intake accepts JPEG, PNG, WebP, and PDF files up to 15 MB. Student intake accepts the same formats up to 10 MB per file, 20 files and 80 MB per upload queue, 20 typed responses, and 8,000 characters per typed response. Programmatic API clients must send `Content-Length` for request bodies.
+Teacher intake accepts typed text, JPEG, PNG, WebP, and PDF up to 15 MB. Printed sources use low-detail vision and low reasoning effort. The extraction schema is a strict root object containing exercises, optional shared context represented explicitly as `null`, original or synthesized question labels, self-contained statements, expected answers, answer kinds, domains, confidence, and review notes.
 
-The implementation follows OpenAI's official [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [image input](https://developers.openai.com/api/docs/guides/images-vision), and [file input](https://developers.openai.com/api/docs/guides/file-inputs) guidance. The model-facing schema is deliberately a strict object rather than the app's discriminated union because Structured Outputs requires an object root and required fields.
+An identical extraction input hash reuses the stored run. The teacher edits labels, statements, context, domains, and answers before confirmation. Confirmed grouping is immutable; legacy assignments are migrated into a default exercise without renumbering already-diagnosed work.
 
-The SQLite model is intentionally append-oriented. Answer corrections, diagnoses, Student Models, and prediction outcomes create new versions instead of rewriting prior evidence. A Student Model starts provisional and becomes supported only through an append-only finalization that snapshots linked evidence from at least two distinct problems. A prediction is then tied to that exact supported model version and a specific future assignment item before the student responds.
+### 2. Student copies
 
-The main data graph covers rosters, reusable problems, assignments, upload batches, submission assets, answer versions, diagnosis steps and candidates, Student Model evidence, frozen predictions, worksheets, teaching briefs, AI provenance, and redacted audit events. Composite foreign keys and scoped triggers prevent a student, assignment, problem, or generated artifact from crossing class boundaries accidentally.
+Student intake accepts the same formats up to 10 MB per file, 20 files and 80 MB per queue, or 20 typed responses of up to 8,000 characters. Work is saved locally before diagnosis. Roster names and original filenames are excluded from OpenAI payloads and hashes.
 
-## Misconception taxonomy
+Single-question images are auto-oriented, line-aware cropped, contrast-normalized, and retained with a metadata-stripped full-frame fallback. Full pages and PDFs are not cropped. Handwritten diagnosis keeps high-detail vision and medium reasoning effort. The prompt explicitly warns that `=` can resemble a short dash, and an implausible variable-bearing final fragment caps confidence instead of allowing a guessed diagnosis.
 
-The taxonomy is limited to recurring middle-school algebra and fraction misconceptions. Each stable identifier includes diagnostic signals, counter-evidence, a repair move, a discriminating prediction probe, and a citation-style source note. Source records have verified bibliographic metadata; taxonomy mappings explicitly label indirect or conceptual support where direct evidence was not verified. Diagnosis states such as `CORRECT`, `NEEDS_REVIEW`, and `INSUFFICIENT_EVIDENCE` are deliberately kept separate from misconception identity.
+### 3. AI correction
 
-| Domain | Stable identifier | Diagnostic distinction | Research anchors |
-| --- | --- | --- | --- |
-| Algebra | `EQUALITY_AS_OPERATOR` | Reads `=` as “calculate/write the answer next,” not equivalence. | Kieran (1981); Knuth et al. (2006) |
-| Algebra | `VARIABLE_AS_LABEL` | Treats a letter as an object label instead of a numerical quantity. | Küchemann (1978); Booth (1984) |
-| Algebra | `COEFFICIENT_EXPONENT_CONFUSION` | Uses exponent notation where a coefficient or repeated addition is intended. | MacGregor & Stacey (1997); Lim (2010) |
-| Algebra | `UNLIKE_TERMS_CONJOINED` | Forces unlike terms into one combined term. | MacGregor & Stacey (1997); Lim (2010) |
-| Algebra | `DISTRIBUTION_ONE_TERM_ONLY` | Applies an outside factor to only one term. | Lim (2010); Sleeman (1984) |
-| Algebra | `SIGN_ERROR_DISTRIBUTION` | Expands a negative factor while changing only some enclosed signs. | Vlassis (2004); Lim (2010) |
-| Algebra | `INVERSE_OPERATION_CONFUSION` | Performs a transformation that does not preserve equation equivalence. | Steinberg et al. (1991); Kieran (1981) |
-| Algebra | `NEGATIVE_SIGN_ROLE_CONFUSION` | Conflates subtraction, negative number, and unary opposite roles. | Vlassis (2004) |
-| Algebra | `ORDER_OF_OPERATIONS_FLAT` | Ignores grouping or operation precedence and evaluates left to right. | Linchevski & Livneh (1999); Lim (2010) |
-| Fractions | `FRACTION_AS_TWO_NUMBERS` | Treats numerator and denominator as independent whole numbers. | Stafylidou & Vosniadou (2004); Ni & Zhou (2005) |
-| Fractions | `FRACTION_COMPONENTWISE_ADD_SUBTRACT` | Adds or subtracts numerator and denominator independently. | Siegler & Pyke (2013); Ni & Zhou (2005) |
-| Fractions | `DENOMINATOR_MAGNITUDE_REVERSAL` | Assumes a larger denominator means a larger fraction. | Stafylidou & Vosniadou (2004); Ni & Zhou (2005) |
-| Fractions | `FRACTION_EQUIVALENCE_ADDITIVE` | Records an explicit or repeated same-addend transformation when generating an equivalent fraction. | Ni (2001); Kamii & Clark (1995), as conceptual anchors |
-| Fractions | `COMMON_DENOMINATOR_OVERGENERALIZATION` | Transfers a common-denominator rule to multiplication or division. | Siegler & Pyke (2013); Newton et al. (2014) |
-| Fractions | `FRACTION_DIVISION_RECIPROCAL_ERROR` | Misapplies a reciprocal procedure, such as inverting the dividend. | Siegler & Pyke (2013); Newton et al. (2014) |
-| Fractions | `UNIT_WHOLE_IGNORED` | Loses track of the referent whole or unit. | Behr et al. (1983); Yoshida & Sawano (2002) |
+The model segments visible work against confirmed exercise and question labels, transcribes exact steps, and returns one strict diagnosis object per match. A deterministic policy then enforces evidence grounding, domain compatibility, transcription quality, and the `0.72` confidence threshold.
 
-The code-authored taxonomy is validated with Zod and synchronized into immutable, versioned SQLite snapshots. Historical diagnoses therefore keep the exact label, definition, and citations they were created against. Full bibliographic metadata and source links live in `src/domain/research-sources.mjs`.
+A wrong answer alone never becomes a misconception. A definitive label requires a grounded incorrect step, exact evidence quote, observed transformation, and enough confidence. OpenAI failures persist a sanitized retry state. Repeating the same submission replays the saved diagnosis before the API-key check, so refreshes and retries do not create duplicate spend.
 
-These categories describe observable error patterns, not hidden or fixed beliefs. One response can create only a provisional working hypothesis. A Student Model becomes supported only with repeated, structurally varied evidence, and contradictory evidence remains attached rather than being discarded.
+### 4. Results
+
+The triage divides results into automatically corrected, needs review, and out of scope. A teacher note is persisted on reviewed items. The dashboard uses identical legend semantics everywhere:
+
+- green: demonstrated correct reasoning;
+- amber/coral: emerging/strong misconception evidence;
+- gray: not assessed.
+
+All surfaces use the same `Ex. 1 · Q1.2` reference formatter: queue, triage, heatmap drawers, practice sheets, Prediction Lab, corrected copies, and print.
 
 ## Student Model and Prediction Lab
 
-A Student Model is a versioned, testable hypothesis about the strategy visible in a student's work. The first diagnosed response creates a provisional version tied to exact evidence. A model becomes `SUPPORTED` only after the database can link at least two responses on two distinct problem fingerprints with no contradiction. The Prediction Lab then applies that exact version to unseen problem content. The OpenAI request receives the formal flawed rule and target problem, but not the student name or correct answer.
+A Student Model is a versioned, falsifiable strategy hypothesis tied to exact work. One response can create only a provisional version. Support requires evidence from at least two distinct problem fingerprints without contradiction.
 
-Every prediction is locked and timestamped before student work exists. It freezes the Student Model version, target problem, predicted answer or explicit abstention, confidence, an auditable transformation trace, and AI provenance. Once held-out work is diagnosed, the app extracts the student's grounded final step locally and appends a deterministic outcome version. The visible score is stated as `3 of 4 matched`; accuracy uses only current, observed `MATCH`/`MISMATCH` trials. Coverage is rule-applied predictions divided by all current valid locks, so abstentions remain visible rather than disappearing from the denominator.
+Prediction Lab applies one supported model version to unseen content without sending the student name or correct answer. Each prediction is locked and timestamped before held-out work exists. It stores the predicted answer or an explicit abstention, confidence, transformation trace, target, model version, and AI provenance. Later work appends a deterministic match/mismatch outcome. Updating a model invalidates its older locks without deleting history or silently moving trials to the new version.
 
-Predictions and outcomes are append-only. A later answer correction creates a new outcome version. Prior work discovered after locking, a withdrawn target, teacher invalidation, or a Student Model update keeps the original claim in history but marks it invalid and excludes it from accuracy and coverage. Superseding a model automatically invalidates every lock tied to the older version; trials never migrate silently to the new hypothesis.
+The Prediction Lab is deliberately not weakened for demo convenience: abstentions remain in coverage, invalid trials remain visible, and syntactically nonidentical equivalent forms are not silently counted as matches.
 
-### Test the Prediction Lab
+## Status, costs, and verification
 
-1. Open [http://localhost:3000/prediction-lab](http://localhost:3000/prediction-lab) and select a class. A diagnosed misconception is listed as a candidate. Build or refresh its Student Model; prediction controls unlock only after two distinct supporting problems make it `SUPPORTED`.
-2. Choose an unseen assignment problem, or expand **Create a typed held-out probe**. Enter the problem and expected answer, then click **Predict and lock** or **Create, predict, and lock**. The new history card shows its model version and lock time before any actual work is present.
-3. Follow **Collect work on…**, enter or upload that student's held-out response, and run diagnosis. Return to Prediction Lab and click **Compare new work** if the automatic post-diagnosis reconciliation has not already refreshed the page. The card shows predicted, actual, and correct answers together; the student header shows `N of M matched`.
-4. Create an out-of-scope probe to test abstention. It remains a valid locked trial, increases the abstention count, and lowers coverage without affecting accuracy.
-5. Diagnose later work that adds evidence for the same misconception, then click **Check for model updates**. A new Student Model version is created. Every older lock remains visible as **Invalidated · excluded**, the reason is `model updated`, and current metrics reset until the new version has its own trials.
+Open `/status` to see database migration state, taxonomy synchronization, whether live AI is configured, and the most recent saved runs with input, output, and total tokens, latency, and cache-hit status.
 
-Matching is intentionally conservative and syntactic rather than computer-algebra-based. Whitespace, Unicode minus signs, and common multiplication/division glyphs normalize deterministically; nonidentical equivalent forms stay visible for later teacher review instead of being silently counted as matches. The product does not present Student Models as fixed beliefs, ability labels, grades, or placement decisions.
+Useful commands:
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Migrate and start development mode on loopback. |
+| `npm run seed` | Idempotently load the 20-learner synthetic classroom. |
+| `npm run db:migrate` | Apply checksummed SQL migrations. |
+| `npm run db:check` | Verify SQLite integrity and bootstrap records. |
+| `npm run sample-work` | Regenerate the eight synthetic JPEG fixtures with Sharp. |
+| `npm run verify:phase1` | Domain model, evidence, versioning, prediction, and invalidation invariants. |
+| `npm run verify:hierarchy` | Hierarchical extraction, legacy migration, label matching, and grouped demo shape. |
+| `npm run verify:phase2` | Diagnosis schema, grounding, confidence, domain, and abstention policy. |
+| `npm run verify:images` | Faint-ink, crop, and handwritten-equals regression fixtures. |
+| `npm run verify:pdf` | PDF signatures, generated API filenames, and local persistence. |
+| `npm run verify:diagnosis-contracts` | Compile-time-safe single/full-page persistence contracts. |
+| `npm run verify:phase4` | Student Models, five-problem practice, briefs, and predictions. |
+| `npm run verify:readiness` | Fresh/seeded DBs, no-key states, language, print, accessibility, cost, cache, and status ledger. |
+| `npm run check` | Lint, typecheck, every verifier, and production build. |
+
+For an isolated database, prefix commands in the shell. Migration scripts intentionally do not read this override from `.env.local`:
+
+~~~bash
+MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run seed
+MISCONCEPTION_MAP_DB_PATH=/tmp/misconception-map-smoke.db npm run dev
+~~~
+
+## Architecture
+
+- Next.js App Router, React Server Components, TypeScript, and Tailwind CSS.
+- Local SQLite through `better-sqlite3`, with checksummed migrations and integrity triggers.
+- Small client islands for intake, review, heatmap drawers, Prediction Lab, and print actions.
+- Node.js route handlers for local file processing and OpenAI Responses API calls.
+- `gpt-5.6` is the only live model.
+- Strict structured output on worksheet extraction, page segmentation, diagnosis, Student Model synthesis, practice, teaching briefs, and predictions.
+- Append-oriented answer versions, diagnoses, Student Models, prediction locks/outcomes, teacher reviews, and AI provenance.
+
+The data graph covers classes, memberships, exercises, reusable problems, assignment items, protected assets, upload batches, submissions, answer versions, diagnosis steps/candidates, teacher review notes, Student Model evidence, worksheets, teaching briefs, frozen predictions, token provenance, and redacted audit events. Composite foreign keys and triggers keep every record inside its class and assignment.
+
+## Accessibility and print
+
+- Visible `:focus-visible` treatment across links, controls, fields, and disclosure widgets.
+- Native buttons for heatmap cells with descriptive student, question, state, severity, frequency, and evidence labels.
+- Keyboard triage with previous/next arrows and `Esc` back to summary.
+- Evidence drawers close with `Esc` and return focus to their source cell.
+- Icons and explicit text accompany every color state.
+- Corrected copies and practice/answer keys print to A4 without the sidebar or application header.
+- The corrected-copy summary remains on page 1; exercises start on clean page boundaries; long questions break only between readable feedback blocks.
+
+## Troubleshooting
+
+**Live button is disabled.** Add `OPENAI_API_KEY` to `.env.local`, stop the running server, and restart `npm run dev`. `/status` must say `gpt-5.6 is configured`.
+
+**Fresh clone shows no classes.** Run `npm run seed`. The empty state intentionally gives that as its only next action.
+
+**A PDF is rejected.** Confirm it has a valid `%PDF-` signature and is below 15 MB for a teacher source or 10 MB for student work. Password-protected or malformed PDFs are not supported.
+
+**An exercise appears out of scope.** Extraction preserves the printed block, but only algebra and fractions can receive taxonomy diagnoses. Edit a wrongly inferred domain during review; do not relabel geometry/probability merely to force a diagnosis.
+
+**OpenAI failed mid-flow.** The local source or submission remains saved with a sanitized error. Use the single retry action. Do not re-upload: identical stored work is reused.
+
+**Port 3000 is busy.** Stop the other local Next.js process or run `npm run dev -- --port 3001` and open the displayed loopback URL.
+
+**Native SQLite module fails after changing Node versions.** Remove `node_modules`, run `npm install` again with Node 20.9+, then run `npm run check`.
 
 ## Privacy
 
-All seeded records are synthetic and use obvious labels such as `Demo learner 01`; they never reuse live roster names. The live regression fixture under `fixtures/student-work/` contains mathematical work only and no student name. Student display names remain in the local database and are not sent in OpenAI prompts. Teachers must use a blank, deidentified worksheet source and de-identify live work before saving it for diagnosis; the server requires those confirmations for typed, photographed, and PDF content. Before worksheet extraction or diagnosis, typed content is also blocked if it contains an exact roster name or a roster-name component of two or more characters. This roster check is not general personal-data detection. This hackathon build is not a substitute for an institution's student-data, consent, retention, or child-safety compliance review.
+All committed and seeded student work is synthetic and name-free. Raw roster names remain in local SQLite and are never sent to OpenAI. Before any upload, the teacher must attest that visible names and identifying PDF properties were removed. Typed sources are also blocked when they contain an exact local roster name or a roster-name component of two or more characters; this is a narrow guard, not general personal-data detection.
 
-Roster labels and original filenames are used only to organize local work. They are excluded from request hashes and OpenAI payloads; PDF requests use fixed generated filenames. De-identification is teacher-attested, not automatic: this phase strips image metadata but does not OCR, detect, blur, or redact names inside image pixels or PDF pages. Anything visible in submitted work is sent to OpenAI, so the upload screen requires the teacher to remove names from visible content and PDF document properties first. The local SQLite database, filenames, and protected uploads persist on disk outside `public/`; corrected-copy assets are served only through the loopback-guarded, database-owned route with private, no-store caching. The app does not encrypt or automatically purge them. Live diagnosis sends the teacher-attested work and assignment context to the OpenAI API with response storage disabled.
+Images have metadata removed. PDF API filenames are generated. Protected uploads live outside `public/` and are served only through loopback-guarded, database-owned routes with private, no-store caching. The app does not encrypt or automatically purge local files. Anything still visible inside an attested image or PDF is sent to OpenAI, so this hackathon build is not a substitute for institutional consent, retention, security, or child-safety review.
 
-## How Codex and GPT-5.6 were used
+OpenAI calls use `store: false`. The teacher source, assignment context, and deidentified work needed for the task are sent; local roster labels and original filenames are not.
 
-This section is reserved for the project author to document the final build process, key decisions, Codex session details, and the exact GPT-5.6 workflows demonstrated in the submission.
+## Roadmap
+
+- Native in-app PDF page rendering and page-aware feedback markers.
+- Hierarchical cross-page matching v2, including page-numbered regions for multi-page booklets.
+- A student mode for receiving corrected copies and completing discrepant-event practice.
+
+## Draft — How Codex and GPT-5.6 were used
+
+> **TODO (author):** Personalize this draft with your own motivation, the decisions you made during the build, and what surprised you. Add the Codex `/feedback` Session ID before submission: **`TODO: SESSION_ID`**.
+
+The author set the product boundaries: local-first teacher workflow, algebra/fractions scope, no grades, strict abstention, versioned Student Models, Prediction Lab as the signature feature, and a deterministic judge path. Codex was delegated implementation, repository inspection, schema/migration work, adversarial verification, regression diagnosis, UI iteration, real-fixture testing, and print/accessibility QA. The author retained product calls such as sequencing triage before hierarchy, preserving unsupported exam content rather than forcing labels, and never weakening prediction history for the demo.
+
+One live handwriting test exposed a consequential OCR error: a faint handwritten `=` was read as a dash. That failure became engineering work rather than prompt folklore. The history records the image pipeline/fallback fix in `7b061d0`, and the repository now keeps an exact permanent fixture at `fixtures/student-work/sign-error-equals-regression.jpeg`. The input pipeline auto-orients and crops single-question work around line-aware ink, retains a full-frame fallback, and the diagnosis policy flags an implausible variable-bearing final fragment instead of accepting a confident guess. `npm run verify:images` keeps that regression reproducible.
+
+Codex also diagnosed a full-page persistence contract failure: spreading the complete GPT service result into a narrower repository shape allowed fields to drift across a strict schema boundary. The fix in `cfde617` introduced explicit completion-field selectors, compile-time `satisfies` checks against the repository inputs, and a permanent verifier for both single-question and full-page results. Later optional region work (`97864fe`) extended the contract without weakening backward compatibility.
+
+The verification suite was built adversarially around failure modes, not only happy paths: faint ink, handwritten equals signs, implausible steps, PDF signatures, oversized or unsafe intake, stale runs, evidence grounding, cross-domain labels, confidence thresholds, strict persistence, legacy flat migrations, all-six-exercise extraction, ambiguous label matching, no-key routes, cache reuse, A4 page fragmentation, and Prediction Lab invalidation. `npm run check` runs every `verify:*` script plus lint, typecheck, and a production build.
+
+GPT-5.6 powers every live model call and no other model is used. Every call has a strict root-object Structured Output: teacher-source vision extraction; full-page exercise/question segmentation; single and booklet diagnosis; Student Model synthesis; five-question discrepant-event practice; Teach This Tomorrow briefs; and held-out predictions. Printed teacher sources use low image detail and low reasoning effort; handwritten diagnosis uses high detail and medium effort. Identical extraction hashes and persisted submission diagnoses are reused before another call is considered, while `/status` makes per-run token counts and cache hits visible.
+
+> **TODO (author):** Add one short paragraph in your own voice distinguishing the moments where you rejected or redirected Codex’s proposal, and include the final `/feedback` Session ID.
 
 ## License
 
