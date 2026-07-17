@@ -4,7 +4,7 @@ import {
   RESEARCH_SOURCES,
 } from "./research-sources.mjs";
 
-export const TAXONOMY_VERSION = "1.0.1";
+export const TAXONOMY_VERSION = "1.0.2";
 
 export const MISCONCEPTION_IDS = /** @type {const} */ ([
   "EQUALITY_AS_OPERATOR",
@@ -39,6 +39,7 @@ export const misconceptionSchema = z.object({
   domain: z.enum(["ALGEBRA", "FRACTIONS"]),
   label: z.string().min(1),
   shortLabel: z.string().min(1),
+  teacherLabel: z.string().min(1),
   definition: z.string().min(1),
   flawedRule: z.string().min(1),
   formalPattern: z.string().min(1),
@@ -59,6 +60,7 @@ const rawMisconceptions = [
     domain: "ALGEBRA",
     label: "Equality treated as an instruction to calculate",
     shortLabel: "Equals means ‘answer next’",
+    teacherLabel: "Treats = as ‘write the answer next’",
     definition:
       "Treats the equal sign as a signal to perform the preceding operation or write a result, rather than as a relation stating that both sides have the same value.",
     flawedRule: "Everything before = should be calculated, and the answer follows =.",
@@ -93,6 +95,7 @@ const rawMisconceptions = [
     domain: "ALGEBRA",
     label: "Variable treated as an object label",
     shortLabel: "Letter means its object",
+    teacherLabel: "Treats a letter as an object label, not a number",
     definition:
       "Treats a letter as the name or abbreviation of an object or unit instead of as a number that can vary or take a specified value.",
     flawedRule: "A letter names the object, so it is not a numerical quantity.",
@@ -127,6 +130,7 @@ const rawMisconceptions = [
     domain: "ALGEBRA",
     label: "Coefficient confused with an exponent",
     shortLabel: "Coefficient–exponent confusion",
+    teacherLabel: "Uses an exponent where a coefficient is needed",
     definition:
       "Uses exponent notation to represent multiplication by a coefficient or repeated addition, or treats a coefficient as though it were a power.",
     flawedRule: "A coefficient belongs as a small raised number, so 3x can be written x³.",
@@ -161,6 +165,7 @@ const rawMisconceptions = [
     domain: "ALGEBRA",
     label: "Unlike terms incorrectly combined",
     shortLabel: "Unlike terms conjoined",
+    teacherLabel: "Combines unlike terms into one term",
     definition:
       "Forces an expression containing unlike terms into one term by combining visible numbers and symbols without preserving term structure.",
     flawedRule: "A simplified answer must be one term, so add every visible part together.",
@@ -195,6 +200,7 @@ const rawMisconceptions = [
     domain: "ALGEBRA",
     label: "Factor distributed to only one term",
     shortLabel: "Partial distribution",
+    teacherLabel: "Multiplies only the first term in parentheses",
     definition:
       "Applies an outside factor to the first term inside parentheses but leaves one or more remaining terms unchanged.",
     flawedRule: "Multiply the outside factor by the first term in parentheses only.",
@@ -228,6 +234,7 @@ const rawMisconceptions = [
     domain: "ALGEBRA",
     label: "Negative sign not distributed to every term",
     shortLabel: "Negative distribution error",
+    teacherLabel: "Changes only one sign when distributing a minus",
     definition:
       "Expands a negative factor or subtraction across parentheses while changing the sign of only some enclosed terms.",
     flawedRule: "A leading negative changes the first term’s sign only.",
@@ -261,6 +268,7 @@ const rawMisconceptions = [
     domain: "ALGEBRA",
     label: "Inverse operation does not preserve the equation",
     shortLabel: "Inverse operation confusion",
+    teacherLabel: "Moves terms without keeping both sides equal",
     definition:
       "Uses the wrong inverse operation, applies it to only part of a side, or ‘moves’ a term without preserving equality.",
     flawedRule: "Move a term across the equal sign using a memorized sign change, regardless of the operation or both sides.",
@@ -295,6 +303,7 @@ const rawMisconceptions = [
     domain: "ALGEBRA",
     label: "Roles of the minus sign conflated",
     shortLabel: "Minus-sign role confusion",
+    teacherLabel: "Uses every minus sign in the same way",
     definition:
       "Does not distinguish subtraction, a negative number, and the unary operation ‘take the opposite of.’",
     flawedRule: "Every minus sign means the following value must stay negative or be taken away.",
@@ -328,6 +337,7 @@ const rawMisconceptions = [
     domain: "ALGEBRA",
     label: "Expression structure flattened left to right",
     shortLabel: "Flat order of operations",
+    teacherLabel: "Calculates mixed operations strictly left to right",
     definition:
       "Ignores grouping and multiplicative structure, evaluating a mixed-operation expression as one flat left-to-right sequence.",
     flawedRule: "Always calculate from left to right, regardless of operation or grouping.",
@@ -361,6 +371,7 @@ const rawMisconceptions = [
     domain: "FRACTIONS",
     label: "Fraction treated as two independent whole numbers",
     shortLabel: "Fraction as two numbers",
+    teacherLabel: "Treats a fraction as two separate whole numbers",
     definition:
       "Treats numerator and denominator as separate whole numbers instead of coordinating them as one rational number with a magnitude.",
     flawedRule: "a/b is the pair a and b, not one number.",
@@ -395,6 +406,7 @@ const rawMisconceptions = [
     domain: "FRACTIONS",
     label: "Numerators and denominators added or subtracted separately",
     shortLabel: "Componentwise fraction operation",
+    teacherLabel: "Adds or subtracts fractions part by part",
     definition:
       "Adds or subtracts numerator with numerator and denominator with denominator, treating the components as independent whole numbers.",
     flawedRule: "a/b ± c/d = (a ± c)/(b ± d).",
@@ -428,6 +440,7 @@ const rawMisconceptions = [
     domain: "FRACTIONS",
     label: "Larger denominator assumed to mean larger fraction",
     shortLabel: "Denominator magnitude reversal",
+    teacherLabel: "Assumes a larger denominator means a larger fraction",
     definition:
       "Transfers whole-number ordering to denominators, assuming that a fraction with the larger denominator is larger when numerators are equal.",
     flawedRule: "If b > d, then 1/b > 1/d.",
@@ -463,6 +476,7 @@ const rawMisconceptions = [
     domain: "FRACTIONS",
     label: "Same-addend strategy for fraction equivalence",
     shortLabel: "Same-addend equivalence",
+    teacherLabel: "Adds the same number to make equivalent fractions",
     definition:
       "Records an observed candidate strategy in which the student generates an alleged equivalent fraction by adding the same amount to numerator and denominator instead of scaling both by the same nonzero factor.",
     flawedRule:
@@ -497,6 +511,7 @@ const rawMisconceptions = [
     domain: "FRACTIONS",
     label: "Common-denominator rule transferred to another operation",
     shortLabel: "Common denominator overgeneralized",
+    teacherLabel: "Uses a common denominator when it is not needed",
     definition:
       "Applies a denominator-preserving or common-denominator procedure learned for addition and subtraction to multiplication or division.",
     flawedRule: "Fractions with the same denominator keep that denominator for every operation.",
@@ -530,6 +545,7 @@ const rawMisconceptions = [
     domain: "FRACTIONS",
     label: "Reciprocal applied to the wrong fraction",
     shortLabel: "Fraction-division reciprocal error",
+    teacherLabel: "Flips the wrong fraction when dividing",
     definition:
       "Recalls a reciprocal procedure for fraction division but inverts the dividend, both operands, or neither operand.",
     flawedRule: "For fraction division, flip whichever fraction is easiest and multiply.",
@@ -564,6 +580,7 @@ const rawMisconceptions = [
     domain: "FRACTIONS",
     label: "Referent whole or unit ignored",
     shortLabel: "Whole or unit ignored",
+    teacherLabel: "Compares fractions without checking the whole",
     definition:
       "Compares or combines fractional parts without keeping track of the whole or unit to which each fraction refers.",
     flawedRule: "The same fraction name always represents the same absolute amount, regardless of the whole.",

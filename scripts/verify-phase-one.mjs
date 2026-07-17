@@ -39,7 +39,7 @@ function expectConstraint(statement, pattern) {
 }
 
 function verifyTaxonomy() {
-  assert.equal(TAXONOMY_VERSION, "1.0.1");
+  assert.equal(TAXONOMY_VERSION, "1.0.2");
   assert.equal(MISCONCEPTION_IDS.length, 16);
   assert.equal(MISCONCEPTIONS.length, MISCONCEPTION_IDS.length);
   assert.equal(new Set(MISCONCEPTION_IDS).size, MISCONCEPTION_IDS.length);
@@ -56,6 +56,7 @@ function verifyTaxonomy() {
     assert.match(misconception.id, /^[A-Z][A-Z0-9_]+$/);
     assert.equal(forbiddenDiagnosisStates.has(misconception.id), false);
     assert.ok(misconception.label.trim());
+    assert.ok(misconception.teacherLabel.trim());
     assert.ok(misconception.definition.trim());
     assert.ok(misconception.flawedRule.trim());
     assert.ok(misconception.formalPattern.trim());
@@ -78,6 +79,11 @@ function verifyTaxonomy() {
       misconception.sourceIds.length,
     );
   }
+
+  assert.equal(
+    new Set(MISCONCEPTIONS.map((term) => term.teacherLabel)).size,
+    MISCONCEPTIONS.length,
+  );
 
   assert.equal(
     new Set(TAXONOMY_SNAPSHOT.researchSources.map((source) => source.id)).size,

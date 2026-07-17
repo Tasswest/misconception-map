@@ -99,6 +99,8 @@ export type HeatmapDashboard = {
     misconceptionId: MisconceptionId;
     label: string;
     shortLabel: string;
+    teacherLabel: string;
+    citationNote: string;
     affectedCount: number;
   } | null;
   teachingBrief: TeachingBriefRecord | null;
@@ -115,6 +117,7 @@ export type HeatmapDashboard = {
       misconceptionId: MisconceptionId;
       label: string;
       shortLabel: string;
+      teacherLabel: string;
       count: number;
     } | null;
   }>;
@@ -122,6 +125,8 @@ export type HeatmapDashboard = {
     misconceptionId: MisconceptionId;
     label: string;
     shortLabel: string;
+    teacherLabel: string;
+    citationNote: string;
     affectedCount: number;
     frequency: number;
     maxSeverity: 1 | 2 | 3;
@@ -286,6 +291,8 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
               misconceptionId,
               label: term.label,
               shortLabel: term.shortLabel,
+              teacherLabel: term.teacherLabel,
+              citationNote: term.citationNote,
               affectedCount: aggregate.memberships.size,
               frequency: aggregate.frequency,
               maxSeverity: aggregate.maxSeverity,
@@ -483,6 +490,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
               misconceptionId: dominant[0],
               label: dominantTerm.label,
               shortLabel: dominantTerm.shortLabel,
+              teacherLabel: dominantTerm.teacherLabel,
               count: dominant[1],
             }
           : null,
@@ -502,6 +510,8 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
           misconceptionId: largest.misconceptionId,
           label: largest.label,
           shortLabel: largest.shortLabel,
+          teacherLabel: largest.teacherLabel,
+          citationNote: largest.citationNote,
           affectedCount: largest.affectedCount,
         }
       : null,

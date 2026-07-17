@@ -454,7 +454,7 @@ function verifyGuidedAndGroupedSurfaces() {
     path.join(root, "src", "components", "dashboard", "misconception-heatmap.tsx"),
     "utf8",
   );
-  assert.match(dashboard, /exercises at a glance/);
+  assert.match(dashboard, /Which exercise needs attention\?/);
   assert.match(dashboard, /dominantMisconception/);
   assert.match(dashboard, /flaggedCount/);
   const correctedCopy = fs.readFileSync(
