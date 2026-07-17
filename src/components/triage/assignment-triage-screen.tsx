@@ -144,7 +144,7 @@ export function AssignmentTriageScreen({
                 ? "One flagged item at a time."
                 : view === "AUTOMATIC"
                   ? "Copies completed without teacher intervention."
-                  : "Items outside the supported diagnostic scope."}
+                  : "Teacher-selected items not yet diagnosed by the current engine."}
           </p>
         </div>
         {view === "SUMMARY" ? (
@@ -219,7 +219,7 @@ function SummaryView({
             What needs your attention
           </p>
           <h2 className="mt-2 text-balance text-2xl font-semibold tracking-[-0.03em] md:text-3xl">
-            {summary.automaticallyCorrectedCount} of {submittedCopyCount} submitted {submittedCopyCount === 1 ? "copy" : "copies"} corrected automatically · {summary.needsReviewCount} of {flaggedItemCount} flagged {flaggedItemCount === 1 ? "item" : "items"} awaiting your review · {summary.outOfScopeCount} of {flaggedItemCount} flagged {flaggedItemCount === 1 ? "item" : "items"} out of scope
+            {summary.automaticallyCorrectedCount} of {submittedCopyCount} submitted {submittedCopyCount === 1 ? "copy" : "copies"} corrected automatically · {summary.needsReviewCount} of {flaggedItemCount} flagged {flaggedItemCount === 1 ? "item" : "items"} awaiting your review · {summary.outOfScopeCount} of {flaggedItemCount} flagged {flaggedItemCount === 1 ? "item" : "items"} not yet diagnosed
           </h2>
           <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
             Each pile shows its denominator; open a pile to inspect the copies or flagged work behind it.
@@ -250,10 +250,10 @@ function SummaryView({
           <Pile
             action="See out-of-scope items"
             count={`${summary.outOfScopeCount} of ${flaggedItemCount} flagged items`}
-            detail="Visible work outside the supported domains or taxonomy."
+            detail="Preserved exam work the current engine cannot diagnose yet."
             disabled={summary.outOfScopeCount === 0}
             icon={<FileTextIcon className="size-5" />}
-            label="Out of scope"
+            label="Not yet diagnosed"
             onClick={() => setView("OUT_OF_SCOPE")}
             tone="neutral"
           />
@@ -273,7 +273,7 @@ function SummaryView({
       ) : null}
       {allOutOfScope ? (
         <section className="mt-5 rounded-[24px] border border-black/10 bg-white px-6 py-10 text-center">
-          <h2 className="text-xl font-semibold">All submitted items are out of scope</h2>
+          <h2 className="text-xl font-semibold">All submitted items are not yet diagnosed</h2>
           <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
             No diagnostic labels were guessed. Open the out-of-scope pile to inspect what was submitted.
           </p>

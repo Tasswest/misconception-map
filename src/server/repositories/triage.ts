@@ -137,7 +137,7 @@ function parseReasons(value: string) {
 function reviewReasonLabel(reason: string) {
   const labels: Record<string, string> = {
     DOMAIN_MISMATCH: "The work is outside this assignment's math domain.",
-    NO_TAXONOMY_MATCH: "The work is outside the supported diagnostic scope.",
+    NO_TAXONOMY_MATCH: "The current engine does not yet have a matching diagnostic category for this work.",
     LOW_CONFIDENCE: "The diagnosis confidence is below the safe automatic threshold.",
     LOW_REASONING_CONFIDENCE: "The mathematical interpretation is uncertain.",
     LOW_TRANSCRIPTION_CONFIDENCE: "The handwriting transcription is uncertain.",

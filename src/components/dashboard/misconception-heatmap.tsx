@@ -227,7 +227,7 @@ export function MisconceptionHeatmap({
             <h2 className="mt-2 text-balance text-2xl font-semibold tracking-[-0.03em]">
               {dashboard.summary.diagnosedCount === 0
                 ? "0 items diagnosed"
-                : `${dashboard.summary.diagnosedCount} ${dashboard.summary.diagnosedCount === 1 ? "item" : "items"} diagnosed${dashboard.summary.correctCount === dashboard.summary.diagnosedCount ? " — all correct" : ` · ${dashboard.summary.correctCount}/${dashboard.summary.diagnosedCount} correct`}`} · {dashboard.summary.awaitingReviewCount} awaiting your review · {dashboard.summary.outOfScopeExerciseCount} {dashboard.summary.outOfScopeExerciseCount === 1 ? "exercise" : "exercises"} out of scope
+                : `${dashboard.summary.diagnosedCount} ${dashboard.summary.diagnosedCount === 1 ? "item" : "items"} diagnosed${dashboard.summary.correctCount === dashboard.summary.diagnosedCount ? " — all correct" : ` · ${dashboard.summary.correctCount}/${dashboard.summary.diagnosedCount} correct`}`} · {dashboard.summary.awaitingReviewCount} awaiting your review · {dashboard.summary.notYetDiagnosedExerciseCount} {dashboard.summary.notYetDiagnosedExerciseCount === 1 ? "exercise" : "exercises"} not yet diagnosed
             </h2>
           </div>
           <Link
@@ -264,7 +264,7 @@ export function MisconceptionHeatmap({
                     : exercise.label}
                 </p>
                 <span className="inline-flex rounded-full bg-[var(--line)] px-2.5 py-1 text-xs font-semibold text-[var(--muted)]">
-                  Out of scope
+                  Not yet diagnosed
                 </span>
               </div>
             ) : (

@@ -13,8 +13,8 @@ There are no grades or points. The product corrects what it can support from vis
 
 - A visible four-step assignment path: **Exam source → Student copies → AI correction → Results**.
 - Four unambiguous top-level destinations: **Classes → Assignments → Analytics → Prediction Lab**. Assignments owns the complete correction workflow; Analytics owns every result view.
-- Hierarchical extraction that preserves every printed exercise, shared stimulus, and question label. The real six-page French brevet fixture returns all six exercises; unsupported geometry, probability, and statistics questions remain visible as out of scope instead of disappearing.
-- A results triage that asks the teacher to review only ambiguous, unreadable, unmatched, or out-of-scope work.
+- Hierarchical extraction that preserves every printed exercise, shared stimulus, and question label. The real six-page French brevet fixture returns all six exercises; geometry, probability, and statistics questions remain visible as teacher-selected exam content and are marked “not yet diagnosed” when the current algebra/fractions engine cannot assess them.
+- A results triage that asks the teacher to review only ambiguous, unreadable, unmatched, or not-yet-diagnosed work.
 - A class summary by exercise before the full misconception heatmap.
 - Corrected copies grouped by exercise, with shared context shown once and feedback written in the language of the exam.
 - Targeted five-question micro-practice, a teacher answer key, and a short “Teach This Tomorrow” intervention.
@@ -68,7 +68,7 @@ Leave `OPENAI_API_KEY` empty, run `npm run seed`, and open the app. The determin
 
 - 20 synthetic learners and two completed assignments;
 - the four-step assignment path, reopening at Results;
-- a triage with **18 copies corrected automatically, 1 item needing review, and 1 out of scope**;
+- a triage with **18 copies corrected automatically, 1 item needing review, and 1 not yet diagnosed**;
 - a three-exercise Analytics hub with success rates, dominant misconceptions, and flagged counts;
 - exercise-grouped corrected copies with French prompts and French step feedback;
 - a printable targeted worksheet and teacher answer key linked to `Ex. 2 · Q2.2`;
@@ -124,7 +124,7 @@ The real evaluation files are intentionally not committed because they are not s
 - teacher source: `2019_07_Amerique_du_Sud_Serie_generale_SUJET.pdf`;
 - deidentified booklet: `2019_07_Amerique_du_Sud_Cecilia.pdf`.
 
-Create an Algebra assignment, upload the teacher PDF, and review extraction before confirming. The review must show **Exercices 1–6** with their original numbering. Exercises outside algebra/fractions are preserved and marked out of scope; they are never silently dropped or forced into an algebra misconception. Then upload the booklet as one full-page PDF. Matching uses printed cues such as `1.1` and `Ex 7 Q3`; ambiguous work is sent to teacher review rather than guessed into a slot.
+Create an Algebra assignment, upload the teacher PDF, and review extraction before confirming. The review must show **Exercices 1–6** with their original numbering. Exercises outside algebra/fractions are preserved as teacher-selected exam content and marked “not yet diagnosed”; they are never silently dropped or forced into an algebra misconception. Then upload the booklet as one full-page PDF. Matching uses printed cues such as `1.1` and `Ex 7 Q3`; ambiguous work is sent to teacher review rather than guessed into a slot.
 
 The verified fixture produced French feedback and a 12-page A4 corrected report with the summary on page 1, exercise boundaries, and no orphaned question headers.
 
@@ -150,7 +150,7 @@ A wrong answer alone never becomes a misconception. A definitive label requires 
 
 ### 4. Results
 
-The triage divides results into automatically corrected, needs review, and out of scope. A teacher note is persisted on reviewed items. Analytics first ranks the most frequent difficulties in teacher language, then exposes the student-by-difficulty evidence grid. It uses identical legend semantics everywhere:
+The triage divides results into automatically corrected, needs review, and not yet diagnosed. Teacher-selected exam content always remains part of the assignment even when the current engine cannot diagnose it. A teacher note is persisted on reviewed items. Analytics first ranks the most frequent difficulties in teacher language, then exposes the student-by-difficulty evidence grid. It uses identical legend semantics everywhere:
 
 - mint: correct reasoning shown;
 - amber: seen once;
@@ -251,7 +251,7 @@ The data graph covers classes, memberships, exercises, reusable problems, assign
 
 **A PDF is rejected.** Confirm it has a valid `%PDF-` signature and is below 15 MB for a teacher source or 10 MB for student work. Password-protected or malformed PDFs are not supported.
 
-**An exercise appears out of scope.** Extraction preserves the printed block, but only algebra and fractions can receive taxonomy diagnoses. Edit a wrongly inferred domain during review; do not relabel geometry/probability merely to force a diagnosis.
+**An exercise appears as not yet diagnosed.** It remains part of the teacher’s exam, but only algebra and fractions currently receive taxonomy diagnoses. Edit a wrongly inferred domain during review; do not relabel geometry/probability merely to force a diagnosis.
 
 **OpenAI failed mid-flow.** The local source or submission remains saved with a sanitized error. Use the single retry action. Do not re-upload: identical stored work is reused.
 

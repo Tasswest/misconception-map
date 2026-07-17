@@ -99,7 +99,7 @@ export type HeatmapDashboard = {
     diagnosedCount: number;
     correctCount: number;
     awaitingReviewCount: number;
-    outOfScopeExerciseCount: number;
+    notYetDiagnosedExerciseCount: number;
   };
   largestCluster: {
     misconceptionId: MisconceptionId;
@@ -534,7 +534,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
         (diagnosis) =>
           !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
       ).length,
-      outOfScopeExerciseCount: exerciseRows.filter(
+      notYetDiagnosedExerciseCount: exerciseRows.filter(
         (exercise) => exercise.question_count === 0,
       ).length,
     },

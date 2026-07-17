@@ -558,7 +558,7 @@ export function SetupWorkspace({
                   Check the extracted worksheet
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                  GPT extracted {worksheetReview.exercises.length} {worksheetReview.exercises.length === 1 ? "exercise" : "exercises"} and {countExtractedQuestions(worksheetReview.exercises)} {countExtractedQuestions(worksheetReview.exercises) === 1 ? "question" : "questions"} at {Math.round(worksheetReview.overallConfidence * 100)}% overall confidence. {countOutOfScopeQuestions(worksheetReview.exercises, domain) > 0 ? `${countOutOfScopeQuestions(worksheetReview.exercises, domain)} ${countOutOfScopeQuestions(worksheetReview.exercises, domain) === 1 ? "question is" : "questions are"} preserved as out of scope and will not be forced into algebra/fractions diagnosis. ` : ""}Your confirmation makes this structure the shared reference for every student submission.
+                  GPT extracted {worksheetReview.exercises.length} {worksheetReview.exercises.length === 1 ? "exercise" : "exercises"} and {countExtractedQuestions(worksheetReview.exercises)} {countExtractedQuestions(worksheetReview.exercises) === 1 ? "question" : "questions"} at {Math.round(worksheetReview.overallConfidence * 100)}% overall confidence. {countOutOfScopeQuestions(worksheetReview.exercises, domain) > 0 ? `${countOutOfScopeQuestions(worksheetReview.exercises, domain)} ${countOutOfScopeQuestions(worksheetReview.exercises, domain) === 1 ? "question is" : "questions are"} preserved as teacher-selected exam content but not yet diagnosed by the algebra/fractions engine. ` : ""}Your confirmation makes this structure the shared reference for every student submission.
                 </p>
               </div>
 
@@ -665,7 +665,7 @@ export function SetupWorkspace({
                               >
                                 <option value="ALGEBRA">Algebra</option>
                                 <option value="FRACTIONS">Fractions</option>
-                                <option value="OUT_OF_SCOPE">Out of scope (preserve only)</option>
+                                <option value="OUT_OF_SCOPE">Not yet diagnosed (preserve)</option>
                               </select>
                             </label>
                             <label className="block text-sm font-semibold">
