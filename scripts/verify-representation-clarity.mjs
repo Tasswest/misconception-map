@@ -23,6 +23,12 @@ for (const term of MISCONCEPTIONS) {
 
 const heatmap = read("src/components/dashboard/misconception-heatmap.tsx");
 assert.match(heatmap, /Most frequent difficulties/);
+assert.match(heatmap, /column\.frequency >= 2/);
+assert.match(heatmap, /What is known/);
+assert.match(heatmap, /items?" : "items"\} diagnosed/);
+assert.match(heatmap, /awaiting your review/);
+assert.match(heatmap, /exercises?" : "exercises"\} out of scope/);
+assert.match(heatmap, /Review results/);
 assert.match(heatmap, /student(?:s)?[^`]*occurrence(?:s)?/s);
 assert.match(heatmap, /Teach This Tomorrow/);
 assert.match(heatmap, /Which exercise needs attention\?/);
@@ -35,6 +41,11 @@ assert.match(heatmap, /column\.teacherLabel/);
 assert.match(heatmap, /Formal taxonomy label:/);
 assert.match(heatmap, /selected\.citationNote/);
 assert.match(heatmap, /\{cell\.frequency\}/);
+assert.match(heatmap, /exercise\.questionCount === 0/);
+assert.match(heatmap, />\s*Out of scope\s*</);
+assert.doesNotMatch(heatmap, /No repeated misconception|No flags|safe/);
+assert.match(heatmap, /No repeated error pattern yet/);
+assert.match(heatmap, /Reviewed items can reveal patterns/);
 
 const legend = read("src/components/evidence-legend.tsx");
 for (const label of [

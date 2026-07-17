@@ -49,6 +49,9 @@ export function MisconceptionHeatmap({
       ),
     ),
   );
+  const repeatedColumns = dashboard.columns.filter(
+    (column) => column.frequency >= 2,
+  );
 
   useEffect(() => {
     if (!selected) return;
@@ -137,6 +140,7 @@ export function MisconceptionHeatmap({
 
       {!liveAiReady ? <AiUnavailableNotice className="mt-5" /> : null}
 
+      {repeatedColumns.length ? (
       <section className="mt-6 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
         <div className="border-b border-black/[0.06] px-5 py-5 md:px-6">
           <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
@@ -149,13 +153,12 @@ export function MisconceptionHeatmap({
             Longer bars affect more students; select a difficulty to see the students and work behind it.
           </p>
         </div>
-        {dashboard.columns.length ? (
           <div className="space-y-3 p-5 md:p-6">
-            {dashboard.columns.map((column, index) => {
+            {repeatedColumns.map((column, index) => {
               const width = Math.max(
                 12,
                 Math.round(
-                  (column.affectedCount / dashboard.columns[0].affectedCount) * 100,
+                  (column.affectedCount / repeatedColumns[0].affectedCount) * 100,
                 ),
               );
               return (
@@ -214,12 +217,27 @@ export function MisconceptionHeatmap({
               See per-student detail ↓
             </a>
           </div>
-        ) : (
-          <p className="px-5 py-8 text-sm text-[var(--muted)] md:px-6">
-            No evidenced difficulty is available to rank yet.
-          </p>
-        )}
       </section>
+      ) : (
+        <section className="mt-6 flex flex-col gap-5 rounded-[24px] border border-[var(--sage)]/15 bg-[var(--paper)] px-5 py-5 shadow-[0_18px_45px_rgba(35,51,46,0.05)] sm:flex-row sm:items-center sm:justify-between md:px-6">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
+              What is known
+            </p>
+            <h2 className="mt-2 text-balance text-2xl font-semibold tracking-[-0.03em]">
+              {dashboard.summary.diagnosedCount === 0
+                ? "0 items diagnosed"
+                : `${dashboard.summary.diagnosedCount} ${dashboard.summary.diagnosedCount === 1 ? "item" : "items"} diagnosed${dashboard.summary.correctCount === dashboard.summary.diagnosedCount ? " — all correct" : ` · ${dashboard.summary.correctCount}/${dashboard.summary.diagnosedCount} correct`}`} · {dashboard.summary.awaitingReviewCount} awaiting your review · {dashboard.summary.outOfScopeExerciseCount} {dashboard.summary.outOfScopeExerciseCount === 1 ? "exercise" : "exercises"} out of scope
+            </h2>
+          </div>
+          <Link
+            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[var(--sidebar)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#244b42]"
+            href={`/assignments/${dashboard.assignment.id}/results`}
+          >
+            Review results
+          </Link>
+        </section>
+      )}
 
       <section className="mt-6 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
         <div className="border-b border-black/[0.06] px-5 py-4 md:px-6">
@@ -235,6 +253,21 @@ export function MisconceptionHeatmap({
         </div>
         <div className="divide-y divide-black/[0.06]">
           {dashboard.exercises.map((exercise) => (
+            exercise.questionCount === 0 ? (
+              <div
+                className="flex items-center justify-between gap-4 px-5 py-4 md:px-6"
+                key={exercise.id}
+              >
+                <p className="text-sm font-semibold">
+                  {dashboard.exercises.length === 1
+                    ? dashboard.assignment.title
+                    : exercise.label}
+                </p>
+                <span className="inline-flex rounded-full bg-[var(--line)] px-2.5 py-1 text-xs font-semibold text-[var(--muted)]">
+                  Out of scope
+                </span>
+              </div>
+            ) : (
             <div
               className="grid gap-3 px-5 py-4 md:grid-cols-[minmax(150px,0.8fr)_110px_minmax(220px,1.4fr)_110px] md:items-center md:px-6"
               key={exercise.id}
@@ -250,23 +283,21 @@ export function MisconceptionHeatmap({
                 </p>
               </div>
               <div>
-                <p className="text-2xl font-semibold tracking-[-0.04em] text-[var(--sidebar)]">
-                  {exercise.successRate === null ? "—" : `${exercise.successRate}%`}
+                <p className="text-sm font-semibold text-[var(--sidebar)]">
+                  {exercise.correctCount}/{exercise.assessedCount} correct
                 </p>
-                <p className="text-[10px] font-medium text-[var(--muted)]">
-                  success · {exercise.assessedCount} safe
-                </p>
+                <p className="mt-0.5 text-[10px] font-medium text-[var(--muted)]">diagnosed items</p>
               </div>
+              {exercise.dominantMisconception ? (
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">
                   Dominant misconception
                 </p>
                 <p className="mt-1 text-sm font-semibold">
-                  {exercise.dominantMisconception
-                    ? `${exercise.dominantMisconception.teacherLabel} · ${exercise.dominantMisconception.count} ${exercise.dominantMisconception.count === 1 ? "occurrence" : "occurrences"}`
-                    : "No repeated misconception"}
+                  {exercise.dominantMisconception.teacherLabel} · {exercise.dominantMisconception.count} {exercise.dominantMisconception.count === 1 ? "occurrence" : "occurrences"}
                 </p>
               </div>
+              ) : <div aria-hidden="true" />}
               <div className="md:text-right">
                 <span
                   className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -276,11 +307,12 @@ export function MisconceptionHeatmap({
                   }`}
                 >
                   {exercise.flaggedCount
-                    ? `${exercise.flaggedCount} flagged`
-                    : "No flags"}
+                    ? `${exercise.flaggedCount} awaiting review`
+                    : `${exercise.assessedCount} diagnosed`}
                 </span>
               </div>
             </div>
+            )
           ))}
         </div>
       </section>
@@ -360,10 +392,16 @@ export function MisconceptionHeatmap({
               <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[var(--soft-mint)] text-[var(--sidebar)]">
                 <GridIcon className="size-5" />
               </span>
-              <h3 className="mt-4 text-lg font-semibold">No misconception cluster yet</h3>
+              <h3 className="mt-4 text-lg font-semibold">No repeated error pattern yet</h3>
               <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                Correct and review-only results are saved, but the heatmap adds columns only when a misconception is supported by observable work.
+                Most items are waiting for your review. Reviewed items can reveal patterns.
               </p>
+              <Link
+                className="mt-5 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
+                href={`/assignments/${dashboard.assignment.id}/results`}
+              >
+                Review results
+              </Link>
             </div>
           </div>
         ) : (

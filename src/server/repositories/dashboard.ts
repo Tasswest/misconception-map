@@ -95,6 +95,12 @@ export type HeatmapDashboard = {
   };
   studentCount: number;
   diagnosedStudentCount: number;
+  summary: {
+    diagnosedCount: number;
+    correctCount: number;
+    awaitingReviewCount: number;
+    outOfScopeExerciseCount: number;
+  };
   largestCluster: {
     misconceptionId: MisconceptionId;
     label: string;
@@ -112,6 +118,7 @@ export type HeatmapDashboard = {
     questionCount: number;
     successRate: number | null;
     assessedCount: number;
+    correctCount: number;
     flaggedCount: number;
     dominantMisconception: {
       misconceptionId: MisconceptionId;
@@ -253,6 +260,18 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
     list.push(diagnosis);
     diagnosesByMembership.set(diagnosis.membership_id, list);
   }
+  const diagnosedItemPositions = new Set(
+    diagnoses
+      .filter((diagnosis) =>
+        ["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+      )
+      .map((diagnosis) => diagnosis.problem_position),
+  );
+  const itemsWithMisconceptions = new Set(
+    diagnoses
+      .filter((diagnosis) => diagnosis.outcome === "MISCONCEPTION")
+      .map((diagnosis) => diagnosis.problem_position),
+  );
 
   const aggregateByMisconception = new Map<
     MisconceptionId,
@@ -480,6 +499,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
           ? Math.round((correctCount / assessed.length) * 100)
           : null,
       assessedCount: assessed.length,
+      correctCount,
       flaggedCount: exerciseDiagnoses.filter(
         (diagnosis) =>
           !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
@@ -505,6 +525,19 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
     },
     studentCount: memberships.length,
     diagnosedStudentCount: diagnosesByMembership.size,
+    summary: {
+      diagnosedCount: diagnosedItemPositions.size,
+      correctCount: [...diagnosedItemPositions].filter(
+        (position) => !itemsWithMisconceptions.has(position),
+      ).length,
+      awaitingReviewCount: diagnoses.filter(
+        (diagnosis) =>
+          !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+      ).length,
+      outOfScopeExerciseCount: exerciseRows.filter(
+        (exercise) => exercise.question_count === 0,
+      ).length,
+    },
     largestCluster: largest
       ? {
           misconceptionId: largest.misconceptionId,
