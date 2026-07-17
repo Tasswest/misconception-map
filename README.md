@@ -9,13 +9,10 @@ Misconception Map is a local-first, teacher-facing diagnostic workspace for midd
 
 There are no grades or points. The product corrects what it can support from visible work, abstains when evidence is weak, and treats every Student Model as a versioned, testable hypothesis rather than a fixed learner attribute.
 
-![Results triage showing 18 automatically corrected copies, one flagged item, and one out-of-scope item](docs/screenshots/triage-screen.jpg)
-
-![A corrected copy grouped by exercise with an at-a-glance strip and French feedback](docs/screenshots/grouped-corrected-copy.jpg)
-
 ## What the demo proves
 
 - A visible four-step assignment path: **Exam source → Student copies → AI correction → Results**.
+- Four unambiguous top-level destinations: **Classes → Assignments → Analytics → Prediction Lab**. Assignments owns the complete correction workflow; Analytics owns every result view.
 - Hierarchical extraction that preserves every printed exercise, shared stimulus, and question label. The real six-page French brevet fixture returns all six exercises; unsupported geometry, probability, and statistics questions remain visible as out of scope instead of disappearing.
 - A results triage that asks the teacher to review only ambiguous, unreadable, unmatched, or out-of-scope work.
 - A class summary by exercise before the full misconception heatmap.
@@ -52,7 +49,7 @@ OPENAI_API_KEY=your_key_here
 
 Hosted URL: **[web-production-6c624.up.railway.app](https://web-production-6c624.up.railway.app)**. The shared access code is intentionally not in this public README; put **`<JUDGE_ACCESS_CODE from the author>`** only in the Devpost testing-instructions field.
 
-The hosted path is the same application with `HOSTED_MODE=1`: every product page and API route requires a seven-day, httpOnly, HMAC-signed access cookie; failed gate attempts and live-AI requests are rate-limited. The banner asks judges to upload only synthetic or de-identified work and provides two downloadable fixtures. Seeded dashboards, grouped copies, and Prediction Lab remain available if live AI is unavailable.
+The hosted path is the same application with `HOSTED_MODE=1`: every product page and API route requires a seven-day, httpOnly, HMAC-signed access cookie; failed gate attempts and live-AI requests are rate-limited. The banner asks judges to upload only synthetic or de-identified work and provides two downloadable fixtures. Seeded Analytics views, grouped copies, and Prediction Lab remain available if live AI is unavailable.
 
 Railway deployment:
 
@@ -65,10 +62,6 @@ The daily guard estimates spend from saved input/output token counts at the conf
 
 Production verification on July 17, 2026 covered the access gate, persistent seeded classroom, downloadable fixture, one live full-page GPT‑5.6 correction, grouped French corrected copy, print/PDF action, and Prediction Lab. The synthetic page matched all five visible questions across three exercises and saved 6,915 input plus 3,008 output tokens; `/status` reported an estimated **$0.125** for the run.
 
-| Hosted triage | Grouped corrected copy |
-| --- | --- |
-| ![Railway triage showing the corrected, review, and out-of-scope piles](docs/screenshots/railway-triage.png) | ![Railway corrected copy showing exercise summary chips](docs/screenshots/railway-grouped-corrected-copy.png) |
-
 ### No API key? Use the judge path
 
 Leave `OPENAI_API_KEY` empty, run `npm run seed`, and open the app. The deterministic synthetic classroom works fully without network access or API spend. It includes exactly:
@@ -76,7 +69,7 @@ Leave `OPENAI_API_KEY` empty, run `npm run seed`, and open the app. The determin
 - 20 synthetic learners and two completed assignments;
 - the four-step assignment path, reopening at Results;
 - a triage with **18 copies corrected automatically, 1 item needing review, and 1 out of scope**;
-- a three-exercise dashboard with success rates, dominant misconceptions, and flagged counts;
+- a three-exercise Analytics hub with success rates, dominant misconceptions, and flagged counts;
 - exercise-grouped corrected copies with French prompts and French step feedback;
 - a printable targeted worksheet and teacher answer key linked to `Ex. 2 · Q2.2`;
 - a Teach This Tomorrow brief;
@@ -86,11 +79,22 @@ Live-only controls remain visibly disabled and explain that `OPENAI_API_KEY` mus
 
 ## Five-minute product tour
 
-1. Open **Assignments**, then **Unit 3 follow-up · Held-out check**. The assignment resumes at step 4.
-2. Read the triage sentence, open **Review flagged items**, inspect the transcription, page preview, and reasons, add an optional note, then mark it reviewed. Left/right arrows navigate; `Esc` returns to triage.
-3. Open **Class dashboard**. The three exercise rows identify the difficult exercise before the heatmap. Open a heatmap cell to inspect exact evidence; `Esc` closes the drawer and returns focus to the cell.
-4. Open a learner’s **Corrected exam**. Use the summary chips to jump to an exercise. Print to PDF to see the A4 layout without application chrome.
+1. Open **Classes** and inspect the 20-learner synthetic roster.
+2. Open **Assignments**, then **Unit 3 follow-up · Held-out check**. The assignment resumes at step 4 of the Exam → Student copies → AI correction → Results path.
+3. Read the triage sentence, open **Review flagged items**, inspect the transcription, page preview, and reasons, add an optional note, then mark it reviewed. Left/right arrows navigate; `Esc` returns to triage.
+4. Open **Analytics** and visit all three assignment tabs: **Class by exercise**, **Corrected copies**, and **Practice & brief**. The exercise rows identify the difficult exercise before the heatmap; a corrected copy’s summary chips jump directly to each exercise. Print/PDF hides the application chrome.
 5. Open **Prediction Lab**. Inspect predictions that were timestamped and locked before the held-out responses, including visible abstentions and invalidated historical trials.
+
+### Navigation and legacy links
+
+| Teacher destination | Canonical route |
+| --- | --- |
+| Classes and rosters | `/classes` |
+| Assignment list, creation, stepper, correction, and triage | `/assignments` and `/assignments/:assignmentId/...` |
+| Analytics picker and assignment result tabs | `/analytics` and `/analytics/:assignmentId/...` |
+| Prediction Lab | `/prediction-lab` |
+
+Bookmarks remain safe: `/diagnose` redirects permanently to `/assignments`, `/dashboard` redirects permanently to `/analytics`, and the former per-assignment dashboard, corrected-copy, and practice-sheet URLs redirect permanently to their equivalent `/analytics/:assignmentId/...` pages.
 
 ## Run one live correction
 
@@ -99,7 +103,7 @@ All live calls use `gpt-5.6`, strict Structured Outputs, `store: false`, prompt/
 ### Synthetic image fixture
 
 1. Configure the key, seed the demo, and start the app.
-2. Open **Diagnose work** and choose the synthetic class.
+2. Open **Assignments**, choose **New assignment**, and select the synthetic class.
 3. Create an Algebra assignment. Paste a short teacher source such as:
 
    ~~~text
@@ -146,7 +150,7 @@ A wrong answer alone never becomes a misconception. A definitive label requires 
 
 ### 4. Results
 
-The triage divides results into automatically corrected, needs review, and out of scope. A teacher note is persisted on reviewed items. The dashboard uses identical legend semantics everywhere:
+The triage divides results into automatically corrected, needs review, and out of scope. A teacher note is persisted on reviewed items. Analytics uses identical legend semantics everywhere:
 
 - green: demonstrated correct reasoning;
 - amber/coral: emerging/strong misconception evidence;
@@ -183,6 +187,7 @@ Useful commands:
 | `npm run verify:pdf` | PDF signatures, generated API filenames, and local persistence. |
 | `npm run verify:diagnosis-contracts` | Compile-time-safe single/full-page persistence contracts. |
 | `npm run verify:phase4` | 4-of-5 consistency, expected/actual fit, all three prediction kinds, revision suggestions, practice, and briefs. |
+| `npm run verify:navigation` | Four-tab order, assignment-first root, Analytics sub-tabs, canonical cross-links, and permanent legacy redirects. |
 | `npm run verify:readiness` | Fresh/seeded DBs, no-key states, language, print, accessibility, cost, cache, and status ledger. |
 | `npm run check` | Lint, typecheck, every verifier, and production build. |
 
@@ -207,7 +212,7 @@ OPENAI_API_KEY= npm run check
 OPENAI_API_KEY= npm run dev -- --port 3200
 ~~~
 
-The no-key browser smoke covered Overview, Assignments, the 18/1/1 triage, exercise dashboard, grouped corrected copy, Prediction Lab (4 of 5 observed applications, 3 actual versus 3.2 expected flawed-rule hits, one mastery prediction, and one revision suggestion), diagnostic setup, and `/status`. Live-only controls were disabled with the `.env.local` explanation.
+The no-key rendered-route smoke covered Classes, the Assignments stepper and 18/1/1 triage, every Analytics sub-tab, a grouped corrected copy, Prediction Lab (4 of 5 observed applications, 3 actual versus 3.2 expected flawed-rule hits, one mastery prediction, and one revision suggestion), assignment setup, and `/status`. Live-only controls were disabled with the `.env.local` explanation.
 
 For the live smoke, the local key was added to the clone’s ignored `.env.local`, the server was restarted, and `sample-work/01-negative-distribution.jpeg` was uploaded for a new synthetic learner against `Ex. 1 · Q1.1`. GPT-5.6 returned a grounded French `NEEDS_REVIEW` result instead of forcing a taxonomy match. The run saved 6,151 input and 1,393 output tokens; `/status` displayed 7,544 total. Repeating the identical diagnosis returned the persisted result while the database remained at exactly one diagnosis run.
 

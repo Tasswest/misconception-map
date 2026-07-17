@@ -116,19 +116,19 @@ function verifyIntentionalStates() {
   assert.match(readiness, /enable live correction/);
 
   for (const page of [
-    "src/app/page.tsx",
     "src/app/classes/page.tsx",
-    "src/app/assignments/page.tsx",
     "src/app/dashboard/page.tsx",
-    "src/app/diagnose/page.tsx",
     "src/app/prediction-lab/page.tsx",
   ]) {
     assert.match(read(page), /FreshDatabaseState/, `${page} must handle an unseeded database`);
   }
+  assert.match(read("src/app/page.tsx"), /First run/);
+  assert.match(read("src/app/page.tsx"), /npm run seed/);
+  assert.match(read("src/app/assignments/page.tsx"), /SingleActionEmptyState/);
+  assert.match(read("src/app/assignments/page.tsx"), /SetupWorkspace/);
 
   assert.match(read("src/app/error.tsx"), /Retry this screen/);
-  assert.match(read("src/app/not-found.tsx"), /Return to overview/);
-  assert.match(read("src/app/diagnose/error.tsx"), /Retry/);
+  assert.match(read("src/app/not-found.tsx"), /Return to assignments/);
 
   const setup = read("src/components/diagnosis/setup-workspace.tsx");
   const workbench = read("src/components/diagnosis/diagnosis-workbench.tsx");
@@ -154,7 +154,6 @@ function verifyCopyAndHierarchy() {
   const legend = read("src/components/evidence-legend.tsx");
   assert.match(legend, /Demonstrated correct reasoning/);
   assert.match(legend, /Not assessed/);
-  assert.match(read("src/app/page.tsx"), /EvidenceLegend/);
   assert.match(read("src/components/dashboard/misconception-heatmap.tsx"), /EvidenceLegend/);
 
   for (const file of [
