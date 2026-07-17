@@ -50,7 +50,7 @@ OPENAI_API_KEY=your_key_here
 
 ### Hosted judge demo
 
-Hosted URL: **`https://<your-railway-domain>`** (replace after the first production deploy). The shared access code is intentionally not in this public README; put **`<JUDGE_ACCESS_CODE from the author>`** only in the Devpost testing-instructions field.
+Hosted URL: **[web-production-6c624.up.railway.app](https://web-production-6c624.up.railway.app)**. The shared access code is intentionally not in this public README; put **`<JUDGE_ACCESS_CODE from the author>`** only in the Devpost testing-instructions field.
 
 The hosted path is the same application with `HOSTED_MODE=1`: every product page and API route requires a seven-day, httpOnly, HMAC-signed access cookie; failed gate attempts and live-AI requests are rate-limited. The banner asks judges to upload only synthetic or de-identified work and provides two downloadable fixtures. Seeded dashboards, grouped copies, and Prediction Lab remain available if live AI is unavailable.
 
@@ -62,6 +62,12 @@ Railway deployment:
 4. Generate a Railway public domain. `npm start` binds to `0.0.0.0:$PORT`, applies checksummed migrations, and idempotently restores the synthetic demo at every boot.
 
 The daily guard estimates spend from saved input/output token counts at the configured GPT‑5.6 rates. At the cap it disables only AI actions with “Daily demo budget reached — resets at midnight UTC; clone the repo to run unlimited.” Seeded reads keep working. This in-app guard is defense in depth; also set a project budget/alert in the OpenAI dashboard.
+
+Production verification on July 17, 2026 covered the access gate, persistent seeded classroom, downloadable fixture, one live full-page GPT‑5.6 correction, grouped French corrected copy, print/PDF action, and Prediction Lab. The synthetic page matched all five visible questions across three exercises and saved 6,915 input plus 3,008 output tokens; `/status` reported an estimated **$0.125** for the run.
+
+| Hosted triage | Grouped corrected copy |
+| --- | --- |
+| ![Railway triage showing the corrected, review, and out-of-scope piles](docs/screenshots/railway-triage.png) | ![Railway corrected copy showing exercise summary chips](docs/screenshots/railway-grouped-corrected-copy.png) |
 
 ### No API key? Use the judge path
 
