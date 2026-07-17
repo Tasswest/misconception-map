@@ -72,6 +72,14 @@ export default async function CorrectedExamPage({
   const exam = getCorrectedExam(assignmentId, membershipId);
   if (!exam) notFound();
   const french = isFrenchExam(exam);
+  const diagnosedItemCount = exam.exercises.reduce(
+    (sum, exercise) => sum + exercise.counts.correct + exercise.counts.incorrect,
+    0,
+  );
+  const awaitingReviewCount = exam.exercises.reduce(
+    (sum, exercise) => sum + exercise.counts.flagged,
+    0,
+  );
 
   return (
     <AppShell activeNav="Analytics" liveAiReady={isOpenAIConfigured()}>
@@ -98,11 +106,7 @@ export default async function CorrectedExamPage({
               Corrected copy · {exam.studentName}
             </h1>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              {exam.diagnosedProblemCount} of {exam.totalProblemCount}{" "}
-              {exam.totalProblemCount === 1
-                ? "problem has"
-                : "problems have"}{" "}
-              diagnostic feedback.
+              {diagnosedItemCount} of {exam.totalProblemCount} items diagnosed · {awaitingReviewCount} of {exam.totalProblemCount} items awaiting your review.
             </p>
           </div>
           <div className="sm:text-right">
@@ -138,8 +142,11 @@ export default async function CorrectedExamPage({
             aria-label="Results by exercise"
             className="corrected-copy-summary mt-5"
           >
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-              At a glance
+            <h3 className="text-sm font-semibold tracking-[-0.01em]">
+              How did this copy go, exercise by exercise?
+            </h3>
+            <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+              Each chip shows correct, difficult, and review items out of that exercise total; select it to see the student&apos;s work and feedback.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {exam.exercises.map((exercise) => {
@@ -152,14 +159,14 @@ export default async function CorrectedExamPage({
                     ) : (
                       <span className="font-bold text-[var(--ink)]">Whole copy</span>
                     )}
-                    <span className="text-[#426d5b]">✓ {exercise.counts.correct}</span>
-                    <span className="text-[#8e402d]">✕ {exercise.counts.incorrect}</span>
-                    <span className="text-[#70501f]">⚠ {exercise.counts.flagged}</span>
+                    <span className="text-[#426d5b]">✓ {exercise.counts.correct} of {exercise.items.length} correct</span>
+                    <span className="text-[#8e402d]">✕ {exercise.counts.incorrect} of {exercise.items.length} difficulties</span>
+                    <span className="text-[#70501f]">⚠ {exercise.counts.flagged} of {exercise.items.length} awaiting review</span>
                   </>
                 );
                 const classes =
                   "inline-flex items-center gap-2 rounded-xl border border-black/[0.07] bg-[var(--canvas)] px-3 py-2 text-xs";
-                return exam.exercises.length > 1 ? (
+                return (
                   <a
                     className={`${classes} transition hover:border-[var(--sage)]/35 hover:bg-[var(--soft-mint)]`}
                     href={`#exercise-${exercise.position}`}
@@ -167,10 +174,6 @@ export default async function CorrectedExamPage({
                   >
                     {summary}
                   </a>
-                ) : (
-                  <span className={classes} key={exercise.id}>
-                    {summary}
-                  </span>
                 );
               })}
             </div>

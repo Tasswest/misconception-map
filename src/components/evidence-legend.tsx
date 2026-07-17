@@ -1,7 +1,7 @@
 const items = [
-  { color: "bg-[var(--mint)]", label: "Demonstrated correct reasoning" },
-  { color: "bg-[var(--amber)]", label: "Emerging misconception" },
-  { color: "bg-[var(--coral)]", label: "Strong misconception" },
+  { color: "bg-[var(--mint)]", label: "Correct reasoning shown" },
+  { color: "bg-[var(--amber)]", label: "Seen once" },
+  { color: "bg-[var(--coral)]", label: "Seen repeatedly" },
   { color: "bg-[var(--line)]", label: "Not assessed" },
 ];
 

@@ -198,6 +198,14 @@ function SummaryView({
   setView: (view: View) => void;
 }) {
   const summary = triage.summary;
+  const submittedCopyCount = new Set([
+    ...triage.automaticallyCorrected.map((copy) => copy.membershipId),
+    ...triage.needsReview.map((item) => item.membershipId),
+    ...triage.reviewed.map((item) => item.membershipId),
+    ...triage.outOfScope.map((item) => item.membershipId),
+  ]).size;
+  const flaggedItemCount =
+    triage.needsReview.length + triage.reviewed.length + triage.outOfScope.length;
   const nothingToReview = summary.needsReviewCount === 0;
   const allOutOfScope =
     summary.outOfScopeCount > 0 &&
@@ -211,13 +219,16 @@ function SummaryView({
             What needs your attention
           </p>
           <h2 className="mt-2 text-balance text-2xl font-semibold tracking-[-0.03em] md:text-3xl">
-            {summary.automaticallyCorrectedCount} {summary.automaticallyCorrectedCount === 1 ? "copy" : "copies"} corrected automatically · {summary.needsReviewCount} {summary.needsReviewCount === 1 ? "item needs" : "items need"} your review · {summary.outOfScopeCount} out of scope
+            {summary.automaticallyCorrectedCount} of {submittedCopyCount} submitted {submittedCopyCount === 1 ? "copy" : "copies"} corrected automatically · {summary.needsReviewCount} of {flaggedItemCount} flagged {flaggedItemCount === 1 ? "item" : "items"} awaiting your review · {summary.outOfScopeCount} of {flaggedItemCount} flagged {flaggedItemCount === 1 ? "item" : "items"} out of scope
           </h2>
+          <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
+            Each pile shows its denominator; open a pile to inspect the copies or flagged work behind it.
+          </p>
         </div>
         <div className="grid md:grid-cols-3">
           <Pile
             action="See corrected copies"
-            count={summary.automaticallyCorrectedCount}
+            count={`${summary.automaticallyCorrectedCount} of ${submittedCopyCount} copies`}
             detail="Ready to open or return to students."
             disabled={summary.automaticallyCorrectedCount === 0}
             icon={<CheckIcon className="size-5" />}
@@ -228,7 +239,7 @@ function SummaryView({
           <Pile
             action="Review flagged items"
             buttonRef={reviewButtonRef}
-            count={summary.needsReviewCount}
+            count={`${summary.needsReviewCount} of ${flaggedItemCount} flagged items`}
             detail="Unreadable, ambiguous, or not safely matched."
             disabled={summary.needsReviewCount === 0}
             icon={<AlertIcon className="size-5" />}
@@ -238,7 +249,7 @@ function SummaryView({
           />
           <Pile
             action="See out-of-scope items"
-            count={summary.outOfScopeCount}
+            count={`${summary.outOfScopeCount} of ${flaggedItemCount} flagged items`}
             detail="Visible work outside the supported domains or taxonomy."
             disabled={summary.outOfScopeCount === 0}
             icon={<FileTextIcon className="size-5" />}
@@ -285,7 +296,7 @@ function Pile({
 }: {
   action: string;
   buttonRef?: React.Ref<HTMLButtonElement>;
-  count: number;
+  count: string;
   detail: string;
   disabled: boolean;
   icon: React.ReactNode;
@@ -302,7 +313,7 @@ function Pile({
   return (
     <article className="border-b border-black/[0.06] p-6 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0 md:p-8">
       <div className={`grid size-11 place-items-center rounded-2xl ${toneClass}`}>{icon}</div>
-      <p className="mt-5 text-4xl font-semibold tracking-[-0.05em]">{count}</p>
+      <p className="mt-5 text-2xl font-semibold tracking-[-0.035em]">{count}</p>
       <h3 className="mt-2 text-base font-semibold">{label}</h3>
       <p className="mt-1 min-h-10 text-xs leading-5 text-[var(--muted)]">{detail}</p>
       <button

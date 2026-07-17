@@ -258,15 +258,16 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
         </p>
       ) : null}
 
-      <section className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="mt-5">
+        <h2 className="text-xl font-semibold tracking-[-0.025em]">
+          How well are the learner models predicting?
+        </h2>
+        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+          Each card names its denominator; select a card to inspect the locked evidence below.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          detail={
-            totals.flawedScorable
-              ? Math.abs(totals.flawedMatched - totals.expectedFlawed) <= 1
-                ? "Consistent with the observed application rate"
-                : "The evidence warrants model revision"
-              : "Waiting for actual flawed-rule outcomes"
-          }
+          detail={`Of ${totals.scorable} ${totals.scorable === 1 ? "prediction" : "predictions"} we dared to make, ${totals.matched} matched the student’s actual answer.`}
           label="Expected vs actual"
           value={
             totals.flawedScorable
@@ -275,23 +276,24 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
           }
         />
         <MetricCard
-          detail="Rules applied ÷ valid locked trials"
+          detail={`${totals.attempted} of ${totals.valid} valid locked ${totals.valid === 1 ? "problem received" : "problems received"} an answer prediction.`}
           label="Prediction coverage"
           value={percentage(totals.attempted, totals.valid)}
         />
         <MetricCard
-          detail="Correct outcomes predicted from demonstrated related skill"
+          detail={`${totals.mastery} ${totals.mastery === 1 ? "problem was" : "problems were"} predicted correct from demonstrated related skill.`}
           label="Mastery predictions"
           value={String(totals.mastery)}
         />
         <MetricCard
-          detail={`${totals.abstentions} abstained · ${totals.invalidated} invalidated`}
+          detail={`${totals.abstentions} ${totals.abstentions === 1 ? "problem was" : "problems were"} outside the rule’s scope, so the model declined to guess. ${totals.invalidated} invalidated ${totals.invalidated === 1 ? "trial stays" : "trials stay"} visible but never count.`}
           label="Guarded claims"
           value={String(totals.abstentions + totals.invalidated)}
         />
+        </div>
       </section>
 
-      <div className="mt-6 space-y-5">
+      <div className="mt-6 scroll-mt-6 space-y-5" id="prediction-evidence">
         {data.rows.map((row) => (
           <section
             className="overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]"
@@ -775,13 +777,13 @@ function MetricCard({
   detail: string;
 }) {
   return (
-    <article className="rounded-2xl border border-black/[0.06] bg-white/75 p-4">
+    <a className="block rounded-2xl border border-black/[0.06] bg-white/75 p-4 transition hover:border-[var(--sage)]/30 hover:shadow-sm" href="#prediction-evidence">
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
         {label}
       </p>
       <p className="mt-2 text-xl font-semibold tracking-[-0.025em]">{value}</p>
       <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">{detail}</p>
-    </article>
+    </a>
   );
 }
 

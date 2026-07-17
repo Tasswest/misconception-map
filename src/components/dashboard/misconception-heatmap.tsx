@@ -29,7 +29,9 @@ export function MisconceptionHeatmap({
 }) {
   const [selected, setSelected] = useState<{
     studentName: string;
-    misconceptionLabel: string;
+    teacherLabel: string;
+    formalLabel: string;
+    citationNote: string;
     detail: HeatmapDiagnosisDetail;
   } | null>(null);
   const selectedCellRef = useRef<HTMLButtonElement | null>(null);
@@ -136,15 +138,100 @@ export function MisconceptionHeatmap({
       {!liveAiReady ? <AiUnavailableNotice className="mt-5" /> : null}
 
       <section className="mt-6 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
+        <div className="border-b border-black/[0.06] px-5 py-5 md:px-6">
+          <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
+            Class priorities
+          </p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-[-0.03em]">
+            Most frequent difficulties
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+            Longer bars affect more students; select a difficulty to see the students and work behind it.
+          </p>
+        </div>
+        {dashboard.columns.length ? (
+          <div className="space-y-3 p-5 md:p-6">
+            {dashboard.columns.map((column, index) => {
+              const width = Math.max(
+                12,
+                Math.round(
+                  (column.affectedCount / dashboard.columns[0].affectedCount) * 100,
+                ),
+              );
+              return (
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    index === 0
+                      ? "border-[var(--coral)]/25 bg-[var(--soft-coral)]"
+                      : "border-black/[0.06] bg-white/55"
+                  }`}
+                  key={column.misconceptionId}
+                  title={`${column.label}. ${column.citationNote}`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <a className="text-sm font-semibold underline-offset-4 hover:underline" href="#per-student-detail">
+                        {column.teacherLabel}
+                      </a>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        {column.affectedCount} {column.affectedCount === 1 ? "student" : "students"} · {column.frequency} {column.frequency === 1 ? "occurrence" : "occurrences"}
+                      </p>
+                    </div>
+                    {index === 0 ? (
+                      teachingBrief ? (
+                        <Link
+                          className="rounded-lg bg-[var(--sidebar)] px-3 py-2 text-xs font-semibold text-white"
+                          href={`/analytics/${dashboard.assignment.id}/practice`}
+                        >
+                          Teach This Tomorrow →
+                        </Link>
+                      ) : (
+                        <button
+                          className="inline-flex items-center gap-2 rounded-lg bg-[var(--sidebar)] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
+                          disabled={briefBusy || !liveAiReady}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            void createTeachingBrief();
+                          }}
+                          type="button"
+                        >
+                          {briefBusy ? <SpinnerIcon className="size-3.5 animate-spin" /> : <SparkIcon className="size-3.5" />}
+                          Teach This Tomorrow
+                        </button>
+                      )
+                    ) : null}
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/[0.06]">
+                    <div
+                      className={`h-full rounded-full ${index === 0 ? "bg-[var(--coral)]" : "bg-[var(--amber)]"}`}
+                      style={{ width: `${width}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            <a className="inline-flex text-xs font-semibold text-[var(--sage)]" href="#per-student-detail">
+              See per-student detail ↓
+            </a>
+          </div>
+        ) : (
+          <p className="px-5 py-8 text-sm text-[var(--muted)] md:px-6">
+            No evidenced difficulty is available to rank yet.
+          </p>
+        )}
+      </section>
+
+      <section className="mt-6 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
         <div className="border-b border-black/[0.06] px-5 py-4 md:px-6">
           <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
-            Class by exercise
+            Exercise overview
           </p>
           <h2 className="mt-1 text-xl font-semibold tracking-[-0.025em]">
-            {dashboard.exercises.length === 1
-              ? "Overall performance"
-              : `${dashboard.exercises.length} exercises at a glance`}
+            Which exercise needs attention?
           </h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+            Compare success and flagged work by exercise, then open the per-student detail below for evidence.
+          </p>
         </div>
         <div className="divide-y divide-black/[0.06]">
           {dashboard.exercises.map((exercise) => (
@@ -153,11 +240,11 @@ export function MisconceptionHeatmap({
               key={exercise.id}
             >
               <div>
-                <p className="text-sm font-semibold">
+                <a className="text-sm font-semibold underline-offset-4 hover:underline" href="#per-student-detail">
                   {dashboard.exercises.length === 1
                     ? dashboard.assignment.title
                     : exercise.label}
-                </p>
+                </a>
                 <p className="mt-0.5 text-[10px] text-[var(--muted)]">
                   {exercise.questionCount} {exercise.questionCount === 1 ? "question" : "questions"}
                 </p>
@@ -176,7 +263,7 @@ export function MisconceptionHeatmap({
                 </p>
                 <p className="mt-1 text-sm font-semibold">
                   {exercise.dominantMisconception
-                    ? `${exercise.dominantMisconception.shortLabel} · ${exercise.dominantMisconception.count}`
+                    ? `${exercise.dominantMisconception.teacherLabel} · ${exercise.dominantMisconception.count} ${exercise.dominantMisconception.count === 1 ? "occurrence" : "occurrences"}`
                     : "No repeated misconception"}
                 </p>
               </div>
@@ -197,47 +284,6 @@ export function MisconceptionHeatmap({
           ))}
         </div>
       </section>
-
-      {dashboard.largestCluster ? (
-        <section className="mt-6 flex flex-col gap-3 rounded-[22px] border border-[var(--coral)]/20 bg-[var(--soft-coral)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-white/70 text-[#9c4937]">
-              <GridIcon className="size-4" />
-            </span>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9c4937]">
-                Largest cluster
-              </p>
-              <p className="mt-1 text-base font-semibold text-[var(--ink)]">
-                {dashboard.largestCluster.affectedCount} {dashboard.largestCluster.affectedCount === 1 ? "student" : "students"} out of {dashboard.studentCount} {dashboard.largestCluster.affectedCount === 1 ? "shows" : "show"} {dashboard.largestCluster.shortLabel.toLowerCase()}.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-xs font-medium text-[var(--muted)]">
-              {dashboard.diagnosedStudentCount} {dashboard.diagnosedStudentCount === 1 ? "student has" : "students have"} diagnosed work
-            </p>
-            <button
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#244b42] disabled:cursor-not-allowed disabled:opacity-45"
-              disabled={briefBusy || !liveAiReady}
-              onClick={() => void createTeachingBrief()}
-              title={liveAiReady ? undefined : "Configure OPENAI_API_KEY to generate the brief"}
-              type="button"
-            >
-              {briefBusy ? (
-                <SpinnerIcon className="size-3.5 animate-spin" />
-              ) : (
-                <SparkIcon className="size-3.5" />
-              )}
-              {briefBusy
-                ? "Writing tomorrow’s brief…"
-                : teachingBrief
-                  ? "Refresh brief"
-                  : "Teach This Tomorrow"}
-            </button>
-          </div>
-        </section>
-      ) : null}
 
       {briefError ? (
         <p
@@ -283,17 +329,18 @@ export function MisconceptionHeatmap({
         </section>
       ) : null}
 
-      <section className="mt-5 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
-        <div className="flex flex-col gap-3 border-b border-black/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="mt-5 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]" id="per-student-detail">
+        <div className="flex flex-col gap-3 border-b border-black/[0.06] px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
-              Class misconception map
+              Per-student detail
             </p>
             <h2 className="mt-1 text-xl font-semibold tracking-[-0.025em]">
-              {dashboard.columns.length
-                ? `${dashboard.columns.length} detected misconception ${dashboard.columns.length === 1 ? "cluster" : "clusters"}`
-                : "Waiting for a definitive diagnosis"}
+              Which student has which difficulty?
             </h2>
+            <p className="mt-2 max-w-4xl text-xs leading-5 text-[var(--muted)]">
+              A colored cell = this error is evidenced in this student&apos;s work; the number = how many times; click for the student&apos;s actual work.
+            </p>
           </div>
           <EvidenceLegend />
         </div>
@@ -334,12 +381,13 @@ export function MisconceptionHeatmap({
                 <div
                   className={`border-b border-r border-black/[0.06] p-3 ${columnIndex === 0 ? "bg-[var(--soft-coral)]/55" : "bg-white/45"}`}
                   key={column.misconceptionId}
+                  title={`${column.label}. ${column.citationNote}`}
                 >
                   <p className="text-xs font-semibold leading-4 text-[var(--ink)]">
-                    {column.shortLabel}
+                    {column.teacherLabel}
                   </p>
                   <p className="mt-1 text-[10px] leading-4 text-[var(--muted)]">
-                    {column.affectedCount} {column.affectedCount === 1 ? "student" : "students"} · {column.frequency} {column.frequency === 1 ? "signal" : "signals"}
+                    {column.affectedCount} {column.affectedCount === 1 ? "student" : "students"} · {column.frequency} {column.frequency === 1 ? "occurrence" : "occurrences"}
                   </p>
                 </div>
               ))}
@@ -398,7 +446,9 @@ export function MisconceptionHeatmap({
                     const column = dashboard.columns[columnIndex];
                     const copy = cellTooltip(
                       cell,
-                      column.shortLabel,
+                      column.teacherLabel,
+                      column.label,
+                      column.citationNote,
                       row.studentName,
                     );
                     return (
@@ -408,14 +458,16 @@ export function MisconceptionHeatmap({
                       >
                         <button
                           aria-label={copy}
-                          className={`group relative grid size-11 place-items-center rounded-xl shadow-[inset_0_0_0_1px_rgba(0,0,0,0.035)] transition ${cellClass(cell.state, cell.severity)} ${cell.detail ? "cursor-pointer hover:scale-105 hover:shadow-md" : "cursor-default"}`}
+                          className={`group relative grid size-11 place-items-center rounded-xl shadow-[inset_0_0_0_1px_rgba(0,0,0,0.035)] transition ${cellClass(cell.state, cell.frequency)} ${cell.detail ? "cursor-pointer hover:scale-105 hover:shadow-md" : "cursor-default"}`}
                           disabled={!cell.detail}
                           onClick={(event) => {
                             if (!cell.detail) return;
                             selectedCellRef.current = event.currentTarget;
                             setSelected({
                               studentName: row.studentName,
-                              misconceptionLabel: column.label,
+                              teacherLabel: column.teacherLabel,
+                              formalLabel: column.label,
+                              citationNote: column.citationNote,
                               detail: cell.detail,
                             });
                           }}
@@ -424,7 +476,7 @@ export function MisconceptionHeatmap({
                         >
                           {cell.state === "MISCONCEPTION" ? (
                             <span className="text-xs font-bold text-[#623326]">
-                              {cell.frequency > 1 ? cell.frequency : cell.severity}
+                              {cell.frequency}
                             </span>
                           ) : cell.state === "CLEAR" ? (
                             <CheckIcon className="size-4 text-[var(--sidebar)]" />
@@ -487,7 +539,9 @@ function DiagnosisDrawer({
 }: {
   selected: {
     studentName: string;
-    misconceptionLabel: string;
+    teacherLabel: string;
+    formalLabel: string;
+    citationNote: string;
     detail: HeatmapDiagnosisDetail;
   };
   onClose: () => void;
@@ -515,7 +569,7 @@ function DiagnosisDrawer({
             </p>
             <h2 className="mt-2 text-xl font-semibold tracking-[-0.025em]" id="diagnosis-drawer-title">
               {detail.outcome === "MISCONCEPTION"
-                ? selected.misconceptionLabel
+                ? selected.teacherLabel
                 : "Teacher review needed"}
             </h2>
             <p className="mt-1 text-xs text-[var(--muted)]">
@@ -532,6 +586,13 @@ function DiagnosisDrawer({
             <XIcon className="size-4" />
           </button>
         </div>
+
+        {detail.outcome === "MISCONCEPTION" ? (
+          <div className="mt-5 rounded-2xl border border-black/[0.06] bg-[var(--canvas)] p-4 text-xs leading-5">
+            <p><span className="font-semibold">Formal taxonomy label:</span> {selected.formalLabel}</p>
+            <p className="mt-1 text-[var(--muted)]">{selected.citationNote}</p>
+          </div>
+        ) : null}
 
         <div className="mt-6 rounded-2xl border border-black/[0.06] bg-white/60 p-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
@@ -608,25 +669,25 @@ function DiagnosisDrawer({
 
 function cellClass(
   state: HeatmapDashboard["rows"][number]["cells"][number]["state"],
-  severity: number,
+  frequency: number,
 ) {
   if (state === "CLEAR") return "bg-[var(--mint)]";
   if (state === "REVIEW") return "bg-[var(--amber)]/25";
   if (state === "NO_DATA") return "bg-[var(--line)]";
-  if (severity >= 3) return "bg-[var(--coral)]";
-  if (severity === 2) return "bg-[#efab72]";
-  return "bg-[var(--amber)]";
+  return frequency > 1 ? "bg-[var(--coral)]" : "bg-[var(--amber)]";
 }
 
 function cellTooltip(
   cell: HeatmapDashboard["rows"][number]["cells"][number],
-  misconception: string,
+  teacherLabel: string,
+  formalLabel: string,
+  citationNote: string,
   student: string,
 ) {
   if (cell.state === "MISCONCEPTION") {
-    return `${student}: ${cell.detail?.questionReference ? `${cell.detail.questionReference}, ` : ""}${misconception}, severity ${cell.severity}${cell.frequency > 1 ? `, seen ${cell.frequency} times` : ""}${cell.evidenceQuote ? `. Evidence: ${cell.evidenceQuote}` : ""}`;
+    return `${student}: ${cell.detail?.questionReference ? `${cell.detail.questionReference}, ` : ""}${teacherLabel}; ${cell.frequency} ${cell.frequency === 1 ? "occurrence" : "occurrences"}. Formal label: ${formalLabel}. ${citationNote}${cell.evidenceQuote ? ` Evidence: ${cell.evidenceQuote}` : ""}`;
   }
-  if (cell.state === "CLEAR") return `${student}: no evidence of ${misconception} in diagnosed work`;
+  if (cell.state === "CLEAR") return `${student}: correct reasoning shown on opportunities related to ${teacherLabel}`;
   if (cell.state === "REVIEW") return `${student}: work needs teacher review`;
   return `${student}: not assessed`;
 }
