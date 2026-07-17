@@ -152,7 +152,9 @@ function verifyIntentionalStates() {
 
 function verifyCopyAndHierarchy() {
   const legend = read("src/components/evidence-legend.tsx");
-  assert.match(legend, /Demonstrated correct reasoning/);
+  assert.match(legend, /Correct reasoning shown/);
+  assert.match(legend, /Seen once/);
+  assert.match(legend, /Seen repeatedly/);
   assert.match(legend, /Not assessed/);
   assert.match(read("src/components/dashboard/misconception-heatmap.tsx"), /EvidenceLegend/);
 
@@ -177,8 +179,8 @@ function verifyCopyAndHierarchy() {
   const setup = read("src/components/diagnosis/setup-workspace.tsx");
   assert.match(setup, /questionCount === 1 \? "question" : "questions"/);
   const triage = read("src/components/triage/assignment-triage-screen.tsx");
-  assert.match(triage, /automaticallyCorrectedCount === 1 \? "copy" : "copies"/);
-  assert.match(triage, /needsReviewCount === 1 \? "item needs" : "items need"/);
+  assert.match(triage, /submittedCopyCount === 1 \? "copy" : "copies"/);
+  assert.match(triage, /flaggedItemCount === 1 \? "item" : "items"/);
 
   const roster = [
     { membershipId: "cecilia", displayName: "Cecilia" },

@@ -150,10 +150,11 @@ A wrong answer alone never becomes a misconception. A definitive label requires 
 
 ### 4. Results
 
-The triage divides results into automatically corrected, needs review, and out of scope. A teacher note is persisted on reviewed items. Analytics uses identical legend semantics everywhere:
+The triage divides results into automatically corrected, needs review, and out of scope. A teacher note is persisted on reviewed items. Analytics first ranks the most frequent difficulties in teacher language, then exposes the student-by-difficulty evidence grid. It uses identical legend semantics everywhere:
 
-- green: demonstrated correct reasoning;
-- amber/coral: emerging/strong misconception evidence;
+- mint: correct reasoning shown;
+- amber: seen once;
+- coral: seen repeatedly;
 - gray: not assessed.
 
 All surfaces use the same `Ex. 1 · Q1.2` reference formatter: queue, triage, heatmap drawers, practice sheets, Prediction Lab, corrected copies, and print.
