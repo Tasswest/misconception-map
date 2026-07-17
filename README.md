@@ -150,7 +150,7 @@ A wrong answer alone never becomes a misconception. A definitive label requires 
 
 ### 4. Results
 
-The triage divides results into automatically corrected, needs review, and not yet diagnosed. Teacher-selected exam content always remains part of the assignment even when the current engine cannot diagnose it. A teacher note is persisted on reviewed items. Analytics first ranks the most frequent difficulties in teacher language, then exposes the student-by-difficulty evidence grid. It uses identical legend semantics everywhere:
+The triage divides results into automatically corrected, needs review, and not yet diagnosed. Teacher-selected exam content always remains part of the assignment even when the current engine cannot diagnose it. A teacher note is persisted on reviewed items. Analytics includes a complete error inventory ranked by pedagogical priority: taxonomy misconceptions by distinct students and occurrences, teacher-confirmed one-off slips by exercise, then the review pile. Every entry links to its evidence and corrected copy. An isolated slip never becomes a misconception or Student Model evidence; this follows Sleeman’s (1984) distinction between systematic, clerical, and random errors. The cross-assignment class profile rolls misconception evidence forward while keeping slips attached to their source assignment. Analytics then exposes the student-by-difficulty evidence grid. It uses identical legend semantics everywhere:
 
 - mint: correct reasoning shown;
 - amber: seen once;
