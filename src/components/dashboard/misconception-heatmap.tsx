@@ -12,6 +12,7 @@ import {
   XIcon,
 } from "@/components/icons";
 import { AnalyticsHeader } from "@/components/analytics/analytics-navigation";
+import { ErrorLog } from "@/components/analytics/error-log";
 import { EvidenceLegend } from "@/components/evidence-legend";
 import { AiUnavailableNotice } from "@/components/readiness-states";
 import type {
@@ -238,6 +239,8 @@ export function MisconceptionHeatmap({
           </Link>
         </section>
       )}
+
+      <ErrorLog inventory={dashboard.errorInventory} />
 
       <section className="mt-6 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
         <div className="border-b border-black/[0.06] px-5 py-4 md:px-6">

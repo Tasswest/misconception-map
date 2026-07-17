@@ -5,6 +5,10 @@ import { exerciseQuestionReference, shortExerciseLabel } from "@/domain/exam-lab
 import { MISCONCEPTION_BY_ID, misconceptionIdSchema } from "@/domain/misconception-taxonomy.mjs";
 import { getDatabase } from "@/lib/db";
 import {
+  getAssignmentErrorInventory,
+  type AssignmentErrorInventory,
+} from "@/server/repositories/error-inventory";
+import {
   getLatestTeachingBrief,
   listLatestPracticeByMembership,
   type PracticeSummary,
@@ -93,6 +97,7 @@ export type HeatmapDashboard = {
     classId: string;
     className: string;
   };
+  errorInventory: AssignmentErrorInventory;
   studentCount: number;
   diagnosedStudentCount: number;
   summary: {
@@ -523,6 +528,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
       classId: assignment.class_id,
       className: assignment.class_name,
     },
+    errorInventory: getAssignmentErrorInventory(assignment.id)!,
     studentCount: memberships.length,
     diagnosedStudentCount: diagnosesByMembership.size,
     summary: {
