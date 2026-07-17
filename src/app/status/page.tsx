@@ -92,8 +92,8 @@ export default function StatusPage() {
         </section>
 
         <div className="mt-6">
-          <Link className="rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white" href="/">
-            Return to Overview
+          <Link className="rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white" href="/assignments">
+            Return to Assignments
           </Link>
         </div>
       </div>

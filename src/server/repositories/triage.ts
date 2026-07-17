@@ -318,7 +318,7 @@ export function getAssignmentTriage(assignmentId: string) {
     .map((membershipId) => ({
       membershipId,
       studentName: studentsById.get(membershipId) ?? "Student",
-      correctedCopyUrl: `/assignments/${assignment.id}/students/${membershipId}/corrected`,
+      correctedCopyUrl: `/analytics/${assignment.id}/corrected-copies/${membershipId}`,
     }))
     .sort((left, right) => left.studentName.localeCompare(right.studentName));
 

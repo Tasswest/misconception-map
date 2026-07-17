@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
+import { AnalyticsTabs } from "@/components/analytics/analytics-navigation";
+import { AssignmentStepper } from "@/components/assignment-stepper";
 import { PrintButton } from "@/components/practice/print-button";
 import { isOpenAIConfigured } from "@/lib/config";
 import { getPrintableWorksheet } from "@/server/repositories/instructional-support";
@@ -18,15 +20,25 @@ export default async function PracticeWorksheetPage({
   if (!worksheet || worksheet.assignmentId !== assignmentId) notFound();
 
   return (
-    <AppShell activeNav="Dashboard" liveAiReady={isOpenAIConfigured()}>
+    <AppShell activeNav="Analytics" liveAiReady={isOpenAIConfigured()}>
       <div className="print-root mx-auto max-w-5xl px-5 py-7 md:px-8 lg:px-10 lg:py-9">
+        <AssignmentStepper
+          assignmentId={assignmentId}
+          className="print-hidden mb-7"
+          currentStep={4}
+        />
+        <AnalyticsTabs
+          activeTab="practice"
+          assignmentId={assignmentId}
+          className="print-hidden mb-5"
+        />
         <div className="print-hidden mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <Link
               className="text-xs font-semibold text-[var(--sage)] transition hover:text-[var(--ink)]"
-              href={`/assignments/${assignmentId}/dashboard`}
+              href={`/analytics/${assignmentId}/practice`}
             >
-              ← Back to class heatmap
+              ← Back to practice &amp; brief
             </Link>
             <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
               {worksheet.title}

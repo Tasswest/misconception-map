@@ -1,20 +1,34 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
+import { SetupWorkspace } from "@/components/diagnosis/setup-workspace";
+import type { ClassWorkspaceOption } from "@/components/diagnosis/types";
 import { EntityActions } from "@/components/management/entity-actions";
-import {
-  FreshDatabaseState,
-  SingleActionEmptyState,
-} from "@/components/readiness-states";
+import { SingleActionEmptyState } from "@/components/readiness-states";
 import { isOpenAIConfigured } from "@/lib/config";
 import {
   listManagedAssignments,
   listManagedClasses,
 } from "@/server/repositories/management";
+import { getDraftWorksheetSetup } from "@/server/repositories/worksheet";
+import { listWorkspaceOverview } from "@/server/repositories/workspace";
 
 export const dynamic = "force-dynamic";
 
-export default function AssignmentsPage() {
+export default async function AssignmentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    assignmentId?: string | string[];
+    new?: string | string[];
+  }>;
+}) {
+  const query = await searchParams;
+  const requestedAssignmentId = firstValue(query.assignmentId);
+  if (firstValue(query.new) === "1" || requestedAssignmentId) {
+    return <AssignmentSetupHome assignmentId={requestedAssignmentId} />;
+  }
+
   const assignments = listManagedAssignments();
   const hasClasses = listManagedClasses().length > 0;
   return (
@@ -35,9 +49,9 @@ export default function AssignmentsPage() {
           {hasClasses ? (
             <Link
               className="inline-flex self-start rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
-              href="/diagnose"
+              href="/assignments?new=1"
             >
-              New diagnostic
+              New assignment
             </Link>
           ) : null}
         </header>
@@ -77,9 +91,9 @@ export default function AssignmentsPage() {
                   {assignment.currentStep === 4 ? (
                     <Link
                       className="rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-xs font-semibold"
-                      href={`/assignments/${assignment.id}/dashboard`}
+                      href={`/analytics/${assignment.id}`}
                     >
-                      Class dashboard
+                      Open analytics
                     </Link>
                   ) : null}
                   <EntityActions
@@ -94,18 +108,68 @@ export default function AssignmentsPage() {
         ) : (
           hasClasses ? (
             <SingleActionEmptyState
-              actionHref="/diagnose"
-              actionLabel="Create the first diagnostic"
+              actionHref="/assignments?new=1"
+              actionLabel="Create the first assignment"
               description="Upload one exam source, review its exercise structure, then add student copies."
               title="No active assignments"
             />
           ) : (
-            <FreshDatabaseState title="No active assignments" />
+            <SingleActionEmptyState
+              actionHref="/assignments?new=1"
+              actionLabel="Create a class and assignment"
+              description="Start with the class context, then add the teacher exam on the same guided screen."
+              title="No active assignments"
+            />
           )
         )}
       </div>
     </AppShell>
   );
+}
+
+function AssignmentSetupHome({ assignmentId }: { assignmentId?: string }) {
+  let initialDraft = null;
+  if (assignmentId) {
+    try {
+      initialDraft = getDraftWorksheetSetup(assignmentId);
+    } catch {
+      initialDraft = null;
+    }
+  }
+  const overview = listWorkspaceOverview();
+  const liveAiReady = isOpenAIConfigured();
+  const initialClasses: ClassWorkspaceOption[] = overview.map((classroom) => ({
+    id: classroom.id,
+    name: classroom.name,
+    gradeBand: classroom.gradeBand,
+    schoolYear: classroom.schoolYear,
+    students: classroom.memberships.map((membership) => ({
+      membershipId: membership.id,
+      displayName: membership.displayName,
+    })),
+    assignments: classroom.assignments.map((assignment) => ({
+      id: assignment.id,
+      title: assignment.title,
+      description: assignment.description,
+      domain: assignment.domain,
+      problemPrompt: assignment.item?.prompt ?? null,
+      correctAnswer: assignment.item?.correctAnswer ?? null,
+    })),
+  }));
+
+  return (
+    <AppShell activeNav="Assignments" liveAiReady={liveAiReady}>
+      <SetupWorkspace
+        initialClasses={initialClasses}
+        initialDraft={initialDraft}
+        liveAiReady={liveAiReady}
+      />
+    </AppShell>
+  );
+}
+
+function firstValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function countLabel(count: number, singular: string) {

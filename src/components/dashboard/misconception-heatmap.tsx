@@ -11,7 +11,7 @@ import {
   SpinnerIcon,
   XIcon,
 } from "@/components/icons";
-import { AssignmentStepper } from "@/components/assignment-stepper";
+import { AnalyticsHeader } from "@/components/analytics/analytics-navigation";
 import { EvidenceLegend } from "@/components/evidence-legend";
 import { AiUnavailableNotice } from "@/components/readiness-states";
 import type {
@@ -127,36 +127,11 @@ export function MisconceptionHeatmap({
 
   return (
     <div className="mx-auto max-w-[1500px] px-5 py-7 md:px-8 lg:px-10 lg:py-9">
-      <AssignmentStepper
-        assignmentId={dashboard.assignment.id}
-        className="mb-7"
-        currentStep={4}
+      <AnalyticsHeader
+        activeTab="class"
+        assignment={dashboard.assignment}
+        description="Students and misconceptions are clustered by the strongest shared signal."
       />
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--muted)]">
-            <Link className="transition hover:text-[var(--ink)]" href="/classes">
-              Classes
-            </Link>
-            <span aria-hidden="true">/</span>
-            <span>{dashboard.assignment.className}</span>
-            <span aria-hidden="true">/</span>
-            <span className="text-[var(--sage)]">Heatmap</span>
-          </div>
-          <h1 className="mt-3 text-balance text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
-            {dashboard.assignment.title}
-          </h1>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-            Students and misconceptions are clustered by the strongest shared signal.
-          </p>
-        </div>
-        <Link
-          className="inline-flex self-start items-center justify-center rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm font-semibold transition hover:bg-[var(--paper)] md:self-auto"
-          href={`/assignments/${dashboard.assignment.id}/results`}
-        >
-          Review results
-        </Link>
-      </div>
 
       {!liveAiReady ? <AiUnavailableNotice className="mt-5" /> : null}
 
@@ -388,7 +363,7 @@ export function MisconceptionHeatmap({
                         practice ? (
                           <Link
                             className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[var(--soft-mint)] px-2.5 py-1.5 text-[10px] font-semibold text-[var(--sidebar)] transition hover:bg-[var(--mint)]/55"
-                            href={`/assignments/${dashboard.assignment.id}/practice/${practice.worksheetId}`}
+                            href={`/analytics/${dashboard.assignment.id}/practice/${practice.worksheetId}`}
                           >
                             <CheckIcon className="size-3" /> Open practice
                           </Link>
@@ -413,9 +388,9 @@ export function MisconceptionHeatmap({
                       ) : null}
                       <Link
                         className="mt-2 ml-1 inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-[var(--ink)] transition hover:bg-[var(--canvas)]"
-                        href={`/assignments/${dashboard.assignment.id}/students/${row.membershipId}/corrected`}
+                        href={`/analytics/${dashboard.assignment.id}/corrected-copies/${row.membershipId}`}
                       >
-                        Corrected exam
+                        Corrected copy
                       </Link>
                     </div>
                   </div>,

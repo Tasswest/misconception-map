@@ -31,7 +31,7 @@ export default function ClassesPage() {
           {classes.length ? (
             <Link
               className="inline-flex self-start rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
-              href="/diagnose"
+              href="/assignments?new=1"
             >
               New class or assignment
             </Link>
@@ -90,7 +90,7 @@ export default function ClassesPage() {
                           {classroom.latestAssignment ? (
                             <Link
                               className="min-w-0 truncate text-xs font-semibold text-[var(--ink)] transition hover:text-[var(--sage)]"
-                              href={`/assignments/${classroom.latestAssignment.id}/students/${student.membershipId}/corrected`}
+                              href={`/analytics/${classroom.latestAssignment.id}/corrected-copies/${student.membershipId}`}
                               title="Open corrected copy"
                             >
                               {student.displayName}
@@ -122,9 +122,9 @@ export default function ClassesPage() {
                     <>
                       <Link
                         className="rounded-xl bg-[var(--sidebar)] px-3.5 py-2.5 text-xs font-semibold text-white"
-                        href={`/assignments/${classroom.latestAssignment.id}/dashboard`}
+                        href={`/analytics/${classroom.latestAssignment.id}`}
                       >
-                        Open latest dashboard
+                        Open latest analytics
                       </Link>
                       <span className="text-xs text-[var(--muted)]">
                         {classroom.latestAssignment.title}
@@ -133,7 +133,7 @@ export default function ClassesPage() {
                   ) : (
                     <Link
                       className="rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-xs font-semibold"
-                      href="/diagnose"
+                      href="/assignments?new=1"
                     >
                       Create first assignment
                     </Link>

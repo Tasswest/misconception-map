@@ -10,7 +10,6 @@ import { isHostedMode } from "@/lib/hosted-access";
 import { getAiAvailability } from "@/server/openai/spend-protection";
 
 const navigation = [
-  { key: "Overview", label: "Overview", icon: GridIcon, href: "/" },
   { key: "Classes", label: "Classes", icon: UsersIcon, href: "/classes" },
   {
     key: "Assignments",
@@ -18,7 +17,7 @@ const navigation = [
     icon: ClipboardIcon,
     href: "/assignments",
   },
-  { key: "Dashboard", label: "Dashboard", icon: GridIcon, href: "/dashboard" },
+  { key: "Analytics", label: "Analytics", icon: GridIcon, href: "/analytics" },
   {
     key: "Prediction Lab",
     label: "Prediction Lab",
@@ -39,7 +38,7 @@ type AppShellProps = {
 export function AppShell({
   children,
   liveAiReady,
-  activeNav = "Overview",
+  activeNav = "Assignments",
 }: AppShellProps) {
   const hosted = isHostedMode();
   const aiAvailability = hosted ? getAiAvailability() : null;
@@ -48,7 +47,7 @@ export function AppShell({
       <aside className="app-shell-sidebar hidden min-h-screen flex-col bg-[var(--sidebar)] px-5 py-6 text-white lg:flex">
         <Link
           className="flex items-center gap-3 rounded-xl px-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--mint)]"
-          href="/"
+          href="/assignments"
         >
           <div className="grid size-11 grid-cols-2 gap-1 rounded-2xl bg-white/12 p-2 ring-1 ring-white/15">
             <span className="rounded-sm bg-[var(--mint)]" />
@@ -121,7 +120,7 @@ export function AppShell({
 
       <div className="app-shell-main min-w-0">
         <header className="app-shell-header flex h-16 items-center justify-between border-b border-black/[0.06] bg-white/75 px-5 backdrop-blur md:px-8 lg:px-10">
-          <Link className="flex items-center gap-3 lg:hidden" href="/">
+          <Link className="flex items-center gap-3 lg:hidden" href="/assignments">
             <div className="grid size-8 grid-cols-2 gap-0.5 rounded-lg bg-[var(--sidebar)] p-1.5">
               <span className="rounded-[2px] bg-[var(--mint)]" />
               <span className="rounded-[2px] bg-[var(--amber)]" />
@@ -134,12 +133,12 @@ export function AppShell({
             Teacher diagnostic workspace
           </p>
           <div className="flex items-center gap-2">
-            {activeNav !== "Overview" ? (
+            {activeNav !== "Assignments" ? (
               <Link
                 className="hidden rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] sm:block lg:hidden"
-                href="/diagnose"
+                href="/assignments?new=1"
               >
-                Diagnose work
+                New assignment
               </Link>
             ) : null}
             <div className="rounded-full border border-[var(--sage)]/25 bg-[var(--sage)]/8 px-3 py-1.5 text-xs font-semibold text-[var(--sidebar)]">

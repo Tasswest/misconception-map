@@ -386,7 +386,7 @@ export function SetupWorkspace({
 
       <section className="mt-7 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
         <div className="space-y-5">
-          <article className="rounded-[24px] border border-black/[0.06] bg-[var(--paper)] p-6 shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
+          <article className="rounded-[24px] border border-black/[0.06] bg-[var(--paper)] p-6 shadow-[0_18px_45px_rgba(35,51,46,0.05)]" id="class-setup">
             <StepHeading
               icon={<UsersIcon className="size-5" />}
               number="1"

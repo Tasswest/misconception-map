@@ -154,7 +154,7 @@ export function PredictionLab({ classes, data, liveAiReady }: Props) {
           </p>
           <Link
             className="mt-5 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
-            href="/diagnose"
+            href="/assignments?new=1"
           >
             Create a class
           </Link>

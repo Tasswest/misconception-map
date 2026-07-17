@@ -18,7 +18,7 @@ export default async function AssignmentDashboardPage({
   const liveAiReady = isOpenAIConfigured();
 
   return (
-    <AppShell activeNav="Dashboard" liveAiReady={liveAiReady}>
+    <AppShell activeNav="Analytics" liveAiReady={liveAiReady}>
       <MisconceptionHeatmap dashboard={dashboard} liveAiReady={liveAiReady} />
     </AppShell>
   );

@@ -20,22 +20,22 @@ export default function DashboardIndexPage() {
   const latest = assignments[0] ?? null;
   const hasClasses = listManagedClasses().length > 0;
   return (
-    <AppShell activeNav="Dashboard" liveAiReady={isOpenAIConfigured()}>
+    <AppShell activeNav="Analytics" liveAiReady={isOpenAIConfigured()}>
       <div className="mx-auto max-w-[1120px] px-5 py-8 md:px-8 lg:px-10 lg:py-10">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--sage)]">
           Class evidence
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
-          Dashboards
+          Analytics
         </h1>
         <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-          Choose an assignment. The most recent diagnostic is kept at the top.
+          Choose an assignment to open its exercise results, corrected copies, and instructional support.
         </p>
 
         {latest ? (
           <Link
             className="mt-6 block rounded-[26px] border border-[var(--sage)]/15 bg-[var(--soft-mint)]/55 p-6 shadow-[0_18px_45px_rgba(35,51,46,0.06)] transition hover:-translate-y-0.5"
-            href={`/assignments/${latest.id}/dashboard`}
+            href={`/analytics/${latest.id}`}
           >
             <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
               Latest assignment
@@ -47,30 +47,30 @@ export default function DashboardIndexPage() {
               {latest.className} · {latest.diagnosedStudentCount} of {latest.studentCount} {latest.studentCount === 1 ? "student" : "students"} diagnosed · {reviewLabel(latest.needsReviewCount)}
             </p>
             <span className="mt-5 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white">
-              Open latest heatmap →
+              Open latest analytics →
             </span>
           </Link>
         ) : (
           hasClasses ? (
             <SingleActionEmptyState
-              actionHref="/diagnose"
-              actionLabel="Create a diagnostic"
-              description="A dashboard appears after an exam source is confirmed."
-              title="No dashboards yet"
+              actionHref="/assignments?new=1"
+              actionLabel="Create an assignment"
+              description="Analytics appears after an exam source is confirmed."
+              title="No analytics yet"
             />
           ) : (
-            <FreshDatabaseState title="No dashboards yet" />
+            <FreshDatabaseState title="No analytics yet" />
           )
         )}
 
         {assignments.length > 1 ? (
           <section className="mt-7">
-            <h2 className="text-sm font-semibold">All active dashboards</h2>
+            <h2 className="text-sm font-semibold">All assignments</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               {assignments.slice(1).map((assignment) => (
                 <Link
                   className="rounded-2xl border border-black/[0.06] bg-white/75 p-4 transition hover:border-[var(--sage)]/20 hover:bg-white"
-                  href={`/assignments/${assignment.id}/dashboard`}
+                  href={`/analytics/${assignment.id}`}
                   key={assignment.id}
                 >
                   <p className="font-semibold">{assignment.title}</p>

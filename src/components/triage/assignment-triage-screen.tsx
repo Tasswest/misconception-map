@@ -150,9 +150,9 @@ export function AssignmentTriageScreen({
         {view === "SUMMARY" ? (
           <Link
             className="inline-flex self-start rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm font-semibold"
-            href={`/assignments/${triage.assignment.id}/dashboard`}
+            href={`/analytics/${triage.assignment.id}`}
           >
-            Class dashboard
+            Open analytics
           </Link>
         ) : (
           <button

@@ -287,7 +287,7 @@ export function listManagedAssignments(): ManagedAssignment[] {
         currentStep === 4
           ? `/assignments/${row.id}/results`
           : currentStep === 1
-            ? `/diagnose?assignmentId=${encodeURIComponent(row.id)}`
+            ? `/assignments?assignmentId=${encodeURIComponent(row.id)}`
             : `/assignments/${row.id}/diagnose`,
     };
   });

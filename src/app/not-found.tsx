@@ -11,9 +11,9 @@ export default function NotFound() {
         </p>
         <Link
           className="mt-6 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
-          href="/"
+          href="/assignments"
         >
-          Return to overview
+          Return to assignments
         </Link>
       </section>
     </div>

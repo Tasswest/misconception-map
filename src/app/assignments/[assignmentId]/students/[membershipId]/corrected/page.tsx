@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
+import { AnalyticsTabs } from "@/components/analytics/analytics-navigation";
 import { AssignmentStepper } from "@/components/assignment-stepper";
 import { PrintButton } from "@/components/practice/print-button";
 import { isOpenAIConfigured } from "@/lib/config";
@@ -73,20 +74,25 @@ export default async function CorrectedExamPage({
   const french = isFrenchExam(exam);
 
   return (
-    <AppShell activeNav="Dashboard" liveAiReady={isOpenAIConfigured()}>
+    <AppShell activeNav="Analytics" liveAiReady={isOpenAIConfigured()}>
       <div className="corrected-copy-root print-root mx-auto max-w-5xl px-5 py-7 md:px-8 lg:px-10 lg:py-9">
         <AssignmentStepper
           assignmentId={assignmentId}
           className="print-hidden mb-7"
           currentStep={4}
         />
+        <AnalyticsTabs
+          activeTab="copies"
+          assignmentId={assignmentId}
+          className="print-hidden mb-5"
+        />
         <div className="print-hidden mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <Link
               className="text-xs font-semibold text-[var(--sage)] transition hover:text-[var(--ink)]"
-              href={`/assignments/${assignmentId}/dashboard`}
+              href={`/analytics/${assignmentId}/corrected-copies`}
             >
-              ← Back to class heatmap
+              ← Back to corrected copies
             </Link>
             <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
               Corrected copy · {exam.studentName}

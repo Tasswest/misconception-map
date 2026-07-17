@@ -655,13 +655,13 @@ export function DiagnosisWorkbench({
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[var(--muted)]">
-            <Link className="transition hover:text-[var(--ink)]" href="/classes">
-              Classes
+            <Link className="transition hover:text-[var(--ink)]" href="/assignments">
+              Assignments
             </Link>
             <span aria-hidden="true">/</span>
             <span>{assignment.className}</span>
             <span aria-hidden="true">/</span>
-            <span className="text-[var(--sage)]">Add work</span>
+            <span className="text-[var(--sage)]">Student copies</span>
           </div>
           <h1 className="mt-3 text-balance text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
             {assignment.title}
