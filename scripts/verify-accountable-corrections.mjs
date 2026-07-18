@@ -24,13 +24,14 @@ assert.match(
 );
 assert.match(diagnosis, /submission\.status = 'FAILED'/);
 
-const triage = read("src/server/repositories/triage.ts");
-assert.match(triage, /submission\.status = 'NEEDS_REVIEW'/);
-assert.match(triage, /submission\.sanitized_error_message/);
+const results = read("src/server/repositories/assignment-results.ts");
+assert.match(results, /submission\.status = 'NEEDS_REVIEW'/);
+assert.match(results, /submission\.sanitized_error_message/);
+assert.doesNotMatch(results, /teacher_item_reviews|INSERT|UPDATE|DELETE/);
 
 const inventory = read("src/server/repositories/error-inventory.ts");
 assert.match(inventory, /listUnmatchedReviewRows/);
-assert.match(inventory, /classification: "AWAITING_REVIEW"/);
+assert.match(inventory, /classification: "UNCERTAIN"/);
 assert.match(inventory, /row\.reason/);
 
 const dashboard = read("src/server/repositories/dashboard.ts");

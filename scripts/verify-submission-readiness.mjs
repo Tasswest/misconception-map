@@ -168,7 +168,6 @@ function verifyCopyAndHierarchy() {
   assert.match(read("src/components/dashboard/misconception-heatmap.tsx"), /EvidenceLegend/);
 
   for (const file of [
-    "src/server/repositories/triage.ts",
     "src/server/repositories/dashboard.ts",
     "src/server/repositories/prediction-lab.ts",
     "src/server/repositories/corrected-exam.ts",
@@ -187,9 +186,9 @@ function verifyCopyAndHierarchy() {
 
   const setup = read("src/components/diagnosis/setup-workspace.tsx");
   assert.match(setup, /questionCount === 1 \? "question" : "questions"/);
-  const triage = read("src/components/triage/assignment-triage-screen.tsx");
-  assert.match(triage, /submittedCopyCount === 1 \? "copy" : "copies"/);
-  assert.match(triage, /flaggedItemCount === 1 \? "item" : "items"/);
+  const results = read("src/components/results/assignment-results-summary.tsx");
+  assert.match(results, /submittedCopyCount === 1 \? "copy" : "copies"/);
+  assert.match(results, /flaggedItemCount === 1 \? "item" : "items"/);
 
   const roster = [
     { membershipId: "cecilia", displayName: "Cecilia" },
@@ -227,14 +226,10 @@ function verifyAccessibilityAndPrint() {
   assert.match(heatmap, /selectedCellRef\.current\?\.focus\(\)/);
   assert.match(heatmap, /aria-labelledby=/);
 
-  const triage = read("src/components/triage/assignment-triage-screen.tsx");
-  assert.match(triage, /event\.key === "ArrowLeft"/);
-  assert.match(triage, /event\.key === "ArrowRight"/);
-  assert.match(triage, /event\.key === "Escape"/);
-  assert.match(triage, /First incorrect step/);
-  assert.match(triage, /not a confirmed mistake/);
-  assert.match(triage, /HighlightedTranscription/);
-  assert.match(triage, /#page=\$\{item\.suggestedPage\}/);
+  const results = read("src/components/results/assignment-results-summary.tsx");
+  assert.match(results, /Correction is complete/);
+  assert.match(results, /no follow-up action is required/);
+  assert.doesNotMatch(results, /onClick|textarea|Mark as reviewed|Teacher note/);
 }
 
 function verifyCostCacheAndStatus() {

@@ -11,7 +11,7 @@ const repository = read("src/server/repositories/error-inventory.ts");
 for (const classification of [
   "TAXONOMY_MISCONCEPTION",
   "CALCULATION_SLIP",
-  "AWAITING_REVIEW",
+  "UNCERTAIN",
   "OUT_OF_SCOPE",
 ]) {
   assert.match(repository, new RegExp(`"${classification}"`));
@@ -20,7 +20,7 @@ assert.match(repository, /diagnosis\.id = \(SELECT latest\.id/);
 assert.match(repository, /correctness = 'INCORRECT'/);
 assert.match(repository, /row\.outcome === "MISCONCEPTION" && term/);
 assert.match(repository, /reasons\.includes\("DOMAIN_MISMATCH"\)/);
-assert.match(repository, /row\.reviewed_at !== null && steps\.length > 0/);
+assert.doesNotMatch(repository, /teacher_item_reviews|reviewed_at/);
 assert.match(
   repository,
   /right\.distinctStudentCount - left\.distinctStudentCount[\s\S]*right\.occurrenceCount - left\.occurrenceCount/,
@@ -35,13 +35,15 @@ const errorLog = read("src/components/analytics/error-log.tsx");
 assert.match(errorLog, /What errors were found in the copies\?/);
 assert.match(errorLog, /Misconceptions:/);
 assert.match(errorLog, /Isolated slips:/);
-assert.match(errorLog, /Awaiting review:/);
+assert.match(errorLog, /AI uncertainty:/);
+assert.match(errorLog, /items?" : "items"\} the AI could not settle/);
 assert.match(errorLog, /Out of scope:/);
 assert.match(errorLog, /A one-off slip is not a misconception/);
 assert.match(errorLog, /Only repeated, evidenced patterns can feed Student Models/);
 assert.match(errorLog, /Sleeman \(1984\)/);
 assert.match(errorLog, /Open corrected copy/);
 assert.match(errorLog, /<details/);
+assert.doesNotMatch(errorLog, /Review flagged work|awaiting review/);
 
 const assignmentAnalytics = read(
   "src/components/dashboard/misconception-heatmap.tsx",

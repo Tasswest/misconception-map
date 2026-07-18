@@ -3,7 +3,7 @@
 Misconception Map is a local-first, teacher-facing diagnostic workspace for middle-school algebra and fractions, with an access-code-protected hosted judge demo. It turns a structured exam and deidentified student work into four answers a teacher can read quickly:
 
 1. Where am I?
-2. What needs my review?
+2. What did the AI settle, and where was it uncertain?
 3. How is the class doing, exercise by exercise?
 4. What happened on this copy?
 
@@ -14,7 +14,7 @@ There are no grades or points. The product corrects what it can support from vis
 - A visible four-step assignment path: **Exam source → Student copies → AI correction → Results**.
 - Four unambiguous top-level destinations: **Classes → Assignments → Analytics → Prediction Lab**. Assignments owns the complete correction workflow; Analytics owns every result view.
 - Hierarchical extraction that preserves every printed exercise, shared stimulus, and question label. The real six-page French brevet fixture returns all six exercises; geometry, probability, and statistics questions remain visible as teacher-selected exam content and are marked “not yet diagnosed” when the current algebra/fractions engine cannot assess them.
-- A results triage that asks the teacher to review only ambiguous, unreadable, unmatched, or not-yet-diagnosed work.
+- A read-only Results summary where ambiguous, unreadable, or unmatched work remains visibly flagged without creating a teacher task.
 - A class summary by exercise before the full misconception heatmap.
 - Corrected copies grouped by exercise, with shared context shown once and feedback written in the language of the exam.
 - Targeted five-question micro-practice, a teacher answer key, and a short “Teach This Tomorrow” intervention.
@@ -68,7 +68,7 @@ Leave `OPENAI_API_KEY` empty, run `npm run seed`, and open the app. The determin
 
 - 20 synthetic learners and two completed assignments;
 - the four-step assignment path, reopening at Results;
-- a triage with **18 copies corrected automatically, 1 item needing review, and 1 not yet diagnosed**;
+- a Results summary with **18 corrected copies, 1 item flagged as uncertain, and 1 outside misconception analysis**;
 - a three-exercise Analytics hub with success rates, dominant misconceptions, and flagged counts;
 - exercise-grouped corrected copies with French prompts and French step feedback;
 - a printable targeted worksheet and teacher answer key linked to `Ex. 2 · Q2.2`;
@@ -81,7 +81,7 @@ Live-only controls remain visibly disabled and explain that `OPENAI_API_KEY` mus
 
 1. Open **Classes** and inspect the 20-learner synthetic roster.
 2. Open **Assignments**, then **Unit 3 follow-up · Held-out check**. The assignment resumes at step 4 of the Exam → Student copies → AI correction → Results path.
-3. Read the triage sentence, open **Review flagged items**, inspect the transcription, page preview, and reasons, add an optional note, then mark it reviewed. Left/right arrows navigate; `Esc` returns to triage.
+3. Open **Results**, then read a corrected copy and its error inventory. The uncertainty flag and its reason stay attached to the evidence; nothing needs to be cleared or marked complete.
 4. Open **Analytics** and visit all three assignment tabs: **Class by exercise**, **Corrected copies**, and **Practice & brief**. The exercise rows identify the difficult exercise before the heatmap; a corrected copy’s summary chips jump directly to each exercise. Print/PDF hides the application chrome.
 5. Open **Prediction Lab**. Inspect predictions that were timestamped and locked before the held-out responses, including visible abstentions and invalidated historical trials.
 
@@ -90,7 +90,7 @@ Live-only controls remain visibly disabled and explain that `OPENAI_API_KEY` mus
 | Teacher destination | Canonical route |
 | --- | --- |
 | Classes and rosters | `/classes` |
-| Assignment list, creation, stepper, correction, and triage | `/assignments` and `/assignments/:assignmentId/...` |
+| Assignment list, creation, stepper, correction, and Results | `/assignments` and `/assignments/:assignmentId/...` |
 | Analytics picker and assignment result tabs | `/analytics` and `/analytics/:assignmentId/...` |
 | Prediction Lab | `/prediction-lab` |
 
@@ -124,7 +124,7 @@ The real evaluation files are intentionally not committed because they are not s
 - teacher source: `2019_07_Amerique_du_Sud_Serie_generale_SUJET.pdf`;
 - deidentified booklet: `2019_07_Amerique_du_Sud_Cecilia.pdf`.
 
-Create an Algebra assignment, upload the teacher PDF, and review extraction before confirming. The review must show **Exercices 1–6** with their original numbering. Exercises outside algebra/fractions are preserved as teacher-selected exam content and marked “not yet diagnosed”; they are never silently dropped or forced into an algebra misconception. Then upload the booklet as one full-page PDF. Matching uses printed cues such as `1.1` and `Ex 7 Q3`; ambiguous work is sent to teacher review rather than guessed into a slot.
+Create an Algebra assignment, upload the teacher PDF, and inspect extraction before confirming. The extracted structure must show **Exercices 1–6** with their original numbering. Exercises outside algebra/fractions remain preserved as teacher-selected exam content; they are never silently dropped or forced into an algebra misconception. Then upload the booklet as one full-page PDF. Matching uses printed cues such as `1.1` and `Ex 7 Q3`; ambiguous work remains visibly unmatched rather than being guessed into a slot.
 
 The verified fixture produced French feedback and a 12-page A4 corrected report with the summary on page 1, exercise boundaries, and no orphaned question headers.
 
@@ -150,14 +150,14 @@ A wrong answer alone never becomes a misconception. A definitive label requires 
 
 ### 4. Results
 
-The triage divides results into automatically corrected, needs review, and not yet diagnosed. Teacher-selected exam content always remains part of the assignment even when the current engine cannot diagnose it. A teacher note is persisted on reviewed items. Analytics includes a complete error inventory ranked by pedagogical priority: taxonomy misconceptions by distinct students and occurrences, teacher-confirmed one-off slips by exercise, then the review pile. Every entry links to its evidence and corrected copy. An isolated slip never becomes a misconception or Student Model evidence; this follows Sleeman’s (1984) distinction between systematic, clerical, and random errors. The cross-assignment class profile rolls misconception evidence forward while keeping slips attached to their source assignment. Analytics then exposes the student-by-difficulty evidence grid. It uses identical legend semantics everywhere:
+Results presents corrected-copy, uncertainty, and misconception-analysis counts without creating a task list. Teacher-selected exam content always remains part of the assignment. Analytics includes a complete error inventory ranked by pedagogical priority: taxonomy misconceptions by distinct students and occurrences, settled one-off slips by exercise, then items the AI could not settle. Every entry links to its evidence and corrected copy. An isolated slip never becomes a misconception or Student Model evidence; this follows Sleeman’s (1984) distinction between systematic, clerical, and random errors. The cross-assignment class profile rolls misconception evidence forward while keeping slips attached to their source assignment. Analytics then exposes the student-by-difficulty evidence grid. It uses identical legend semantics everywhere:
 
 - mint: correct reasoning shown;
 - amber: seen once;
 - coral: seen repeatedly;
 - gray: not assessed.
 
-All surfaces use the same `Ex. 1 · Q1.2` reference formatter: queue, triage, heatmap drawers, practice sheets, Prediction Lab, corrected copies, and print.
+All surfaces use the same `Ex. 1 · Q1.2` reference formatter: queue, Results, heatmap drawers, practice sheets, Prediction Lab, corrected copies, and print.
 
 ## Student Model and Prediction Lab
 
@@ -217,7 +217,7 @@ OPENAI_API_KEY= npm run check
 OPENAI_API_KEY= npm run dev -- --port 3200
 ~~~
 
-The no-key rendered-route smoke covered Classes, the Assignments stepper and 18/1/1 triage, every Analytics sub-tab, a grouped corrected copy, Prediction Lab (4 of 5 observed applications, 3 actual versus 3.2 expected flawed-rule hits, one mastery prediction, and one revision suggestion), assignment setup, and `/status`. Live-only controls were disabled with the `.env.local` explanation.
+The no-key rendered-route smoke covered Classes, the Assignments stepper and 18/1/1 Results summary, every Analytics sub-tab, a grouped corrected copy, Prediction Lab (4 of 5 observed applications, 3 actual versus 3.2 expected flawed-rule hits, one mastery prediction, and one revision suggestion), assignment setup, and `/status`. Live-only controls were disabled with the `.env.local` explanation.
 
 For the live smoke, the local key was added to the clone’s ignored `.env.local`, the server was restarted, and `sample-work/01-negative-distribution.jpeg` was uploaded for a new synthetic learner against `Ex. 1 · Q1.1`. GPT-5.6 returned a grounded French `NEEDS_REVIEW` result instead of forcing a taxonomy match. The run saved 6,151 input and 1,393 output tokens; `/status` displayed 7,544 total. Repeating the identical diagnosis returned the persisted result while the database remained at exactly one diagnosis run.
 
@@ -225,19 +225,19 @@ For the live smoke, the local key was added to the clone’s ignored `.env.local
 
 - Next.js App Router, React Server Components, TypeScript, and Tailwind CSS.
 - Local SQLite through `better-sqlite3`, with checksummed migrations and integrity triggers.
-- Small client islands for intake, review, heatmap drawers, Prediction Lab, and print actions.
+- Small client islands for intake, heatmap drawers, Prediction Lab, and print actions.
 - Node.js route handlers for local file processing and OpenAI Responses API calls.
 - `gpt-5.6` is the only live model.
 - Strict structured output on worksheet extraction, page segmentation, diagnosis, Student Model synthesis, practice, teaching briefs, three-kind predictions, and outcome-driven model-revision suggestions.
-- Append-oriented answer versions, diagnoses, Student Models, prediction locks/outcomes, teacher reviews, and AI provenance.
+- Append-oriented answer versions, diagnoses, Student Models, prediction locks/outcomes, and AI provenance.
 
-The data graph covers classes, memberships, exercises, reusable problems, assignment items, protected assets, upload batches, submissions, answer versions, diagnosis steps/candidates, teacher review notes, Student Model evidence/opportunities/mastery, append-only revision decisions, worksheets, teaching briefs, frozen predictions, token provenance, and redacted audit events. Composite foreign keys and triggers keep every record inside its class and assignment.
+The data graph covers classes, memberships, exercises, reusable problems, assignment items, protected assets, upload batches, submissions, answer versions, diagnosis steps/candidates, Student Model evidence/opportunities/mastery, append-only revision decisions, worksheets, teaching briefs, frozen predictions, token provenance, and redacted audit events. Historical teacher-review columns remain migration-compatible but are no longer read or written. Composite foreign keys and triggers keep every record inside its class and assignment.
 
 ## Accessibility and print
 
 - Visible `:focus-visible` treatment across links, controls, fields, and disclosure widgets.
 - Native buttons for heatmap cells with descriptive student, question, state, severity, frequency, and evidence labels.
-- Keyboard triage with previous/next arrows and `Esc` back to summary.
+- Results links expose corrected copies and evidence without a modal task flow.
 - Evidence drawers close with `Esc` and return focus to their source cell.
 - Icons and explicit text accompany every color state.
 - Corrected copies and practice/answer keys print to A4 without the sidebar or application header.
@@ -283,7 +283,7 @@ OpenAI calls use `store: false`. The teacher source, assignment context, and dei
 
 > **TODO (author):** Personalize this draft with your own motivation, the decisions you made during the build, and what surprised you. Add the Codex `/feedback` Session ID before submission: **`TODO: SESSION_ID`**.
 
-The author set the product boundaries: local-first teacher workflow, algebra/fractions scope, no grades, strict abstention, versioned Student Models, Prediction Lab as the signature feature, and a deterministic judge path. Codex was delegated implementation, repository inspection, schema/migration work, adversarial verification, regression diagnosis, UI iteration, real-fixture testing, and print/accessibility QA. The author retained product calls such as sequencing triage before hierarchy, preserving unsupported exam content rather than forcing labels, and never weakening prediction history for the demo.
+The author set the product boundaries: local-first teacher workflow, algebra/fractions scope, no grades, strict abstention, versioned Student Models, Prediction Lab as the signature feature, and a deterministic judge path. Codex was delegated implementation, repository inspection, schema/migration work, adversarial verification, regression diagnosis, UI iteration, real-fixture testing, and print/accessibility QA. The author retained product calls such as making uncertainty informative instead of actionable, preserving unsupported exam content rather than forcing labels, and never weakening prediction history for the demo.
 
 One live handwriting test exposed a consequential OCR error: a faint handwritten `=` was read as a dash. That failure became engineering work rather than prompt folklore. The history records the image pipeline/fallback fix in `7b061d0`, and the repository now keeps an exact permanent fixture at `fixtures/student-work/sign-error-equals-regression.jpeg`. The input pipeline auto-orients and crops single-question work around line-aware ink, retains a full-frame fallback, and the diagnosis policy flags an implausible variable-bearing final fragment instead of accepting a confident guess. `npm run verify:images` keeps that regression reproducible.
 
