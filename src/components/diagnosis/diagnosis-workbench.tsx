@@ -1318,7 +1318,9 @@ function DiagnosisResult({
     ? "Teacher review needed"
     : isCorrect
       ? "Reasoning checks out"
-      : result.misconception?.shortLabel ?? "Misconception found";
+      : result.outcome === "INCORRECT"
+        ? "Correction needed"
+        : result.misconception?.shortLabel ?? "Misconception found";
 
   return (
     <div
@@ -1475,7 +1477,12 @@ function statusPresentation(item: QueueItem): {
       };
     case "COMPLETE":
       return {
-        label: item.result?.outcome === "CORRECT" ? "Correct" : "Pattern found",
+        label:
+          item.result?.outcome === "CORRECT"
+            ? "Correct"
+            : item.result?.outcome === "INCORRECT"
+              ? "Corrected"
+              : "Pattern found",
         copy: "Diagnosis saved",
         tone: "success",
         textClass: "text-[var(--sage)]",
@@ -1845,6 +1852,7 @@ function parseOutcome(record: ApiRecord): DiagnosisSummary["outcome"] {
   const value = readString(record, "outcome");
   if (
     value === "CORRECT" ||
+    value === "INCORRECT" ||
     value === "MISCONCEPTION" ||
     value === "NEEDS_REVIEW" ||
     value === "INSUFFICIENT_EVIDENCE" ||

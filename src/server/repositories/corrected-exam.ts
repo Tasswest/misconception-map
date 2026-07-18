@@ -13,7 +13,7 @@ type CorrectedDiagnosisRow = {
   diagnosis_id: string;
   submission_id: string;
   assignment_item_id: string;
-  outcome: "CORRECT" | "MISCONCEPTION" | "NEEDS_REVIEW" | "INSUFFICIENT_EVIDENCE" | "MULTIPLE_PLAUSIBLE";
+  outcome: "CORRECT" | "INCORRECT" | "MISCONCEPTION" | "NEEDS_REVIEW" | "INSUFFICIENT_EVIDENCE" | "MULTIPLE_PLAUSIBLE";
   misconception_id: string | null;
   confidence: number;
   transcription: string;
@@ -70,7 +70,7 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
   const items = database
     .prepare(
       [
-        "SELECT item.id AS assignment_item_id, item.position, item.question_label, problem.prompt, problem.correct_answer,",
+        "SELECT item.id AS assignment_item_id, item.position, item.question_label, item.in_taxonomy_scope, problem.prompt, problem.correct_answer,",
         "exercise.id AS exercise_id, exercise.position AS exercise_position, exercise.exercise_label, exercise.shared_context",
         "FROM assignment_items AS item",
         "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
@@ -88,12 +88,13 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
     exercise_position: number;
     exercise_label: string;
     shared_context: string | null;
+    in_taxonomy_scope: 0 | 1;
   }>;
 
   const diagnosisRows = database
     .prepare(
       [
-        "SELECT diagnosis.id AS diagnosis_id, submission.id AS submission_id, answer.assignment_item_id, diagnosis.outcome, diagnosis.misconception_id,",
+        "SELECT diagnosis.id AS diagnosis_id, submission.id AS submission_id, answer.assignment_item_id, COALESCE(diagnosis.correction_verdict, diagnosis.outcome) AS outcome, diagnosis.misconception_id,",
         "diagnosis.confidence, diagnosis.transcription, diagnosis.evidence_quote, diagnosis.review_reasons_json,",
         "answer.region_x, answer.region_y, answer.region_width, answer.region_height, diagnosis.created_at",
         "FROM submissions AS submission",
@@ -198,6 +199,7 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
       sharedContext: item.shared_context,
       problemPrompt: item.prompt,
       correctAnswer: item.correct_answer,
+      inTaxonomyScope: item.in_taxonomy_scope === 1,
       diagnosis: diagnosis
         ? {
             id: diagnosis.diagnosis_id,
@@ -239,7 +241,7 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
       const counts = exerciseItems.reduce(
         (summary, item) => {
           if (item.diagnosis?.outcome === "CORRECT") summary.correct += 1;
-          else if (item.diagnosis?.outcome === "MISCONCEPTION") summary.incorrect += 1;
+          else if (["INCORRECT", "MISCONCEPTION"].includes(item.diagnosis?.outcome ?? "")) summary.incorrect += 1;
           else summary.flagged += 1;
           return summary;
         },

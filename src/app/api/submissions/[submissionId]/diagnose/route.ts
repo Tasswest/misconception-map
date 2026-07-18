@@ -110,6 +110,7 @@ async function buildSingleDiagnosisInput(
   const context = getSubmissionDiagnosisContext(submissionId);
   const shared = {
     assignmentDomain: context.domain,
+    inTaxonomyScope: context.inTaxonomyScope,
     observedPrompt: context.problemPrompt,
     correctAnswer: context.correctAnswer,
   } as const;
@@ -193,6 +194,7 @@ async function buildStudentPageInputs(submissionId: string): Promise<{
       prompt: problem.prompt,
       correctAnswer: problem.correctAnswer,
       answerFormat: problem.answerFormat,
+      inTaxonomyScope: problem.inTaxonomyScope,
     })),
   } as const;
   const primaryBytes = await readFile(
@@ -373,6 +375,7 @@ export async function POST(
       const reviewDiagnosis = pageSummary.diagnoses.find(
         (diagnosis) =>
           diagnosis.outcome !== "CORRECT" &&
+          diagnosis.outcome !== "INCORRECT" &&
           diagnosis.outcome !== "MISCONCEPTION",
       );
       const representative = reviewDiagnosis ?? pageSummary.diagnoses[0];

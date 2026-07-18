@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 function verdictLabel(outcome: string, french = false) {
   if (outcome === "CORRECT") return french ? "Correct" : "Correct";
-  if (outcome === "MISCONCEPTION")
+  if (outcome === "MISCONCEPTION" || outcome === "INCORRECT")
     return french ? "Correction nécessaire" : "Correction needed";
   return french ? "À vérifier par l’enseignant" : "Needs teacher review";
 }
@@ -363,6 +363,7 @@ function CorrectedQuestion({
   const needsReview =
     diagnosis !== null &&
     diagnosis.outcome !== "CORRECT" &&
+    diagnosis.outcome !== "INCORRECT" &&
     diagnosis.outcome !== "MISCONCEPTION";
   return (
     <article className="corrected-copy-problem break-inside-avoid rounded-2xl border border-black/[0.08] bg-white/70 p-5">
@@ -377,6 +378,13 @@ function CorrectedQuestion({
           >
             {item.problemPrompt}
           </p>
+          {!item.inTaxonomyScope ? (
+            <span className="mt-2 inline-flex rounded-full bg-black/[0.05] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
+              {french
+                ? "Corrigé — hors analyse des conceptions (taxonomie algèbre/fractions)"
+                : "Corrected — outside misconception analysis (algebra/fractions taxonomy)"}
+            </span>
+          ) : null}
 
           {!diagnosis ? (
             <div className="mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
@@ -394,7 +402,7 @@ function CorrectedQuestion({
                   className={`rounded-full px-2.5 py-1 ${
                     diagnosis.outcome === "CORRECT"
                       ? "bg-[var(--soft-mint)] text-[#426d5b]"
-                      : diagnosis.outcome === "MISCONCEPTION"
+                      : diagnosis.outcome === "MISCONCEPTION" || diagnosis.outcome === "INCORRECT"
                         ? "bg-[var(--soft-coral)] text-[#8e402d]"
                         : "bg-[var(--amber)]/18 text-[#70501f]"
                   }`}

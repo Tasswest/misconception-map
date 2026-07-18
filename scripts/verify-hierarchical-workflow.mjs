@@ -35,7 +35,7 @@ const tempDirectory = fs.mkdtempSync(
 
 function verifyStructuredOutputs() {
   assert.equal(WORKSHEET_EXTRACTION_SCHEMA_VERSION, "2.2.0");
-  assert.equal(STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION, "2.0.0");
+  assert.equal(STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION, "2.1.0");
   assert.equal(shortExerciseLabel("Exercice n° 2 — Transport"), "Ex. 2");
   assert.equal(shortExerciseLabel("Exercice no 2 — Transport"), "Ex. 2");
   assert.equal(

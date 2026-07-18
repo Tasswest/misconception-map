@@ -278,11 +278,13 @@ type AssignmentDiagnosisRow = {
   domain: "ALGEBRA" | "FRACTIONS" | "MIXED";
   status: "DRAFT" | "READY" | "ARCHIVED";
   assignment_item_id: string;
+  item_position: number;
   exercise_label: string;
   question_label: string;
   prompt: string;
   correct_answer: string;
   answer_format: string;
+  in_taxonomy_scope: 0 | 1;
 };
 
 export type SubmissionDiagnosisContext = {
@@ -296,6 +298,7 @@ export type SubmissionDiagnosisContext = {
   problemPrompt: string;
   correctAnswer: string;
   answerFormat: string;
+  inTaxonomyScope: boolean;
   storageKey: string | null;
   mediaType: string | null;
   assetSha256: string | null;
@@ -403,8 +406,8 @@ function getAssignmentDiagnosisRows(assignmentId: string) {
     .prepare(
       [
         "SELECT assignment.id, assignment.class_id, assignment.domain, assignment.status,",
-        "item.id AS assignment_item_id, exercise.exercise_label, item.question_label,",
-        "problem.prompt, problem.correct_answer, problem.answer_format",
+        "item.id AS assignment_item_id, item.position AS item_position, exercise.exercise_label, item.question_label,",
+        "problem.prompt, problem.correct_answer, problem.answer_format, item.in_taxonomy_scope",
         "FROM assignments AS assignment",
         "JOIN classes AS class ON class.id = assignment.class_id AND class.archived_at IS NULL",
         "LEFT JOIN assignment_items AS item",
@@ -414,7 +417,7 @@ function getAssignmentDiagnosisRows(assignmentId: string) {
         "LEFT JOIN problems AS problem",
         "ON problem.id = item.problem_id AND problem.class_id = assignment.class_id",
         "WHERE assignment.id = ? AND assignment.archived_at IS NULL",
-        "ORDER BY item.position",
+        "ORDER BY exercise.position, item.position",
       ].join(" "),
     )
     .all(assignmentId) as AssignmentDiagnosisRow[];
@@ -1086,6 +1089,7 @@ type SubmissionDiagnosisRow = {
   prompt: string;
   correct_answer: string;
   answer_format: string;
+  in_taxonomy_scope: 0 | 1;
   storage_key: string | null;
   media_type: string | null;
   asset_sha256: string | null;
@@ -1103,7 +1107,7 @@ export function getSubmissionDiagnosisContext(
       [
         "SELECT submission.id AS submission_id, submission.class_id, submission.assignment_id,",
         "submission.membership_id, submission.input_kind, assignment.domain,",
-        "item.id AS assignment_item_id, problem.prompt, problem.correct_answer, problem.answer_format,",
+        "item.id AS assignment_item_id, item.in_taxonomy_scope, problem.prompt, problem.correct_answer, problem.answer_format,",
         "asset.storage_key, asset.media_type, asset.sha256 AS asset_sha256,",
         "asset.fallback_storage_key, asset.fallback_media_type, asset.fallback_sha256,",
         "CASE WHEN submission.input_kind = 'TYPED' THEN answer_version.response_text ELSE NULL END AS typed_response",
@@ -1160,6 +1164,7 @@ export function getSubmissionDiagnosisContext(
     problemPrompt: row.prompt,
     correctAnswer: row.correct_answer,
     answerFormat: row.answer_format,
+    inTaxonomyScope: row.in_taxonomy_scope === 1,
     storageKey: row.storage_key,
     mediaType: row.media_type,
     assetSha256: row.asset_sha256,
@@ -1189,7 +1194,8 @@ export type StudentPageDiagnosisContext = {
     questionLabel: string;
     prompt: string;
     correctAnswer: string;
-    answerFormat: string;
+  answerFormat: string;
+  inTaxonomyScope: boolean;
   }>;
 };
 
@@ -1258,14 +1264,15 @@ export function getStudentPageDiagnosisContext(
     );
   }
   const problems = getAssignmentDiagnosisRows(row.assignment_id).map(
-    (problem, index) => ({
+    (problem) => ({
       assignmentItemId: problem.assignment_item_id,
-      position: index + 1,
+      position: problem.item_position,
       exerciseLabel: problem.exercise_label,
       questionLabel: problem.question_label,
       prompt: problem.prompt,
       correctAnswer: problem.correct_answer,
       answerFormat: problem.answer_format,
+      inTaxonomyScope: problem.in_taxonomy_scope === 1,
     }),
   );
   requireNoRosterNamesInText(
@@ -1649,15 +1656,15 @@ export function completeDiagnosisRun(input: {
           "(id, answer_version_id, version, source, ai_run_id, outcome, taxonomy_version, misconception_id,",
           "confidence, severity, transcription, observed_transformation, strategy_variant, evidence_quote,",
           "transcription_confidence, reasoning_confidence, image_quality, review_reasons_json,",
-          "model_name, prompt_version, schema_version, openai_response_id)",
-          "VALUES (?, ?, 1, 'AI', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "model_name, prompt_version, schema_version, openai_response_id, correction_verdict)",
+          "VALUES (?, ?, 1, 'AI', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         ].join(" "),
       )
       .run(
         diagnosisId,
         answerVersionId,
         input.runId,
-        diagnosis.outcome,
+        diagnosis.outcome === "INCORRECT" ? "CORRECT" : diagnosis.outcome,
         diagnosis.outcome === "MISCONCEPTION" ? TAXONOMY_VERSION : null,
         diagnosis.outcome === "MISCONCEPTION"
           ? diagnosis.misconceptionId
@@ -1678,6 +1685,11 @@ export function completeDiagnosisRun(input: {
         scope.prompt_version,
         scope.schema_version,
         completion.responseId,
+        diagnosis.outcome === "CORRECT"
+          ? "CORRECT"
+          : diagnosis.outcome === "INCORRECT" || diagnosis.outcome === "MISCONCEPTION"
+            ? "INCORRECT"
+            : "NEEDS_REVIEW",
       );
 
     const insertStep = database.prepare(
@@ -1722,7 +1734,7 @@ export function completeDiagnosisRun(input: {
     });
 
     const submissionStatus =
-      diagnosis.outcome === "CORRECT" || diagnosis.outcome === "MISCONCEPTION"
+      ["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(diagnosis.outcome)
         ? "DIAGNOSED"
         : "NEEDS_REVIEW";
     const submissionUpdate = database
@@ -1829,7 +1841,7 @@ export function completeStudentPageDiagnosisRun(input: {
 
     const findTarget = database.prepare(
       [
-        "SELECT item.position, problem.prompt, problem.correct_answer",
+        "SELECT item.position, item.in_taxonomy_scope, problem.prompt, problem.correct_answer",
         "FROM assignment_items AS item",
         "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
         "WHERE item.id = ? AND item.assignment_id = ? AND item.class_id = ?",
@@ -1855,9 +1867,9 @@ export function completeStudentPageDiagnosisRun(input: {
         "INSERT INTO diagnoses",
         "(id, answer_version_id, version, source, ai_run_id, outcome, taxonomy_version, misconception_id,",
         "confidence, severity, transcription, observed_transformation, strategy_variant, evidence_quote,",
-        "transcription_confidence, reasoning_confidence, image_quality, review_reasons_json,",
-        "model_name, prompt_version, schema_version, openai_response_id)",
-        "VALUES (?, ?, 1, 'AI', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "transcription_confidence, reasoning_confidence, image_quality, review_reasons_json,",
+          "model_name, prompt_version, schema_version, openai_response_id, correction_verdict)",
+        "VALUES (?, ?, 1, 'AI', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ].join(" "),
     );
     const insertStep = database.prepare(
@@ -1889,7 +1901,7 @@ export function completeStudentPageDiagnosisRun(input: {
         scope.assignment_id,
         scope.class_id,
       ) as
-        | { position: number; prompt: string; correct_answer: string }
+        | { position: number; in_taxonomy_scope: 0 | 1; prompt: string; correct_answer: string }
         | undefined;
       if (
         !target ||
@@ -1935,6 +1947,15 @@ export function completeStudentPageDiagnosisRun(input: {
       );
 
       const diagnosis = result.diagnosis;
+      if (
+        target.in_taxonomy_scope === 0 &&
+        (diagnosis.outcome === "MISCONCEPTION" || result.candidates.length > 0)
+      ) {
+        throw new DiagnosisRepositoryError(
+          "PERSISTENCE_ERROR",
+          "A correction-only item attempted to persist a taxonomy claim.",
+        );
+      }
       const diagnosisId = randomUUID();
       diagnosisIds.push(diagnosisId);
       const reviewReasons = Array.from(
@@ -1950,7 +1971,7 @@ export function completeStudentPageDiagnosisRun(input: {
         diagnosisId,
         answerVersionId,
         input.runId,
-        diagnosis.outcome,
+        diagnosis.outcome === "INCORRECT" ? "CORRECT" : diagnosis.outcome,
         diagnosis.outcome === "MISCONCEPTION" ? TAXONOMY_VERSION : null,
         diagnosis.outcome === "MISCONCEPTION"
           ? diagnosis.misconceptionId
@@ -1971,6 +1992,11 @@ export function completeStudentPageDiagnosisRun(input: {
         scope.prompt_version,
         scope.schema_version,
         completion.responseId,
+        diagnosis.outcome === "CORRECT"
+          ? "CORRECT"
+          : diagnosis.outcome === "INCORRECT" || diagnosis.outcome === "MISCONCEPTION"
+            ? "INCORRECT"
+            : "NEEDS_REVIEW",
       );
       for (const step of diagnosis.steps) {
         insertStep.run(
@@ -2004,8 +2030,9 @@ export function completeStudentPageDiagnosisRun(input: {
       completion.result.segmentationReviewNote !== null ||
       completion.result.results.some(
         (item) =>
-          item.result.diagnosis.outcome !== "CORRECT" &&
-          item.result.diagnosis.outcome !== "MISCONCEPTION",
+          !["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(
+            item.result.diagnosis.outcome,
+          ),
       );
     const submissionUpdate = database
       .prepare(
@@ -2105,6 +2132,7 @@ type DiagnosisSummaryRow = {
   transcription: string;
   evidence_quote: string | null;
   image_quality: PersistableDiagnosisResult["imageQuality"];
+  correction_verdict: "CORRECT" | "INCORRECT" | "NEEDS_REVIEW" | null;
 };
 
 type AssignmentDiagnosisQueueRow = {
@@ -2130,7 +2158,7 @@ export function getDiagnosisSummary(diagnosisId: string) {
   const row = getDatabase()
     .prepare(
       [
-        "SELECT submission.id AS submission_id, diagnosis.outcome, diagnosis.confidence, diagnosis.severity,",
+        "SELECT submission.id AS submission_id, diagnosis.outcome, diagnosis.correction_verdict, diagnosis.confidence, diagnosis.severity,",
         "diagnosis.misconception_id, diagnosis.review_reasons_json, diagnosis.transcription,",
         "diagnosis.evidence_quote, diagnosis.image_quality",
         "FROM diagnoses AS diagnosis",
@@ -2177,7 +2205,7 @@ export function getDiagnosisSummary(diagnosisId: string) {
 
   return {
     submissionId: row.submission_id,
-    outcome: row.outcome,
+    outcome: row.correction_verdict ?? row.outcome,
     confidence: row.confidence,
     severity: row.severity,
     misconception: misconception

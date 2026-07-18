@@ -38,6 +38,7 @@ export type DiagnosisSummary = {
   submissionId: string;
   outcome:
     | "CORRECT"
+    | "INCORRECT"
     | "MISCONCEPTION"
     | "NEEDS_REVIEW"
     | "INSUFFICIENT_EVIDENCE"

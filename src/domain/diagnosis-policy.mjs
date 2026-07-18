@@ -91,10 +91,16 @@ function matchesAssignmentDomain(misconceptionId, assignmentDomain) {
  *   observedPrompt: string;
  *   correctAnswer: string;
  *   typedResponse: string | null;
+ *   inTaxonomyScope?: boolean;
  * }} input
  */
 export function normalizeDiagnosisAIOutput(input) {
   const parsed = diagnosisAIOutputSchema.parse(input.output);
+  const inTaxonomyScope = input.inTaxonomyScope ?? true;
+  const requestedOutcome =
+    !inTaxonomyScope && parsed.outcome === "MISCONCEPTION"
+      ? "INCORRECT"
+      : parsed.outcome;
 
   if (
     input.inputKind === "TYPED" &&
@@ -317,6 +323,7 @@ export function normalizeDiagnosisAIOutput(input) {
       right.confidence - left.confidence ||
       left.misconceptionId.localeCompare(right.misconceptionId),
   )) {
+    if (!inTaxonomyScope) continue;
     if (
       !matchesAssignmentDomain(candidate.misconceptionId, input.assignmentDomain)
     ) {
@@ -356,13 +363,14 @@ export function normalizeDiagnosisAIOutput(input) {
   }
 
   if (
+    inTaxonomyScope &&
     parsed.misconceptionId !== null &&
     !matchesAssignmentDomain(parsed.misconceptionId, input.assignmentDomain)
   ) {
     policyReasons.add("DOMAIN_MISMATCH");
   }
 
-  if (parsed.outcome === "CORRECT") {
+  if (requestedOutcome === "CORRECT") {
     if (
       parsed.misconceptionId !== null ||
       parsed.severity !== 0 ||
@@ -372,7 +380,7 @@ export function normalizeDiagnosisAIOutput(input) {
     ) {
       policyReasons.add("INCONSISTENT_OUTPUT");
     }
-  } else if (parsed.outcome === "MISCONCEPTION") {
+  } else if (requestedOutcome === "MISCONCEPTION") {
     if (
       parsed.misconceptionId === null ||
       parsed.severity === 0 ||
@@ -420,26 +428,33 @@ export function normalizeDiagnosisAIOutput(input) {
         evidenceQuote,
       });
     }
-  } else if (parsed.misconceptionId !== null) {
+  } else if (requestedOutcome === "INCORRECT") {
+    if (
+      steps.every((step) => step.correctness !== "INCORRECT") ||
+      modelReasons.size > 0
+    ) {
+      policyReasons.add("INCONSISTENT_OUTPUT");
+    }
+  } else if (inTaxonomyScope && parsed.misconceptionId !== null) {
     policyReasons.add("INCONSISTENT_OUTPUT");
   }
 
   if (
-    parsed.outcome === "MULTIPLE_PLAUSIBLE" &&
+    requestedOutcome === "MULTIPLE_PLAUSIBLE" &&
     normalizedCandidates.length < 2
   ) {
     policyReasons.add("INCONSISTENT_OUTPUT");
   }
 
   if (
-    (parsed.outcome === "CORRECT" || parsed.outcome === "MISCONCEPTION") &&
+    ["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(requestedOutcome) &&
     parsed.confidence < LOW_CONFIDENCE_REVIEW_THRESHOLD
   ) {
     policyReasons.add("LOW_CONFIDENCE");
   }
 
   if (
-    (parsed.outcome === "CORRECT" || parsed.outcome === "MISCONCEPTION") &&
+    ["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(requestedOutcome) &&
     parsed.reasoningConfidence < LOW_CONFIDENCE_REVIEW_THRESHOLD
   ) {
     policyReasons.add("LOW_REASONING_CONFIDENCE");
@@ -480,7 +495,7 @@ export function normalizeDiagnosisAIOutput(input) {
       reason !== "UNREADABLE_TRANSCRIPTION",
   );
 
-  let outcome = parsed.outcome;
+  let outcome = requestedOutcome;
   if (requiresEvidenceAbstention) {
     outcome = "INSUFFICIENT_EVIDENCE";
   } else if (requiresTeacherReview) {
@@ -496,6 +511,7 @@ export function normalizeDiagnosisAIOutput(input) {
 
   if (
     outcome !== "CORRECT" &&
+    outcome !== "INCORRECT" &&
     outcome !== "MISCONCEPTION" &&
     modelReasons.size === 0 &&
     policyReasons.size === 0
@@ -504,7 +520,7 @@ export function normalizeDiagnosisAIOutput(input) {
   }
 
   const reviewReasons =
-    outcome === "CORRECT" || outcome === "MISCONCEPTION"
+    outcome === "CORRECT" || outcome === "INCORRECT" || outcome === "MISCONCEPTION"
       ? []
       : [...new Set([...modelReasons, ...policyReasons])]
           .filter((reason) => REVIEW_REASON_CODE_SET.has(reason))
@@ -541,10 +557,14 @@ export function normalizeDiagnosisAIOutput(input) {
     normalizedAnswer:
       studentAnswer === null ? null : canonicalizeMathAnswer(studentAnswer),
     imageQuality,
-    observedTransformation,
-    strategyVariant: normalizeNullableText(parsed.strategyVariant),
+    observedTransformation:
+      inTaxonomyScope && outcome === "MISCONCEPTION"
+        ? observedTransformation
+        : null,
+    strategyVariant:
+      inTaxonomyScope ? normalizeNullableText(parsed.strategyVariant) : null,
     reviewReasons,
-    candidates: normalizedCandidates.map((candidate, index) => ({
+    candidates: (inTaxonomyScope ? normalizedCandidates : []).map((candidate, index) => ({
       rank: index + 1,
       misconceptionId: candidate.misconceptionId,
       confidence: candidate.confidence,

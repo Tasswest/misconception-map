@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { misconceptionIdSchema } from "./misconception-taxonomy.mjs";
 
-export const DIAGNOSIS_SCHEMA_VERSION = "1.2.0";
+export const DIAGNOSIS_SCHEMA_VERSION = "1.3.0";
 
 export const DIAGNOSIS_REVIEW_REASON_CODES = /** @type {const} */ ([
   "MODEL_REQUESTED_REVIEW",
@@ -35,6 +35,7 @@ export const diagnosisImageQualitySchema = z.enum([
 
 const diagnosisOutcomeSchema = z.enum([
   "CORRECT",
+  "INCORRECT",
   "MISCONCEPTION",
   "NEEDS_REVIEW",
   "INSUFFICIENT_EVIDENCE",

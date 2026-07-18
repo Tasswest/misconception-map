@@ -21,6 +21,7 @@ type DiagnosisRow = {
   question_label: string;
   outcome:
     | "CORRECT"
+    | "INCORRECT"
     | "MISCONCEPTION"
     | "NEEDS_REVIEW"
     | "INSUFFICIENT_EVIDENCE"
@@ -220,7 +221,7 @@ function listLatestDiagnosisRows(
       [
         "SELECT diagnosis.id AS diagnosis_id, assignment.id AS assignment_id, assignment.title AS assignment_title,",
         "assignment.class_id, class.name AS class_name, submission.membership_id, student.display_name AS student_name,",
-        "exercise.exercise_label, exercise.position AS exercise_position, item.question_label, diagnosis.outcome,",
+        "exercise.exercise_label, exercise.position AS exercise_position, item.question_label, COALESCE(diagnosis.correction_verdict, diagnosis.outcome) AS outcome,",
         "diagnosis.misconception_id, diagnosis.evidence_quote, diagnosis.transcription, diagnosis.review_reasons_json,",
         "review.created_at AS reviewed_at",
         "FROM assignments AS assignment",
@@ -287,7 +288,9 @@ function buildInventory(
         ? "TAXONOMY_MISCONCEPTION"
         : reasons.includes("DOMAIN_MISMATCH")
           ? "OUT_OF_SCOPE"
-          : row.reviewed_at !== null && steps.length > 0
+          : row.outcome === "INCORRECT" && steps.length > 0
+            ? "CALCULATION_SLIP"
+            : row.reviewed_at !== null && steps.length > 0
             ? "CALCULATION_SLIP"
             : "AWAITING_REVIEW";
     const itemSteps =

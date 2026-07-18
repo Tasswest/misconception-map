@@ -7,7 +7,7 @@ import {
 } from "@/domain/misconception-taxonomy.mjs";
 import { DIAGNOSIS_REVIEW_REASON_CODES } from "@/domain/diagnosis-ai-output.mjs";
 
-export const DIAGNOSIS_PROMPT_VERSION = "1.5.0";
+export const DIAGNOSIS_PROMPT_VERSION = "1.6.0";
 
 type DiagnosisPromptInput = {
   assignmentDomain: AssignmentDomain;
@@ -15,6 +15,7 @@ type DiagnosisPromptInput = {
   observedPrompt: string;
   correctAnswer: string;
   typedResponse: string | null;
+  inTaxonomyScope?: boolean;
 };
 
 function relevantTaxonomy(domain: AssignmentDomain) {
@@ -67,6 +68,7 @@ export function buildDiagnosisPrompt(input: DiagnosisPromptInput) {
     "Classify the first observable invalid step. A wrong final answer alone is insufficient evidence of a misconception.",
     `Use only taxonomy IDs in the supplied ${TAXONOMY_VERSION} taxonomy. Do not invent a label.`,
     "Choose CORRECT only when the observable work is fully correct, every returned step is CORRECT, candidates is empty, and confidence is at least 0.72.",
+    "When inTaxonomyScope is false, still correct the work completely: choose INCORRECT for confident readable incorrect work, use concise errorNote feedback, and set misconceptionId null, candidates [], observedTransformation null, and strategyVariant null. Never make a taxonomy claim for correction-only work.",
     "Choose MISCONCEPTION only when one in-domain taxonomy rule is directly evidenced, overall and reasoning confidence are each at least 0.72, severity is 1–3, misconceptionId/evidenceQuote are non-null, and at least one grounded step is INCORRECT.",
     "For MISCONCEPTION, observedTransformation must be non-null: its distinct inputExpression and observedOutput must be exact excerpts of transcription, and sourceStepPosition must point to the grounded INCORRECT step that demonstrates the flawed rule. A bare wrong final answer is not enough.",
     "Choose MULTIPLE_PLAUSIBLE when at least two in-domain candidates remain plausible. Choose INSUFFICIENT_EVIDENCE for unreadable, poor-quality, or too-little work. Otherwise choose NEEDS_REVIEW instead of guessing.",
@@ -85,6 +87,7 @@ export function buildDiagnosisPrompt(input: DiagnosisPromptInput) {
     inputKind: input.inputKind,
     observedPrompt: input.observedPrompt,
     correctAnswer: input.correctAnswer,
+    inTaxonomyScope: input.inTaxonomyScope ?? true,
     typedResponse:
       input.inputKind === "TYPED" ? input.typedResponse : null,
     task:

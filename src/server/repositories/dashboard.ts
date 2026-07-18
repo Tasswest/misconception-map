@@ -32,7 +32,7 @@ type DiagnosisRow = {
   diagnosis_id: string;
   submission_id: string;
   membership_id: string;
-  outcome: "CORRECT" | "MISCONCEPTION" | "NEEDS_REVIEW" | "INSUFFICIENT_EVIDENCE" | "MULTIPLE_PLAUSIBLE";
+  outcome: "CORRECT" | "INCORRECT" | "MISCONCEPTION" | "NEEDS_REVIEW" | "INSUFFICIENT_EVIDENCE" | "MULTIPLE_PLAUSIBLE";
   misconception_id: string | null;
   confidence: number;
   severity: 0 | 1 | 2 | 3;
@@ -53,6 +53,7 @@ type ExerciseRow = {
   position: number;
   exercise_label: string;
   question_count: number;
+  taxonomy_scope_count: number;
 };
 
 type StepRow = {
@@ -132,6 +133,7 @@ export type HeatmapDashboard = {
       teacherLabel: string;
       count: number;
     } | null;
+    taxonomyScope: "FULL" | "PARTIAL" | "CORRECTION_ONLY";
   }>;
   columns: Array<{
     misconceptionId: MisconceptionId;
@@ -183,7 +185,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
   const exerciseRows = database
     .prepare(
       [
-        "SELECT exercise.id, exercise.position, exercise.exercise_label, count(item.id) AS question_count",
+        "SELECT exercise.id, exercise.position, exercise.exercise_label, count(item.id) AS question_count, COALESCE(sum(item.in_taxonomy_scope), 0) AS taxonomy_scope_count",
         "FROM exercises AS exercise",
         "LEFT JOIN assignment_items AS item ON item.exercise_id = exercise.id",
         "WHERE exercise.assignment_id = ? AND exercise.class_id = ?",
@@ -208,7 +210,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
     .prepare(
       [
         "SELECT diagnosis.id AS diagnosis_id, submission.id AS submission_id, submission.membership_id,",
-        "diagnosis.outcome, diagnosis.misconception_id, diagnosis.confidence, diagnosis.severity,",
+        "COALESCE(diagnosis.correction_verdict, diagnosis.outcome) AS outcome, diagnosis.misconception_id, diagnosis.confidence, diagnosis.severity,",
         "diagnosis.transcription, diagnosis.evidence_quote, diagnosis.review_reasons_json, diagnosis.created_at,",
         "item.position AS problem_position, problem.prompt AS problem_prompt,",
         "exercise.id AS exercise_id, exercise.position AS exercise_position, exercise.exercise_label, item.question_label",
@@ -282,13 +284,15 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
   const diagnosedItemPositions = new Set(
     diagnoses
       .filter((diagnosis) =>
-        ["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+        ["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
       )
       .map((diagnosis) => diagnosis.problem_position),
   );
-  const itemsWithMisconceptions = new Set(
+  const itemsWithErrors = new Set(
     diagnoses
-      .filter((diagnosis) => diagnosis.outcome === "MISCONCEPTION")
+      .filter((diagnosis) =>
+        ["INCORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+      )
       .map((diagnosis) => diagnosis.problem_position),
   );
 
@@ -370,10 +374,10 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
   const rows: HeatmapDashboard["rows"] = memberships.map((membership) => {
     const studentDiagnoses = diagnosesByMembership.get(membership.id) ?? [];
     const definitive = studentDiagnoses.filter((diagnosis) =>
-      ["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+      ["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
     );
     const review = studentDiagnoses.filter(
-      (diagnosis) => !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+      (diagnosis) => !["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
     );
     const cells = columns.map((column) => {
       const relevantProblemPositions =
@@ -417,7 +421,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
       }
       const reviewDiagnosis = relevantDiagnoses.find(
         (diagnosis) =>
-          !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+          !["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
       );
       return {
         misconceptionId: column.misconceptionId,
@@ -486,7 +490,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
       (diagnosis) => diagnosis.exercise_id === exercise.id,
     );
     const assessed = exerciseDiagnoses.filter((diagnosis) =>
-      ["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+      ["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
     );
     const correctCount = assessed.filter(
       (diagnosis) => diagnosis.outcome === "CORRECT",
@@ -521,8 +525,14 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
       correctCount,
       flaggedCount: exerciseDiagnoses.filter(
         (diagnosis) =>
-          !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+          !["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
       ).length,
+      taxonomyScope:
+        exercise.taxonomy_scope_count === 0
+          ? "CORRECTION_ONLY"
+          : exercise.taxonomy_scope_count === exercise.question_count
+            ? "FULL"
+            : "PARTIAL",
       dominantMisconception:
         dominant && dominantTerm
           ? {
@@ -548,11 +558,11 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
     summary: {
       diagnosedCount: diagnosedItemPositions.size,
       correctCount: [...diagnosedItemPositions].filter(
-        (position) => !itemsWithMisconceptions.has(position),
+        (position) => !itemsWithErrors.has(position),
       ).length,
       awaitingReviewCount: diagnoses.filter(
         (diagnosis) =>
-          !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
+          !["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
       ).length + unmatchedReviewCount,
       notYetDiagnosedExerciseCount: exerciseRows.filter(
         (exercise) => exercise.question_count === 0,

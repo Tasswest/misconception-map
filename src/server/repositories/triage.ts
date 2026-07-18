@@ -46,6 +46,7 @@ type LatestDiagnosisRow = {
   correct_answer: string;
   outcome:
     | "CORRECT"
+    | "INCORRECT"
     | "MISCONCEPTION"
     | "NEEDS_REVIEW"
     | "INSUFFICIENT_EVIDENCE"
@@ -176,7 +177,7 @@ export function getAssignmentTriage(assignmentId: string) {
         "SELECT diagnosis.id AS diagnosis_id, submission.id AS submission_id, submission.membership_id,",
         "student.display_name AS student_name, submission.input_kind, submission.status AS submission_status,",
         "answer.assignment_item_id, item.position AS item_position, item.question_label, exercise.exercise_label, problem.prompt AS problem_prompt, problem.correct_answer,",
-        "diagnosis.outcome, diagnosis.transcription, diagnosis.evidence_quote, diagnosis.review_reasons_json,",
+        "COALESCE(diagnosis.correction_verdict, diagnosis.outcome) AS outcome, diagnosis.transcription, diagnosis.evidence_quote, diagnosis.review_reasons_json,",
         "submission.sanitized_error_message AS segmentation_note,",
         "(SELECT step.step_text FROM diagnosis_steps AS step WHERE step.diagnosis_id = diagnosis.id AND step.correctness = 'INCORRECT' ORDER BY step.position LIMIT 1) AS flagged_step_text,",
         "(SELECT step.error_note FROM diagnosis_steps AS step WHERE step.diagnosis_id = diagnosis.id AND step.correctness = 'INCORRECT' ORDER BY step.position LIMIT 1) AS flagged_step_note,",
@@ -228,7 +229,7 @@ export function getAssignmentTriage(assignmentId: string) {
     .all(assignment.id, assignment.class_id) as UnmatchedSubmissionRow[];
 
   const reviewItems: TriageItemRecord[] = diagnosisRows
-    .filter((row) => !["CORRECT", "MISCONCEPTION"].includes(row.outcome))
+    .filter((row) => !["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(row.outcome))
     .map((row) => {
       const reasonCodes = parseReasons(row.review_reasons_json);
       const outOfScope = reasonCodes.some((reason) => OUT_OF_SCOPE_REASONS.has(reason));
@@ -305,7 +306,7 @@ export function getAssignmentTriage(assignmentId: string) {
   );
   const definitiveMemberships = new Set(
     diagnosisRows
-      .filter((row) => ["CORRECT", "MISCONCEPTION"].includes(row.outcome))
+      .filter((row) => ["CORRECT", "INCORRECT", "MISCONCEPTION"].includes(row.outcome))
       .map((row) => row.membership_id),
   );
   const automaticallyCorrectedMembershipIds = [...definitiveMemberships].filter(

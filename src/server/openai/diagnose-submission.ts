@@ -47,6 +47,7 @@ const normalizedTextSchema = z
 
 const sharedInputShape = {
   assignmentDomain: assignmentDomainSchema,
+  inTaxonomyScope: z.boolean(),
   observedPrompt: normalizedTextSchema,
   correctAnswer: normalizedTextSchema,
 };
@@ -81,13 +82,14 @@ const imageDiagnosisInputSchema = z
 
 const pageProblemSchema = z
   .object({
-    assignmentItemId: z.string().uuid(),
+    assignmentItemId: z.string().trim().min(1).max(240),
     position: z.number().int().positive(),
     exerciseLabel: normalizedTextSchema,
     questionLabel: normalizedTextSchema,
     prompt: normalizedTextSchema,
     correctAnswer: normalizedTextSchema,
     answerFormat: normalizedTextSchema,
+    inTaxonomyScope: z.boolean(),
   })
   .strict();
 
@@ -373,6 +375,7 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
     correctAnswer: prepared.correctAnswer,
     typedResponse:
       prepared.inputKind === "TYPED" ? prepared.typedResponse : null,
+    inTaxonomyScope: prepared.inTaxonomyScope,
   });
   const content =
     prepared.inputKind === "TYPED"
@@ -464,6 +467,7 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
       correctAnswer: prepared.correctAnswer,
       typedResponse:
         prepared.inputKind === "TYPED" ? prepared.typedResponse : null,
+      inTaxonomyScope: prepared.inTaxonomyScope,
     });
     const diagnosis = structuredDiagnosisSchema.parse(
       normalized.coreDiagnosis,
@@ -541,6 +545,7 @@ export function chooseBetterDiagnosisAttempt<T extends {
   const score = (attempt: T) =>
     attempt.result.diagnosis.transcriptionConfidence * 100 +
     (attempt.result.diagnosis.outcome === "CORRECT" ||
+    attempt.result.diagnosis.outcome === "INCORRECT" ||
     attempt.result.diagnosis.outcome === "MISCONCEPTION"
       ? 15
       : 0) -
@@ -565,6 +570,7 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
       prompt: problem.prompt,
       correctAnswer: problem.correctAnswer,
       answerFormat: problem.answerFormat,
+      inTaxonomyScope: problem.inTaxonomyScope,
     })),
   });
   const startedAt = performance.now();
@@ -677,6 +683,7 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
         observedPrompt: problem.prompt,
         correctAnswer: problem.correctAnswer,
         typedResponse: null,
+        inTaxonomyScope: problem.inTaxonomyScope,
       });
       return [{
         assignmentItemId: problem.assignmentItemId,
@@ -700,10 +707,59 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
         },
       }];
     });
+    const unmatchedProblems = prepared.problems.filter(
+      (problem) => !seenPositions.has(problem.position),
+    );
+    for (const problem of unmatchedProblems) {
+      results.push({
+        assignmentItemId: problem.assignmentItemId,
+        position: problem.position,
+        correctAnswer: problem.correctAnswer,
+        region: null,
+        result: {
+          diagnosis: structuredDiagnosisSchema.parse({
+            outcome: "INSUFFICIENT_EVIDENCE",
+            misconceptionId: null,
+            confidence: 0,
+            severity: 0,
+            transcription: "[No safely matched student work]",
+            steps: [
+              {
+                position: 1,
+                step: "[No safely matched student work]",
+                normalizedMath: null,
+                stepKind: "UNPARSEABLE",
+                parseIssue:
+                  "No student work could be matched safely to this printed question.",
+                correctness: "UNCLEAR",
+                correctNote: null,
+                errorNote: null,
+                evidenceQuote: null,
+              },
+            ],
+            transcriptionConfidence: 0,
+            reasoningConfidence: 0,
+            evidenceQuote: null,
+            reviewReason: "MISSING_EVIDENCE",
+          }),
+          observedPrompt: problem.prompt,
+          studentAnswer: null,
+          normalizedAnswer: null,
+          imageQuality: parsedOutput.imageQuality,
+          observedTransformation: null,
+          strategyVariant: null,
+          reviewReasons: ["MISSING_EVIDENCE"],
+          candidates: [],
+        },
+      });
+    }
     const segmentationReviewNote = [
       parsedOutput.segmentationReviewNote,
       rejectedLabelMatch
         ? "At least one work block had inconsistent exercise or question cues and was left unmatched for teacher review."
+        : null,
+      unmatchedProblems.length > 0
+        ? `${unmatchedProblems.length} assignment item${unmatchedProblems.length === 1 ? "" : "s"} had no safely matched student work and were persisted for teacher review.`
         : null,
     ]
       .filter((note): note is string => note !== null)

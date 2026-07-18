@@ -23,6 +23,7 @@ export const submissionInputKindSchema = z.enum([
 
 export const diagnosisOutcomeSchema = z.enum([
   "CORRECT",
+  "INCORRECT",
   "MISCONCEPTION",
   "NEEDS_REVIEW",
   "INSUFFICIENT_EVIDENCE",
@@ -71,6 +72,14 @@ const misconceptionDiagnosisSchema = diagnosisEvidenceSchema.extend({
   reviewReason: z.null(),
 });
 
+const incorrectDiagnosisSchema = diagnosisEvidenceSchema.extend({
+  outcome: z.literal("INCORRECT"),
+  misconceptionId: z.null(),
+  confidence: z.number().min(LOW_CONFIDENCE_REVIEW_THRESHOLD).max(1),
+  severity: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+  reviewReason: z.null(),
+});
+
 const abstainingDiagnosisSchema = diagnosisEvidenceSchema.extend({
   outcome: z.enum([
     "NEEDS_REVIEW",
@@ -90,6 +99,7 @@ const abstainingDiagnosisSchema = diagnosisEvidenceSchema.extend({
 
 export const structuredDiagnosisSchema = z.discriminatedUnion("outcome", [
   correctDiagnosisSchema,
+  incorrectDiagnosisSchema,
   misconceptionDiagnosisSchema,
   abstainingDiagnosisSchema,
 ]);

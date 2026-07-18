@@ -38,7 +38,7 @@ function verifyFreshAndSeededDatabases() {
   try {
     assert.equal(
       fresh.prepare("SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1").pluck().get(),
-      "018_consistency_metric_scope.sql",
+      "019_universal_correction_scope.sql",
     );
     assert.deepEqual(
       fresh

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { diagnosisAIOutputSchema } from "./diagnosis-ai-output.mjs";
 import { problemRegionAIOutputSchema } from "./problem-region.mjs";
 
-export const STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION = "2.0.0";
+export const STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION = "2.1.0";
 
 export const studentPageDiagnosisAIOutputSchema = z
   .object({

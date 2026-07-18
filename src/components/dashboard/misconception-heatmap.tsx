@@ -228,7 +228,7 @@ export function MisconceptionHeatmap({
             <h2 className="mt-2 text-balance text-2xl font-semibold tracking-[-0.03em]">
               {dashboard.summary.diagnosedCount === 0
                 ? "0 items diagnosed"
-                : `${dashboard.summary.diagnosedCount} ${dashboard.summary.diagnosedCount === 1 ? "item" : "items"} diagnosed${dashboard.summary.correctCount === dashboard.summary.diagnosedCount ? " — all correct" : ` · ${dashboard.summary.correctCount}/${dashboard.summary.diagnosedCount} correct`}`} · {dashboard.summary.awaitingReviewCount} awaiting your review · {dashboard.summary.notYetDiagnosedExerciseCount} {dashboard.summary.notYetDiagnosedExerciseCount === 1 ? "exercise" : "exercises"} not yet diagnosed
+                : `${dashboard.summary.diagnosedCount} ${dashboard.summary.diagnosedCount === 1 ? "item" : "items"} diagnosed${dashboard.summary.correctCount === dashboard.summary.diagnosedCount ? " — all correct" : ` · ${dashboard.summary.correctCount}/${dashboard.summary.diagnosedCount} correct`}`} · {dashboard.summary.awaitingReviewCount} awaiting your review{dashboard.summary.notYetDiagnosedExerciseCount > 0 ? ` · ${dashboard.summary.notYetDiagnosedExerciseCount} ${dashboard.summary.notYetDiagnosedExerciseCount === 1 ? "exercise" : "exercises"} not yet diagnosed` : ""}
             </h2>
           </div>
           <Link
@@ -283,6 +283,13 @@ export function MisconceptionHeatmap({
                 </a>
                 <p className="mt-0.5 text-[10px] text-[var(--muted)]">
                   {exercise.questionCount} {exercise.questionCount === 1 ? "question" : "questions"}
+                  <span className="ml-2 inline-flex rounded-full bg-black/[0.05] px-2 py-0.5">
+                    {exercise.taxonomyScope === "FULL"
+                      ? "Misconception analysis"
+                      : exercise.taxonomyScope === "PARTIAL"
+                        ? "Mixed analysis scope"
+                        : "Correction only"}
+                  </span>
                 </p>
               </div>
               <div>
