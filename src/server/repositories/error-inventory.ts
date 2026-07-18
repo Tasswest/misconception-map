@@ -30,7 +30,6 @@ type DiagnosisRow = {
   evidence_quote: string | null;
   transcription: string;
   review_reasons_json: string;
-  reviewed_at: string | null;
 };
 
 type IncorrectStepRow = {
@@ -55,7 +54,7 @@ type UnmatchedReviewRow = {
 export type ErrorInventoryClassification =
   | "TAXONOMY_MISCONCEPTION"
   | "CALCULATION_SLIP"
-  | "AWAITING_REVIEW"
+  | "UNCERTAIN"
   | "OUT_OF_SCOPE";
 
 export type ErrorInventoryItem = {
@@ -99,14 +98,14 @@ export type AssignmentErrorInventory = {
     occurrenceCount: number;
     items: ErrorInventoryItem[];
   }>;
-  awaitingReview: ErrorInventoryItem[];
+  uncertain: ErrorInventoryItem[];
   outOfScope: ErrorInventoryItem[];
   totals: {
     misconceptionTypeCount: number;
     misconceptionStudentCount: number;
     misconceptionOccurrenceCount: number;
     slipCount: number;
-    awaitingReviewCount: number;
+    uncertainCount: number;
     outOfScopeCount: number;
   };
 };
@@ -203,8 +202,8 @@ export function listClassErrorInventoryRollups() {
           count: inventory.totals.slipCount,
         }))
         .filter((assignment) => assignment.count > 0),
-      awaitingReviewCount: inventories.reduce(
-        (sum, inventory) => sum + inventory.totals.awaitingReviewCount,
+      uncertainCount: inventories.reduce(
+        (sum, inventory) => sum + inventory.totals.uncertainCount,
         0,
       ),
       leadingMisconceptions: misconceptionGroups.slice(0, 3),
@@ -222,8 +221,7 @@ function listLatestDiagnosisRows(
         "SELECT diagnosis.id AS diagnosis_id, assignment.id AS assignment_id, assignment.title AS assignment_title,",
         "assignment.class_id, class.name AS class_name, submission.membership_id, student.display_name AS student_name,",
         "exercise.exercise_label, exercise.position AS exercise_position, item.question_label, COALESCE(diagnosis.correction_verdict, diagnosis.outcome) AS outcome,",
-        "diagnosis.misconception_id, diagnosis.evidence_quote, diagnosis.transcription, diagnosis.review_reasons_json,",
-        "review.created_at AS reviewed_at",
+        "diagnosis.misconception_id, diagnosis.evidence_quote, diagnosis.transcription, diagnosis.review_reasons_json",
         "FROM assignments AS assignment",
         "JOIN classes AS class ON class.id = assignment.class_id AND class.archived_at IS NULL",
         "JOIN submissions AS submission ON submission.assignment_id = assignment.id AND submission.class_id = assignment.class_id",
@@ -234,7 +232,6 @@ function listLatestDiagnosisRows(
         "JOIN exercises AS exercise ON exercise.id = item.exercise_id",
         "JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id",
         "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id",
-        "LEFT JOIN teacher_item_reviews AS review ON review.diagnosis_id = diagnosis.id",
         `WHERE ${whereClause}`,
         "AND assignment.status = 'READY'",
         "AND diagnosis.id = (SELECT latest.id FROM diagnoses AS latest JOIN answer_versions AS latest_version ON latest_version.id = latest.answer_version_id WHERE latest_version.submission_answer_id = answer.id ORDER BY latest.created_at DESC, latest.version DESC, latest.id DESC LIMIT 1)",
@@ -275,14 +272,6 @@ function buildInventory(
       ? MISCONCEPTION_BY_ID.get(parsedMisconception.data) ?? null
       : null;
     const steps = stepsByDiagnosis.get(row.diagnosis_id) ?? [];
-    if (
-      row.reviewed_at !== null &&
-      steps.length === 0 &&
-      !reasons.includes("DOMAIN_MISMATCH") &&
-      row.outcome !== "MISCONCEPTION"
-    ) {
-      continue;
-    }
     const classification: ErrorInventoryClassification =
       row.outcome === "MISCONCEPTION" && term
         ? "TAXONOMY_MISCONCEPTION"
@@ -290,9 +279,7 @@ function buildInventory(
           ? "OUT_OF_SCOPE"
           : row.outcome === "INCORRECT" && steps.length > 0
             ? "CALCULATION_SLIP"
-            : row.reviewed_at !== null && steps.length > 0
-            ? "CALCULATION_SLIP"
-            : "AWAITING_REVIEW";
+            : "UNCERTAIN";
     const itemSteps =
       classification === "TAXONOMY_MISCONCEPTION" ||
       classification === "CALCULATION_SLIP"
@@ -334,7 +321,7 @@ function buildInventory(
   for (const row of unmatchedRows) {
     items.push({
       id: `${row.submission_id}:unmatched`,
-      classification: "AWAITING_REVIEW",
+      classification: "UNCERTAIN",
       assignmentId: row.assignment_id,
       assignmentTitle: row.assignment_title,
       classId: row.class_id,
@@ -381,8 +368,8 @@ function buildInventory(
         right.occurrenceCount - left.occurrenceCount ||
         left.exercisePosition - right.exercisePosition,
     );
-  const awaitingReview = items.filter(
-    (item) => item.classification === "AWAITING_REVIEW",
+  const uncertain = items.filter(
+    (item) => item.classification === "UNCERTAIN",
   );
   const outOfScope = items.filter(
     (item) => item.classification === "OUT_OF_SCOPE",
@@ -396,7 +383,7 @@ function buildInventory(
     assignment,
     misconceptions,
     slipsByExercise,
-    awaitingReview,
+    uncertain,
     outOfScope,
     totals: {
       misconceptionTypeCount: misconceptions.length,
@@ -406,7 +393,7 @@ function buildInventory(
         0,
       ),
       slipCount: slipItems.length,
-      awaitingReviewCount: awaitingReview.length,
+      uncertainCount: uncertain.length,
       outOfScopeCount: outOfScope.length,
     },
   };

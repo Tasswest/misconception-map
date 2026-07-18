@@ -249,11 +249,11 @@ const FAILURE_MESSAGES: Record<DiagnosisFailureCode, string> = {
   OPENAI_RESPONSE_INCOMPLETE_MAX_TOKENS:
     "The diagnosis was too long to finish safely. Try it again.",
   OPENAI_RESPONSE_INCOMPLETE_CONTENT_FILTER:
-    "The diagnosis could not be completed and needs teacher review.",
+    "The diagnosis could not be completed and is flagged as uncertain.",
   OPENAI_RESPONSE_NOT_COMPLETED:
     "The diagnosis did not reach a completed state.",
   OPENAI_REFUSAL:
-    "The submission could not be diagnosed automatically and needs teacher review.",
+    "The submission could not be diagnosed automatically and is flagged as uncertain.",
   OPENAI_OUTPUT_MISSING:
     "The diagnosis returned no usable structured result.",
   OPENAI_OUTPUT_INVALID:

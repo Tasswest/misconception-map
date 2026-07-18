@@ -353,7 +353,7 @@ export function normalizeDiagnosisAIOutput(input) {
 
     // Candidate ordering is supporting metadata, not diagnostic evidence.
     // Collapse redundant copies deterministically instead of escalating an
-    // otherwise well-grounded classification to teacher review.
+    // otherwise well-grounded classification into an uncertainty flag.
     if (
       normalizedCandidate.confidence >
       normalizedCandidates[existingIndex].confidence

@@ -2,9 +2,9 @@ import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
 import { AssignmentStepper } from "@/components/assignment-stepper";
-import { AssignmentTriageScreen } from "@/components/triage/assignment-triage-screen";
+import { AssignmentResultsSummary } from "@/components/results/assignment-results-summary";
 import { isOpenAIConfigured } from "@/lib/config";
-import { getAssignmentTriage } from "@/server/repositories/triage";
+import { getAssignmentResults } from "@/server/repositories/assignment-results";
 
 export const dynamic = "force-dynamic";
 
@@ -14,15 +14,15 @@ export default async function AssignmentResultsPage({
   params: Promise<{ assignmentId: string }>;
 }) {
   const { assignmentId } = await params;
-  const triage = getAssignmentTriage(assignmentId);
-  if (!triage) notFound();
+  const results = getAssignmentResults(assignmentId);
+  if (!results) notFound();
 
   return (
     <AppShell activeNav="Assignments" liveAiReady={isOpenAIConfigured()}>
       <div className="mx-auto max-w-[1380px] px-5 pt-7 md:px-8 lg:px-10 lg:pt-9">
         <AssignmentStepper assignmentId={assignmentId} currentStep={4} />
       </div>
-      <AssignmentTriageScreen initialTriage={triage} />
+      <AssignmentResultsSummary results={results} />
     </AppShell>
   );
 }

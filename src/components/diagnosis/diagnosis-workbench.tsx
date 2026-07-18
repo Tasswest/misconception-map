@@ -671,16 +671,16 @@ export function DiagnosisWorkbench({
               ? "Add one deidentified booklet or page for each student. Select several files at once or add them one after another."
               : currentStep === 3
                 ? "Keep adding copies until the queue is complete, check every student match, then let AI correct them together."
-                : "Automatic correction is complete. Review only the items that were flagged."}
+                : "Automatic correction is complete. Flags remain visible as informative annotations in the results."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
           {currentStep === 4 ? (
             <Link
               className="rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#244b42]"
-              href={`/assignments/${assignment.id}/results`}
+              href={`/analytics/${assignment.id}/corrected-copies`}
             >
-              Review results
+              See corrected copies
             </Link>
           ) : null}
           <div className="flex items-center gap-2 rounded-full border border-black/[0.07] bg-white/65 px-3 py-2 text-xs font-semibold text-[var(--muted)]">
@@ -701,14 +701,14 @@ export function DiagnosisWorkbench({
             Copies corrected
           </h2>
           <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[var(--muted)]">
-            Go to Results for the automatic, review, and out-of-scope piles.
+            Results are ready. Corrected copies retain every uncertainty flag and its reason.
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Link
               className="rounded-xl bg-[var(--sidebar)] px-5 py-3 text-sm font-semibold text-white"
-              href={`/assignments/${assignment.id}/results`}
+              href={`/analytics/${assignment.id}/corrected-copies`}
             >
-              Open results
+              See corrected copies
             </Link>
             <button
               className="rounded-xl border border-black/10 bg-white px-5 py-3 text-sm font-semibold"
@@ -1315,7 +1315,7 @@ function DiagnosisResult({
 }) {
   const isCorrect = result.outcome === "CORRECT" && !review;
   const title = review
-    ? "Teacher review needed"
+    ? "Flagged as uncertain"
     : isCorrect
       ? "Reasoning checks out"
       : result.outcome === "INCORRECT"
@@ -1489,7 +1489,7 @@ function statusPresentation(item: QueueItem): {
       };
     case "REVIEW":
       return {
-        label: "Needs review",
+        label: "Flagged as uncertain",
         copy: "Saved without forcing a low-confidence label",
         tone: "review",
         textClass: "text-[#765725]",
@@ -1546,7 +1546,7 @@ function queueProgressCopy(counts: ReturnType<typeof summarizeQueue>) {
     return `${counts.processing} active or waiting · ${counts.finished} finished. Diagnosis calls run two at a time.`;
   }
   if (counts.review > 0) {
-    return `${counts.complete} complete · ${counts.review} ${counts.review === 1 ? "needs" : "need"} teacher review${counts.failed ? ` · ${counts.failed} failed` : ""}.`;
+    return `${counts.complete} complete · ${counts.review} flagged as uncertain${counts.failed ? ` · ${counts.failed} failed` : ""}.`;
   }
   if (counts.finished > 0) {
     return `${counts.complete} complete${counts.failed ? ` · ${counts.failed} failed` : ""}. Results are saved locally.`;
@@ -1944,7 +1944,7 @@ function reviewReasonCopy(reason: string | null) {
     LOW_TRANSCRIPTION_CONFIDENCE:
       "Part of the student work may not have been transcribed reliably.",
     IMPLAUSIBLE_TRANSCRIPTION_STEP:
-      "A transcribed line does not parse as a plausible step for this problem, so the work needs a teacher check.",
+      "A transcribed line does not parse as a plausible step for this problem.",
     POOR_IMAGE_QUALITY:
       "The image quality makes the student’s steps difficult to verify.",
     UNREADABLE_TRANSCRIPTION:
@@ -1960,7 +1960,7 @@ function reviewReasonCopy(reason: string | null) {
     DOMAIN_MISMATCH:
       "The response does not appear to match this assignment’s domain.",
   };
-  return messages[reason] ?? "The diagnosis needs a teacher’s judgment before a label is assigned.";
+  return messages[reason] ?? "The AI could not assign a reliable label from the available evidence.";
 }
 
 function readString(record: ApiRecord | null, key: string) {

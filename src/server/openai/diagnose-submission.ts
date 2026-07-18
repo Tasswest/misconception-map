@@ -176,11 +176,11 @@ const ERROR_MESSAGES: Record<DiagnosisServiceErrorCode, string> = {
   OPENAI_RESPONSE_INCOMPLETE_MAX_TOKENS:
     "The diagnosis was too long to finish safely. Try it again.",
   OPENAI_RESPONSE_INCOMPLETE_CONTENT_FILTER:
-    "The diagnosis could not be completed and needs teacher review.",
+    "The diagnosis could not be completed and is flagged as uncertain.",
   OPENAI_RESPONSE_NOT_COMPLETED:
     "The diagnosis did not reach a completed state.",
   OPENAI_REFUSAL:
-    "The submission could not be diagnosed automatically and needs teacher review.",
+    "The submission could not be diagnosed automatically and is flagged as uncertain.",
   OPENAI_OUTPUT_MISSING:
     "The diagnosis returned no usable structured result.",
   OPENAI_OUTPUT_INVALID:
@@ -779,10 +779,10 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
     const segmentationReviewNote = [
       parsedOutput.segmentationReviewNote,
       rejectedLabelMatch
-        ? "At least one work block had inconsistent exercise or question cues and was left unmatched for teacher review."
+        ? "At least one work block had inconsistent exercise or question cues and remains visibly unmatched."
         : null,
       unmatchedProblems.length > 0
-        ? `${unmatchedProblems.length} assignment item${unmatchedProblems.length === 1 ? "" : "s"} had no safely matched student work and were persisted for teacher review.`
+        ? `${unmatchedProblems.length} assignment item${unmatchedProblems.length === 1 ? "" : "s"} had no safely matched student work and were persisted with uncertainty reasons.`
         : null,
     ]
       .filter((note): note is string => note !== null)

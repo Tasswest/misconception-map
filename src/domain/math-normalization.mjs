@@ -2,7 +2,7 @@
  * Canonicalizes a short math answer for deterministic prediction matching.
  * This is deliberately syntactic, not a computer-algebra equivalence test.
  * Equivalent rearrangements that do not normalize identically remain visible
- * for teacher review instead of being silently declared a match.
+ * as uncertain instead of being silently declared a match.
  *
  * @param {string} value
  */

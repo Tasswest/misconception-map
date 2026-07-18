@@ -18,11 +18,11 @@ function verdictLabel(outcome: string, french = false) {
   if (outcome === "CORRECT") return french ? "Correct" : "Correct";
   if (outcome === "MISCONCEPTION" || outcome === "INCORRECT")
     return french ? "Correction nécessaire" : "Correction needed";
-  return french ? "À vérifier par l’enseignant" : "Needs teacher review";
+  return french ? "Incertitude signalée" : "Flagged as uncertain";
 }
 
 const FRENCH_REVIEW_REASONS: Record<string, string> = {
-  MODEL_REQUESTED_REVIEW: "L’IA demande une vérification",
+  MODEL_REQUESTED_REVIEW: "L’IA n’a pas pu conclure de façon fiable",
   LOW_CONFIDENCE: "Confiance insuffisante",
   LOW_REASONING_CONFIDENCE: "Raisonnement incertain",
   LOW_TRANSCRIPTION_CONFIDENCE: "Transcription incertaine",
@@ -39,9 +39,30 @@ const FRENCH_REVIEW_REASONS: Record<string, string> = {
   INCONSISTENT_OUTPUT: "Résultats contradictoires",
 };
 
+const ENGLISH_UNCERTAINTY_REASONS: Record<string, string> = {
+  MODEL_REQUESTED_REVIEW: "The AI could not reach a reliable conclusion",
+  LOW_CONFIDENCE: "Confidence was below the safe automatic threshold",
+  LOW_REASONING_CONFIDENCE: "The mathematical interpretation is uncertain",
+  LOW_TRANSCRIPTION_CONFIDENCE: "The handwriting transcription is uncertain",
+  POOR_IMAGE_QUALITY: "The page image is too unclear for a reliable decision",
+  IMAGE_QUALITY_NOT_ASSESSED: "Image quality could not be assessed",
+  UNREADABLE_TRANSCRIPTION: "The student work could not be read reliably",
+  IMPLAUSIBLE_TRANSCRIPTION_STEP: "A transcribed line is not a plausible mathematical step",
+  INSUFFICIENT_WORK_SHOWN: "There is not enough visible work for a reliable conclusion",
+  MULTIPLE_PLAUSIBLE_RULES: "More than one interpretation remains plausible",
+  NO_TAXONOMY_MATCH: "No researched misconception category matches this work",
+  MISSING_EVIDENCE: "The visible evidence is incomplete",
+  UNGROUNDED_EVIDENCE: "The proposed conclusion is not grounded in the copy",
+  DOMAIN_MISMATCH: "This item is outside the assignment analysis domain",
+  INCONSISTENT_OUTPUT: "The extracted evidence and conclusion conflict",
+};
+
 function reviewReasonLabel(reason: string, french: boolean) {
   if (french && FRENCH_REVIEW_REASONS[reason]) {
     return FRENCH_REVIEW_REASONS[reason];
+  }
+  if (!french && ENGLISH_UNCERTAINTY_REASONS[reason]) {
+    return ENGLISH_UNCERTAINTY_REASONS[reason];
   }
   return reason
     .toLowerCase()
@@ -76,7 +97,7 @@ export default async function CorrectedExamPage({
     (sum, exercise) => sum + exercise.counts.correct + exercise.counts.incorrect,
     0,
   );
-  const awaitingReviewCount = exam.exercises.reduce(
+  const flaggedUncertainCount = exam.exercises.reduce(
     (sum, exercise) => sum + exercise.counts.flagged,
     0,
   );
@@ -106,7 +127,7 @@ export default async function CorrectedExamPage({
               Corrected copy · {exam.studentName}
             </h1>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              {diagnosedItemCount} of {exam.totalProblemCount} items diagnosed · {awaitingReviewCount} of {exam.totalProblemCount} items awaiting your review.
+              {diagnosedItemCount} of {exam.totalProblemCount} items diagnosed · {flaggedUncertainCount} of {exam.totalProblemCount} items flagged as uncertain.
             </p>
           </div>
           <div className="sm:text-right">
@@ -146,7 +167,7 @@ export default async function CorrectedExamPage({
               How did this copy go, exercise by exercise?
             </h3>
             <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-              Each chip shows correct, difficult, and review items out of that exercise total; select it to see the student&apos;s work and feedback.
+              Each chip shows correct, difficult, and uncertain items out of that exercise total; select it to read the student&apos;s work and feedback.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {exam.exercises.map((exercise) => {
@@ -161,7 +182,7 @@ export default async function CorrectedExamPage({
                     )}
                     <span className="text-[#426d5b]">✓ {exercise.counts.correct} of {exercise.items.length} correct</span>
                     <span className="text-[#8e402d]">✕ {exercise.counts.incorrect} of {exercise.items.length} difficulties</span>
-                    <span className="text-[#70501f]">⚠ {exercise.counts.flagged} of {exercise.items.length} awaiting review</span>
+                    <span className="text-[#70501f]">⚠ {exercise.counts.flagged} of {exercise.items.length} flagged as uncertain</span>
                   </>
                 );
                 const classes =
@@ -200,11 +221,11 @@ export default async function CorrectedExamPage({
                   source.status === "NEEDS_REVIEW" ||
                   source.reviewNote ? (
                     <div className="mb-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
-                      <span className="font-semibold">Teacher review:</span>{" "}
+                      <span className="font-semibold">AI uncertainty:</span>{" "}
                       {source.reviewNote ??
                         (source.status === "FAILED"
-                          ? "Automatic diagnosis did not finish, but the submitted page is preserved here for review."
-                          : "Automatic diagnosis needs teacher review. The submitted page is preserved here alongside any safely matched feedback.")}
+                          ? "Automatic diagnosis did not finish. The submitted page remains visible here with that limitation."
+                          : "The AI could not settle part of this page. The submitted page remains visible alongside any safely matched feedback.")}
                     </div>
                   ) : null}
                   {source.mediaType === "application/pdf" ? (
@@ -281,8 +302,8 @@ export default async function CorrectedExamPage({
                   Problem-by-problem correction
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                  Each note is grounded in the visible student work. Review
-                  uncertain items before returning this copy.
+                  Each note is grounded in the visible student work. Uncertain
+                  items keep an explicit explanation instead of a guessed verdict.
                 </p>
               </div>
             </div>
@@ -343,8 +364,8 @@ export default async function CorrectedExamPage({
 
           <p className="corrected-copy-footer mt-6 border-t border-black/10 pt-4 text-[10px] leading-5 text-[var(--muted)]">
             Feedback is generated from observable steps and assignment-owned
-            answer context. “Needs teacher review” means the system abstained
-            rather than guessing.
+            answer context. “Flagged as uncertain” means the system abstained
+            rather than guessing; it does not create a teacher task.
           </p>
         </section>
       </div>
@@ -360,7 +381,7 @@ function CorrectedQuestion({
   item: CorrectedExam["items"][number];
 }) {
   const diagnosis = item.diagnosis;
-  const needsReview =
+  const flaggedAsUncertain =
     diagnosis !== null &&
     diagnosis.outcome !== "CORRECT" &&
     diagnosis.outcome !== "INCORRECT" &&
@@ -381,7 +402,7 @@ function CorrectedQuestion({
           {!diagnosis ? (
             <div className="mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
               <span className="font-semibold">
-                {french ? "À vérifier par l’enseignant —" : "Needs teacher review —"}
+                {french ? "L’IA n’a pas pu conclure —" : "The AI could not settle this item —"}
               </span>{" "}
               {french
                 ? "aucun travail n’a pu être associé avec certitude à cette question."
@@ -408,10 +429,10 @@ function CorrectedQuestion({
                 ) : null}
               </div>
 
-              {needsReview ? (
+              {flaggedAsUncertain ? (
                 <div className="corrected-copy-review mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
                   <span className="font-semibold">
-                    {french ? "À vérifier par l’enseignant —" : "Needs teacher review —"}
+                    {french ? "L’IA n’a pas pu conclure —" : "The AI could not settle this item —"}
                   </span>{" "}
                   {diagnosis.reviewReasons.length > 0
                     ? diagnosis.reviewReasons
@@ -442,8 +463,8 @@ function CorrectedQuestion({
                           : "This step is mathematically consistent with the previous work.")
                       : step.errorNote ??
                         (french
-                          ? "Cette étape doit être vérifiée par l’enseignant."
-                          : "This step needs teacher review.");
+                          ? "L’IA n’a pas pu conclure de façon fiable sur cette étape."
+                          : "The AI could not settle this step reliably.");
                   return (
                     <li
                       className={`rounded-xl border px-3 py-3 ${
@@ -486,8 +507,8 @@ function CorrectedQuestion({
                                     ? "À corriger : "
                                     : "Why wrong: "
                                   : french
-                                    ? "Vérification enseignant : "
-                                    : "Teacher check: "}
+                                    ? "Incertitude de l’IA : "
+                                    : "AI uncertainty: "}
                             </span>
                             {note}
                           </p>

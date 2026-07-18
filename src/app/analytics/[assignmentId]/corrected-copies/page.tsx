@@ -39,7 +39,7 @@ export default async function CorrectedCopiesPage({
           {dashboard.rows.length ? (
             <div className="divide-y divide-black/[0.06]">
               {dashboard.rows.map((row) => {
-                const needsReview = row.reviewCount > 0;
+                const hasUncertainty = row.reviewCount > 0;
                 return (
                   <article
                     className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6"
@@ -48,12 +48,12 @@ export default async function CorrectedCopiesPage({
                     <div className="flex items-center gap-3">
                       <span
                         className={`grid size-10 shrink-0 place-items-center rounded-xl ${
-                          needsReview
+                          hasUncertainty
                             ? "bg-[var(--amber)]/16 text-[#765725]"
                             : "bg-[var(--soft-mint)] text-[var(--sage)]"
                         }`}
                       >
-                        {needsReview ? (
+                        {hasUncertainty ? (
                           <AlertIcon className="size-4" />
                         ) : (
                           <CheckIcon className="size-4" />
@@ -63,8 +63,8 @@ export default async function CorrectedCopiesPage({
                         <h3 className="text-sm font-semibold">{row.studentName}</h3>
                         <p className="mt-1 text-xs text-[var(--muted)]">
                           {row.diagnosedCount} {row.diagnosedCount === 1 ? "problem" : "problems"} diagnosed
-                          {needsReview
-                            ? ` · ${row.reviewCount} ${row.reviewCount === 1 ? "item" : "items"} to review`
+                          {hasUncertainty
+                            ? ` · ${row.reviewCount} ${row.reviewCount === 1 ? "item" : "items"} flagged as uncertain`
                             : " · ready to return"}
                         </p>
                       </div>

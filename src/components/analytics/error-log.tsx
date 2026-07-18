@@ -13,7 +13,7 @@ export function ErrorLog({
   const hasErrors =
     inventory.totals.misconceptionOccurrenceCount > 0 ||
     inventory.totals.slipCount > 0 ||
-    inventory.totals.awaitingReviewCount > 0 ||
+    inventory.totals.uncertainCount > 0 ||
     inventory.totals.outOfScopeCount > 0;
   if (!hasErrors) return null;
   return (
@@ -26,7 +26,7 @@ export function ErrorLog({
           What errors were found in the copies?
         </h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--muted)]">
-          Ranked by teaching priority: repeated patterns first, then one-off slips by exercise, then work awaiting review. Open a group to see the exact evidence and copy.
+          Ranked by teaching priority: repeated patterns first, then one-off slips by exercise, then items the AI could not settle. Open a group to see the exact evidence and copy.
         </p>
         <p className="mt-2 max-w-4xl text-xs leading-5 text-[var(--muted)]">
           A one-off slip is not a misconception. Only repeated, evidenced patterns can feed Student Models. This distinction follows{" "}
@@ -80,18 +80,12 @@ export function ErrorLog({
           </InventorySection>
         ) : null}
 
-        {inventory.awaitingReview.length ? (
+        {inventory.uncertain.length ? (
           <InventorySection
-            summary={`Awaiting review: ${inventory.awaitingReview.length} of ${inventory.awaitingReview.length} flagged ${inventory.awaitingReview.length === 1 ? "item" : "items"}`}
+            summary={`AI uncertainty: ${inventory.uncertain.length} ${inventory.uncertain.length === 1 ? "item" : "items"} the AI could not settle`}
             tone="amber"
           >
-            <ItemList items={inventory.awaitingReview} />
-            <Link
-              className="inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white"
-              href={`/assignments/${inventory.assignment.id}/results`}
-            >
-              Review flagged work
-            </Link>
+            <ItemList items={inventory.uncertain} />
           </InventorySection>
         ) : null}
 

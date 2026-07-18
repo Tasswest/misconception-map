@@ -63,10 +63,10 @@ export default function DashboardIndexPage() {
                       <p className="mt-1 text-sm">{rollup.slipsByAssignment.reduce((sum, assignment) => sum + assignment.count, 0)} across {rollup.slipsByAssignment.length} {rollup.slipsByAssignment.length === 1 ? "assignment" : "assignments"}</p>
                     </div>
                     ) : null}
-                    {rollup.awaitingReviewCount > 0 ? (
+                    {rollup.uncertainCount > 0 ? (
                     <div className="rounded-xl bg-[var(--canvas)] px-3 py-3">
-                      <p className="text-xs font-semibold">Awaiting review</p>
-                      <p className="mt-1 text-sm">{rollup.awaitingReviewCount} flagged {rollup.awaitingReviewCount === 1 ? "item" : "items"}</p>
+                      <p className="text-xs font-semibold">AI uncertainty</p>
+                      <p className="mt-1 text-sm">{rollup.uncertainCount} {rollup.uncertainCount === 1 ? "item" : "items"} flagged as uncertain</p>
                     </div>
                     ) : null}
                   </div>
@@ -110,7 +110,7 @@ export default function DashboardIndexPage() {
               {latest.title}
             </h2>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              {latest.className} · {latest.diagnosedStudentCount} of {latest.studentCount} {latest.studentCount === 1 ? "student" : "students"} diagnosed · {reviewLabel(latest.needsReviewCount)}
+              {latest.className} · {latest.diagnosedStudentCount} of {latest.studentCount} {latest.studentCount === 1 ? "student" : "students"} diagnosed · {uncertaintyLabel(latest.needsReviewCount)}
             </p>
             <span className="mt-5 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-xs font-semibold text-white">
               Open latest analytics →
@@ -153,6 +153,6 @@ export default function DashboardIndexPage() {
   );
 }
 
-function reviewLabel(count: number) {
-  return `${count} ${count === 1 ? "item needs" : "items need"} review`;
+function uncertaintyLabel(count: number) {
+  return `${count} ${count === 1 ? "item" : "items"} flagged as uncertain`;
 }

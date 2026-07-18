@@ -14,7 +14,7 @@ export function FreshDatabaseState({
       </span>
       <h1 className="mt-5 text-2xl font-semibold tracking-[-0.03em]">{title}</h1>
       <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[var(--muted)]">
-        Run this one command to load the complete synthetic classroom, triage
+        Run this one command to load the complete synthetic classroom, results
         counts, grouped exercises, corrected copies, and Prediction Lab history.
       </p>
       <code className="mt-5 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-3 text-sm font-semibold text-white">

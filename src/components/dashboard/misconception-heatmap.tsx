@@ -228,14 +228,14 @@ export function MisconceptionHeatmap({
             <h2 className="mt-2 text-balance text-2xl font-semibold tracking-[-0.03em]">
               {dashboard.summary.diagnosedCount === 0
                 ? "0 items diagnosed"
-                : `${dashboard.summary.diagnosedCount} ${dashboard.summary.diagnosedCount === 1 ? "item" : "items"} diagnosed${dashboard.summary.correctCount === dashboard.summary.diagnosedCount ? " — all correct" : ` · ${dashboard.summary.correctCount}/${dashboard.summary.diagnosedCount} correct`}`} · {dashboard.summary.awaitingReviewCount} awaiting your review{dashboard.summary.notYetDiagnosedExerciseCount > 0 ? ` · ${dashboard.summary.notYetDiagnosedExerciseCount} ${dashboard.summary.notYetDiagnosedExerciseCount === 1 ? "exercise" : "exercises"} not yet diagnosed` : ""}
+                : `${dashboard.summary.diagnosedCount} ${dashboard.summary.diagnosedCount === 1 ? "item" : "items"} diagnosed${dashboard.summary.correctCount === dashboard.summary.diagnosedCount ? " — all correct" : ` · ${dashboard.summary.correctCount}/${dashboard.summary.diagnosedCount} correct`}`} · {dashboard.summary.awaitingReviewCount} {dashboard.summary.awaitingReviewCount === 1 ? "item" : "items"} flagged as uncertain{dashboard.summary.notYetDiagnosedExerciseCount > 0 ? ` · ${dashboard.summary.notYetDiagnosedExerciseCount} ${dashboard.summary.notYetDiagnosedExerciseCount === 1 ? "exercise" : "exercises"} not yet diagnosed` : ""}
             </h2>
           </div>
           <Link
             className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[var(--sidebar)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#244b42]"
-            href={`/assignments/${dashboard.assignment.id}/results`}
+            href={`/analytics/${dashboard.assignment.id}/corrected-copies`}
           >
-            Review results
+            See corrected copies
           </Link>
         </section>
       )}
@@ -317,7 +317,7 @@ export function MisconceptionHeatmap({
                   }`}
                 >
                   {exercise.flaggedCount
-                    ? `${exercise.flaggedCount} awaiting review`
+                    ? `${exercise.flaggedCount} flagged as uncertain`
                     : `${exercise.assessedCount} diagnosed`}
                 </span>
               </div>
@@ -405,16 +405,16 @@ export function MisconceptionHeatmap({
               <h3 className="mt-4 text-lg font-semibold">No repeated error pattern yet</h3>
               <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
                 {dashboard.summary.awaitingReviewCount > dashboard.summary.diagnosedCount
-                  ? "Most items are waiting for your review. Reviewed items can reveal patterns."
+                  ? "Most items are flagged as uncertain. Their reasons remain visible in the corrected copies."
                   : dashboard.summary.diagnosedCount > 0
                     ? "No repeated pattern — errors found are isolated slips or outside the algebra/fractions analysis scope."
-                    : "No diagnosed work is available yet. Review flagged items to reveal patterns."}
+                    : "No diagnosed work is available yet. Uncertainty reasons remain visible in the corrected copies."}
               </p>
               <Link
                 className="mt-5 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
-                href={`/assignments/${dashboard.assignment.id}/results`}
-              >
-                Review results
+            href={`/analytics/${dashboard.assignment.id}/corrected-copies`}
+          >
+            See corrected copies
               </Link>
             </div>
           </div>
@@ -457,7 +457,7 @@ export function MisconceptionHeatmap({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">{row.studentName}</p>
                       <p className="mt-1 text-[10px] text-[var(--muted)]">
-                        {row.diagnosedCount} diagnosed{row.reviewCount ? ` · ${row.reviewCount} ${row.reviewCount === 1 ? "review item" : "review items"}` : ""}
+                        {row.diagnosedCount} diagnosed{row.reviewCount ? ` · ${row.reviewCount} flagged as uncertain` : ""}
                       </p>
                       {row.practiceTarget ? (
                         practice ? (
@@ -622,7 +622,7 @@ function DiagnosisDrawer({
             <h2 className="mt-2 text-xl font-semibold tracking-[-0.025em]" id="diagnosis-drawer-title">
               {detail.outcome === "MISCONCEPTION"
                 ? selected.teacherLabel
-                : "Teacher review needed"}
+                : "AI uncertainty"}
             </h2>
             <p className="mt-1 text-xs text-[var(--muted)]">
               {Math.round(detail.confidence * 100)}% confidence
@@ -701,7 +701,7 @@ function DiagnosisDrawer({
 
         {detail.reviewReasons.length ? (
           <div className="mt-5">
-            <p className="text-xs font-semibold text-[var(--muted)]">Review reasons</p>
+            <p className="text-xs font-semibold text-[var(--muted)]">Uncertainty reasons</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {detail.reviewReasons.map((reason) => (
                 <span
@@ -740,6 +740,6 @@ function cellTooltip(
     return `${student}: ${cell.detail?.questionReference ? `${cell.detail.questionReference}, ` : ""}${teacherLabel}; ${cell.frequency} ${cell.frequency === 1 ? "occurrence" : "occurrences"}. Formal label: ${formalLabel}. ${citationNote}${cell.evidenceQuote ? ` Evidence: ${cell.evidenceQuote}` : ""}`;
   }
   if (cell.state === "CLEAR") return `${student}: correct reasoning shown on opportunities related to ${teacherLabel}`;
-  if (cell.state === "REVIEW") return `${student}: work needs teacher review`;
+  if (cell.state === "REVIEW") return `${student}: work is flagged as uncertain`;
   return `${student}: not assessed`;
 }

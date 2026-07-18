@@ -67,7 +67,7 @@ export default function ClassesPage() {
                   <Stat label="Students" value={classroom.studentCount} />
                   <Stat label="Assignments" value={classroom.assignmentCount} />
                   <Stat label="Diagnosed" value={classroom.diagnosedStudentCount} />
-                  <Stat label="Review" value={classroom.needsReviewCount} tone="amber" />
+                  <Stat label="Uncertain" value={classroom.needsReviewCount} tone="amber" />
                 </div>
 
                 <div className="mt-5 border-t border-black/[0.06] pt-4">

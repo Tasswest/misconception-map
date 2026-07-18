@@ -43,7 +43,7 @@ export default async function AssignmentsPage({
               Assignments
             </h1>
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-              Each assignment reopens at the next action that needs you.
+              Each assignment reopens at its current workflow step.
             </p>
           </div>
           {hasClasses ? (
@@ -78,7 +78,7 @@ export default async function AssignmentsPage({
                   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--muted)]">
                     <span>{countLabel(assignment.itemCount, "problem")}</span>
                     <span>{assignment.diagnosedStudentCount} of {assignment.studentCount} {assignment.studentCount === 1 ? "student" : "students"} diagnosed</span>
-                    <span>{countLabel(assignment.needsReviewCount, "review item")}</span>
+                    <span>{countLabel(assignment.needsReviewCount, "uncertain flag")}</span>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
