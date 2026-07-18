@@ -171,6 +171,8 @@ Expected-versus-actual reporting treats a 3-of-4 result as consistent with a 0.8
 
 Open `/status` to see database migration state, taxonomy synchronization, whether live AI is configured, the hosted daily aggregate/cap, and the most recent saved runs with input, output, and total tokens, latency, and cache-hit status. Per-request API cost is not exposed; only the daily aggregate is estimated from the ledger.
 
+The July 18 task-tier benchmark compared the models exposed by the account (`gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`) on the production preprocessing, strict schemas, two handwriting regressions, one South America booklet page, the six-page printed exam, and practice generation. The final 15-call matrix cost an estimated **$0.828**. Terra reduced the representative page run from 101.1 s / $0.211 to 30.0 s / $0.087, but failed the handwritten-equals fidelity gate; Luna also disagreed on page verdicts. Diagnosis therefore remains on Sol. Extraction and practice stay on Sol too because one passing case is not enough independent gold evidence to change a production default. See [`docs/model-benchmark.md`](docs/model-benchmark.md) for the cost-versus-quality table and abstention checks.
+
 Useful commands:
 
 | Command | Purpose |
@@ -180,6 +182,7 @@ Useful commands:
 | `npm run db:migrate` | Apply checksummed SQL migrations. |
 | `npm run db:check` | Verify SQLite integrity and bootstrap records. |
 | `npm run sample-work` | Regenerate the nine synthetic JPEG fixtures with Sharp. |
+| `npm run bench:models -- --dry-run` | Validate the capped 15-call Sol/Terra/Luna benchmark matrix without inference calls. |
 | `npm run verify:privacy` | Refuse tracked databases, uploads, PDFs, named booklet files, or unreviewed image locations. |
 | `npm run verify:phase1` | Domain model, evidence, versioning, prediction, and invalidation invariants. |
 | `npm run verify:hierarchy` | Hierarchical extraction, legacy migration, label matching, and grouped demo shape. |
@@ -187,6 +190,7 @@ Useful commands:
 | `npm run verify:images` | Faint-ink, crop, and handwritten-equals regression fixtures. |
 | `npm run verify:pdf` | PDF signatures, generated API filenames, and local persistence. |
 | `npm run verify:diagnosis-contracts` | Compile-time-safe single/full-page persistence contracts. |
+| `npm run verify:full-page-timeout` | 85 s/300 s timeout separation, bounded page output, truthful timeout persistence, and quality-only fallback. |
 | `npm run verify:phase4` | 4-of-5 consistency, expected/actual fit, all three prediction kinds, revision suggestions, practice, and briefs. |
 | `npm run verify:navigation` | Four-tab order, assignment-first root, Analytics sub-tabs, canonical cross-links, and permanent legacy redirects. |
 | `npm run verify:readiness` | Fresh/seeded DBs, no-key states, language, print, accessibility, cost, cache, and status ledger. |

@@ -13,6 +13,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "seed": "npm run db:migrate && node scripts/seed.mjs",
     "sample-work": "node scripts/generate-sample-work.mjs",
+    "bench:models": "node scripts/bench-models.mjs",
     "db:check": "node scripts/check-db.mjs",
     "verify:phase1": "node scripts/verify-phase-one.mjs",
     "verify:hierarchy": "node --no-warnings --experimental-strip-types scripts/verify-hierarchical-workflow.mjs",
