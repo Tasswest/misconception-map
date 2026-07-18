@@ -34,6 +34,7 @@ type ExtractedQuestion = {
   questionLabel: string;
   problemStatement: string;
   domain: "ALGEBRA" | "FRACTIONS" | null;
+  inTaxonomyScope: boolean;
   answerKind: "EXPRESSION" | "NUMBER" | "FRACTION" | "MULTIPLE_CHOICE" | "SHORT_TEXT";
   expectedAnswer: string;
   extractionConfidence: number;
@@ -659,6 +660,8 @@ export function SetupWorkspace({
                                             ExtractedQuestion["domain"],
                                             null
                                           >),
+                                    inTaxonomyScope:
+                                      event.target.value !== "OUT_OF_SCOPE",
                                   })
                                 }
                                 value={question.domain ?? "OUT_OF_SCOPE"}
@@ -1025,6 +1028,10 @@ function readExtractedExercises(value: unknown): ExtractedExercise[] {
         questionLabel,
         problemStatement,
         domain: domain as ExtractedQuestion["domain"],
+        inTaxonomyScope:
+          typeof questionRecord.inTaxonomyScope === "boolean"
+            ? questionRecord.inTaxonomyScope
+            : domain === "ALGEBRA" || domain === "FRACTIONS",
         answerKind: answerKind as ExtractedQuestion["answerKind"],
         expectedAnswer,
         extractionConfidence: readNumber(questionRecord, "extractionConfidence"),
@@ -1059,6 +1066,7 @@ function countOutOfScopeQuestions(
       count +
       exercise.questions.filter(
         (question) =>
+          !question.inTaxonomyScope ||
           question.domain === null ||
           (assignmentDomain !== "MIXED" && question.domain !== assignmentDomain),
       ).length,

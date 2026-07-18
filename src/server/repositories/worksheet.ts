@@ -12,6 +12,31 @@ import { getDatabase } from "@/lib/db";
 
 const idSchema = z.string().trim().min(1).max(200);
 
+function parseStoredExercises(rawJson: string) {
+  const raw = JSON.parse(rawJson) as unknown;
+  if (!Array.isArray(raw)) return z.array(worksheetExerciseSchema).parse(raw);
+  const upgraded = raw.map((exercise) => {
+    if (!exercise || typeof exercise !== "object") return exercise;
+    const record = exercise as Record<string, unknown>;
+    const questions = Array.isArray(record.questions)
+      ? record.questions.map((question) => {
+          if (!question || typeof question !== "object") return question;
+          const questionRecord = question as Record<string, unknown>;
+          return {
+            ...questionRecord,
+            inTaxonomyScope:
+              typeof questionRecord.inTaxonomyScope === "boolean"
+                ? questionRecord.inTaxonomyScope
+                : questionRecord.domain === "ALGEBRA" ||
+                    questionRecord.domain === "FRACTIONS",
+          };
+        })
+      : record.questions;
+    return { ...record, questions };
+  });
+  return z.array(worksheetExerciseSchema).parse(upgraded);
+}
+
 export const confirmWorksheetInputSchema = z
   .object({
     exercises: z.array(worksheetExerciseSchema).min(1).max(30),
@@ -104,9 +129,7 @@ export function getDraftWorksheetSetup(assignmentId: string) {
           assignmentId: assignment.id,
           overallConfidence: extraction.overall_confidence,
           needsReview: extraction.status === "NEEDS_REVIEW",
-          exercises: z.array(worksheetExerciseSchema).parse(
-            JSON.parse(extraction.exercises_json),
-          ),
+          exercises: parseStoredExercises(extraction.exercises_json),
         }
       : null,
   };
@@ -174,7 +197,7 @@ export function getCachedWorksheetExtractionRun(inputHash: string) {
   const result = worksheetExtractionAIOutputSchema.parse({
     sourceSummary: row.source_summary,
     overallConfidence: row.overall_confidence,
-    exercises: JSON.parse(row.exercises_json),
+    exercises: parseStoredExercises(row.exercises_json),
   });
   return {
     result,
@@ -337,27 +360,11 @@ export function confirmWorksheetExtraction(
     prompt: string;
     correctAnswer: string;
     answerFormat: string;
+    inTaxonomyScope: boolean;
   }> = [];
 
   database.transaction(() => {
     const assignment = getDraftWorksheetAssignment(assignmentId);
-    const supportedQuestionCount = input.exercises.reduce(
-      (count, exercise) =>
-        count +
-        exercise.questions.filter(
-          (question) =>
-            question.domain !== null &&
-            (assignment.domain === "MIXED" ||
-              question.domain === assignment.domain),
-        ).length,
-      0,
-    );
-    if (supportedQuestionCount === 0) {
-      throw new WorksheetRepositoryError(
-        "DOMAIN_MISMATCH",
-        "No extracted question matches this assignment’s diagnostic domain. Change at least one question domain before confirming.",
-      );
-    }
     const source = database
       .prepare(
         "SELECT id FROM assignment_sources WHERE assignment_id = ? AND class_id = ?",
@@ -391,16 +398,17 @@ export function confirmWorksheetExtraction(
         );
 
       for (const question of exercise.questions) {
-        if (
-          question.domain === null ||
-          (assignment.domain !== "MIXED" &&
-            question.domain !== assignment.domain)
-        ) {
-          continue;
-        }
         itemPosition += 1;
         const problemId = randomUUID();
         const itemId = randomUUID();
+        const storageDomain =
+          question.domain ??
+          (assignment.domain === "FRACTIONS" ? "FRACTIONS" : "ALGEBRA");
+        const inTaxonomyScope =
+          question.inTaxonomyScope &&
+          question.domain !== null &&
+          (assignment.domain === "MIXED" ||
+            question.domain === assignment.domain);
         database
           .prepare(
             [
@@ -412,19 +420,19 @@ export function confirmWorksheetExtraction(
           .run(
             problemId,
             assignment.classId,
-            question.domain,
+            storageDomain,
             question.problemStatement,
             question.answerKind,
             question.expectedAnswer,
             question.expectedAnswer.normalize("NFKC").trim(),
-            contentHash(question.domain, question.problemStatement),
+            contentHash(storageDomain, question.problemStatement),
           );
         database
           .prepare(
             [
               "INSERT INTO assignment_items",
-              "(id, class_id, assignment_id, problem_id, position, points, is_required, exercise_id, question_label)",
-              "VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?)",
+              "(id, class_id, assignment_id, problem_id, position, points, is_required, exercise_id, question_label, in_taxonomy_scope)",
+              "VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?)",
             ].join(" "),
           )
           .run(
@@ -435,6 +443,7 @@ export function confirmWorksheetExtraction(
             itemPosition,
             exerciseId,
             question.questionLabel,
+            inTaxonomyScope ? 1 : 0,
           );
         createdItems.push({
           id: itemId,
@@ -446,6 +455,7 @@ export function confirmWorksheetExtraction(
           prompt: question.problemStatement,
           correctAnswer: question.expectedAnswer,
           answerFormat: question.answerKind,
+          inTaxonomyScope,
         });
       }
     }

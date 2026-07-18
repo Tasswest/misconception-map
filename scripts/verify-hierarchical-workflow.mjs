@@ -34,7 +34,7 @@ const tempDirectory = fs.mkdtempSync(
 );
 
 function verifyStructuredOutputs() {
-  assert.equal(WORKSHEET_EXTRACTION_SCHEMA_VERSION, "2.1.0");
+  assert.equal(WORKSHEET_EXTRACTION_SCHEMA_VERSION, "2.2.0");
   assert.equal(STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION, "2.0.0");
   assert.equal(shortExerciseLabel("Exercice n° 2 — Transport"), "Ex. 2");
   assert.equal(shortExerciseLabel("Exercice no 2 — Transport"), "Ex. 2");
@@ -58,6 +58,7 @@ function verifyStructuredOutputs() {
             expectedAnswer: "3/8",
             answerKind: "FRACTION",
             domain: "FRACTIONS",
+            inTaxonomyScope: true,
             extractionConfidence: 0.98,
             answerConfidence: 0.96,
             reviewNote: null,
@@ -74,6 +75,7 @@ function verifyStructuredOutputs() {
             expectedAnswer: "x = 6",
             answerKind: "EXPRESSION",
             domain: "ALGEBRA",
+            inTaxonomyScope: true,
             extractionConfidence: 0.97,
             answerConfidence: 0.99,
             reviewNote: null,
@@ -91,6 +93,7 @@ function verifyStructuredOutputs() {
             expectedAnswer: "5 cm",
             answerKind: "NUMBER",
             domain: null,
+            inTaxonomyScope: false,
             extractionConfidence: 0.99,
             answerConfidence: 0.99,
             reviewNote: null,
