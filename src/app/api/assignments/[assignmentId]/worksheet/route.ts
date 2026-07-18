@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -8,6 +9,12 @@ import {
   PDF_MEDIA_TYPE,
 } from "@/domain/pdf-input.mjs";
 import {
+  detectPdfPageCount,
+  MAX_DIRECT_EXTRACTION_PDF_PAGES,
+} from "@/domain/pdf-page-count.mjs";
+import { WORKSHEET_EXTRACTION_SCHEMA_VERSION } from "@/domain/worksheet-extraction";
+import { OPENAI_MODEL } from "@/lib/config";
+import {
   guardLocalApiRequest,
   LocalRequestBodyError,
   requireDeclaredBodyWithinLimit,
@@ -16,6 +23,7 @@ import {
   createWorksheetExtractionInputHash,
   extractWorksheet,
   type ExtractWorksheetInput,
+  WORKSHEET_EXTRACTION_PROMPT_VERSION,
   WorksheetExtractionError,
 } from "@/server/openai/extract-worksheet";
 import { beginAiRequest } from "@/server/openai/spend-protection";
@@ -23,9 +31,11 @@ import { containsRosterName } from "@/server/privacy/roster-text";
 import {
   confirmWorksheetExtraction,
   confirmWorksheetInputSchema,
+  completeWorksheetExtractionAttempt,
   getCachedWorksheetExtractionRun,
   getDraftWorksheetAssignment,
   saveWorksheetExtraction,
+  startWorksheetExtractionAttempt,
   WorksheetRepositoryError,
 } from "@/server/repositories/worksheet";
 import { preprocessWorksheetImage } from "@/server/storage/image-preprocessing.mjs";
@@ -37,17 +47,115 @@ const MAX_WORKSHEET_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_WORKSHEET_REQUEST_BYTES = 16 * 1024 * 1024;
 const MAX_CONFIRM_REQUEST_BYTES = 180_000;
 
-async function extractOrReuseWorksheet(input: ExtractWorksheetInput, request: Request) {
+class WorksheetPdfTooLongError extends Error {
+  readonly code = "PDF_TOO_LONG";
+  readonly pageCount: number;
+
+  constructor(pageCount: number) {
+    super(
+      `PDF too long — ${pageCount} pages. Select the exam pages, save them as a PDF of ${MAX_DIRECT_EXTRACTION_PDF_PAGES} pages or fewer, and retry.`,
+    );
+    this.name = "WorksheetPdfTooLongError";
+    this.pageCount = pageCount;
+  }
+}
+
+async function extractOrReuseWorksheet(
+  input: ExtractWorksheetInput,
+  request: Request,
+  metadata: { assignmentId: string; originalFilename: string | null },
+) {
+  const startedAt = performance.now();
   const inputHash = createWorksheetExtractionInputHash(input);
+  const attemptId = startWorksheetExtractionAttempt({
+    assignmentId: metadata.assignmentId,
+    sourceKind: input.sourceKind,
+    originalFilename: metadata.originalFilename,
+    pageCount: input.sourceKind === "PDF" ? input.pdfPageCount : null,
+    inputHash,
+    modelName: OPENAI_MODEL,
+    promptVersion: WORKSHEET_EXTRACTION_PROMPT_VERSION,
+    schemaVersion: WORKSHEET_EXTRACTION_SCHEMA_VERSION,
+  });
+
+  if (
+    input.sourceKind === "PDF" &&
+    input.pdfPageCount > MAX_DIRECT_EXTRACTION_PDF_PAGES
+  ) {
+    const error = new WorksheetPdfTooLongError(input.pdfPageCount);
+    completeWorksheetExtractionAttempt({
+      attemptId,
+      status: "FAILED",
+      cacheHit: false,
+      errorCode: error.code,
+      errorMessage: error.message,
+      inputTokens: null,
+      outputTokens: null,
+      latencyMs: performance.now() - startedAt,
+    });
+    throw error;
+  }
+
   const cached = getCachedWorksheetExtractionRun(inputHash);
-  if (cached) return { run: cached, denied: null };
+  if (cached) {
+    completeWorksheetExtractionAttempt({
+      attemptId,
+      status: "SUCCEEDED",
+      cacheHit: true,
+      errorCode: null,
+      errorMessage: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: performance.now() - startedAt,
+    });
+    return { run: cached, denied: null };
+  }
 
   const protectedRequest = await beginAiRequest(request);
   if (!protectedRequest.allowed) {
+    completeWorksheetExtractionAttempt({
+      attemptId,
+      status: "FAILED",
+      cacheHit: false,
+      errorCode: "AI_ACTION_UNAVAILABLE",
+      errorMessage: "Live worksheet extraction is currently unavailable.",
+      inputTokens: null,
+      outputTokens: null,
+      latencyMs: performance.now() - startedAt,
+    });
     return { run: null, denied: protectedRequest.response };
   }
   try {
-    return { run: await extractWorksheet(input), denied: null };
+    const run = await extractWorksheet(input);
+    completeWorksheetExtractionAttempt({
+      attemptId,
+      status: "SUCCEEDED",
+      cacheHit: false,
+      errorCode: null,
+      errorMessage: null,
+      inputTokens: run.inputTokens,
+      outputTokens: run.outputTokens,
+      latencyMs: run.latencyMs,
+    });
+    return { run, denied: null };
+  } catch (error) {
+    const extractionError =
+      error instanceof WorksheetExtractionError ? error : null;
+    completeWorksheetExtractionAttempt({
+      attemptId,
+      status: "FAILED",
+      cacheHit: false,
+      errorCode: extractionError?.code ?? "WORKSHEET_FAILED",
+      errorMessage:
+        extractionError?.message ?? "The worksheet extraction failed unexpectedly.",
+      inputTokens: extractionError?.inputTokens ?? null,
+      outputTokens: extractionError?.outputTokens ?? null,
+      latencyMs:
+        extractionError && extractionError.latencyMs > 0
+          ? extractionError.latencyMs
+          : performance.now() - startedAt,
+    });
+    throw error;
   } finally {
     protectedRequest.release();
   }
@@ -64,6 +172,18 @@ function safeFilename(value: string) {
 }
 
 function worksheetErrorResponse(error: unknown) {
+  if (error instanceof WorksheetPdfTooLongError) {
+    return NextResponse.json(
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+          pageCount: error.pageCount,
+        },
+      },
+      { status: 422 },
+    );
+  }
   if (error instanceof LocalRequestBodyError) {
     return NextResponse.json(
       { error: { code: error.code, message: error.message } },
@@ -163,7 +283,7 @@ export async function POST(
         sourceKind,
         assignmentDomain: assignment.domain,
         sourceText,
-      }, request);
+      }, request, { assignmentId, originalFilename: null });
       if (extraction.denied) return extraction.denied;
       const run = extraction.run;
       const saved = saveWorksheetExtraction({
@@ -219,12 +339,27 @@ export async function POST(
         ]);
       }
       const pdfSha256 = createHash("sha256").update(sourceBytes).digest("hex");
+      const pdfPageCount = detectPdfPageCount(sourceBytes);
+      if (pdfPageCount === null) {
+        throw new z.ZodError([
+          {
+            code: "custom",
+            path: ["sourceFile"],
+            message:
+              "The PDF page count could not be read. Re-save or split the PDF, then retry.",
+          },
+        ]);
+      }
       const extraction = await extractOrReuseWorksheet({
         sourceKind: "PDF",
         assignmentDomain: assignment.domain,
         pdfBytes: sourceBytes,
         pdfSha256,
-      }, request);
+        pdfPageCount,
+      }, request, {
+        assignmentId,
+        originalFilename: safeFilename(sourceFile.name),
+      });
       if (extraction.denied) return extraction.denied;
       const run = extraction.run;
       const saved = saveWorksheetExtraction({
@@ -252,7 +387,10 @@ export async function POST(
       imageBytes: prepared.bytes,
       imageMediaType: "image/webp",
       imageSha256,
-    }, request);
+    }, request, {
+      assignmentId,
+      originalFilename: safeFilename(sourceFile.name),
+    });
     if (extraction.denied) return extraction.denied;
     const run = extraction.run;
     const saved = saveWorksheetExtraction({

@@ -38,7 +38,7 @@ function verifyFreshAndSeededDatabases() {
   try {
     assert.equal(
       fresh.prepare("SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1").pluck().get(),
-      "019_universal_correction_scope.sql",
+      "020_worksheet_extraction_attempts.sql",
     );
     assert.deepEqual(
       fresh
@@ -54,6 +54,15 @@ function verifyFreshAndSeededDatabases() {
         .prepare("PRAGMA index_list(assignment_source_extractions)")
         .all()
         .some((index) => index.name === "assignment_source_extractions_input_cache"),
+    );
+    assert.deepEqual(
+      fresh
+        .prepare("PRAGMA table_info(worksheet_extraction_attempts)")
+        .all()
+        .filter((column) => ["status", "error_code", "page_count"].includes(column.name))
+        .map((column) => column.name)
+        .sort(),
+      ["error_code", "page_count", "status"],
     );
     assert.equal(fresh.prepare("SELECT count(*) FROM classes").pluck().get(), 0);
   } finally {
@@ -240,7 +249,7 @@ function verifyCostCacheAndStatus() {
 
   const worksheetRoute = read("src/app/api/assignments/[assignmentId]/worksheet/route.ts");
   assert.match(worksheetRoute, /const cached = getCachedWorksheetExtractionRun\(inputHash\)/);
-  assert.match(worksheetRoute, /if \(cached\) return \{ run: cached, denied: null \}/);
+  assert.match(worksheetRoute, /if \(cached\) \{/);
   assert.ok(
     worksheetRoute.indexOf("if (cached)") <
       worksheetRoute.indexOf("beginAiRequest(request)"),

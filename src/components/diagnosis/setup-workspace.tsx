@@ -20,6 +20,10 @@ import type {
   ClassWorkspaceOption,
   StudentOption,
 } from "@/components/diagnosis/types";
+import {
+  detectPdfPageCount,
+  MAX_DIRECT_EXTRACTION_PDF_PAGES,
+} from "@/domain/pdf-page-count.mjs";
 import type { DraftWorksheetSetup } from "@/server/repositories/worksheet";
 
 type SetupWorkspaceProps = {
@@ -90,6 +94,10 @@ export function SetupWorkspace({
   const [worksheetSourceKind, setWorksheetSourceKind] = useState<"TYPED" | "IMAGE">("TYPED");
   const [worksheetText, setWorksheetText] = useState("");
   const [worksheetFile, setWorksheetFile] = useState<File | null>(null);
+  const [worksheetPdfPageCount, setWorksheetPdfPageCount] = useState<number | null>(null);
+  const [pageRangeStart, setPageRangeStart] = useState(1);
+  const [pageRangeEnd, setPageRangeEnd] = useState(MAX_DIRECT_EXTRACTION_PDF_PAGES);
+  const [draftAssignmentId, setDraftAssignmentId] = useState(initialDraft?.id ?? null);
   const [worksheetDeidentified, setWorksheetDeidentified] = useState(false);
   const [worksheetReview, setWorksheetReview] = useState<WorksheetReview | null>(
     initialDraft?.review ?? null,
@@ -104,6 +112,10 @@ export function SetupWorkspace({
     () => classes.find((classroom) => classroom.id === selectedClassId) ?? null,
     [classes, selectedClassId],
   );
+  const oversizedWorksheetPdf =
+    worksheetFile?.type === "application/pdf" &&
+    worksheetPdfPageCount !== null &&
+    worksheetPdfPageCount > MAX_DIRECT_EXTRACTION_PDF_PAGES;
 
   const parsedStudentNames = useMemo(
     () =>
@@ -128,6 +140,8 @@ export function SetupWorkspace({
           ? "Paste the worksheet text to continue."
           : worksheetSourceKind === "IMAGE" && !worksheetFile
             ? "Choose a worksheet photo or PDF to continue."
+            : oversizedWorksheetPdf
+              ? `PDF too long — ${worksheetPdfPageCount} pages. Save the selected exam pages as a PDF of ${MAX_DIRECT_EXTRACTION_PDF_PAGES} pages or fewer, then replace this file.`
             : !worksheetDeidentified
               ? "Confirm that this is a blank teacher copy to continue."
               : !liveAiReady
@@ -217,6 +231,7 @@ export function SetupWorkspace({
       !assignmentTitle.trim() ||
       !worksheetDeidentified ||
       (worksheetSourceKind === "TYPED" ? !worksheetText.trim() : !worksheetFile) ||
+      oversizedWorksheetPdf ||
       busy
     ) {
       return;
@@ -227,7 +242,7 @@ export function SetupWorkspace({
     setNotice(null);
 
     try {
-      let assignmentId = initialDraft?.id ?? null;
+      let assignmentId = draftAssignmentId;
       if (!assignmentId) {
         const payload = await postJson(
           `/api/classes/${encodeURIComponent(selectedClass.id)}/assignments`,
@@ -239,6 +254,7 @@ export function SetupWorkspace({
         );
         const record = unwrapRecord(payload, "assignment");
         assignmentId = readString(record, "id");
+        setDraftAssignmentId(assignmentId);
       }
       const formData = new FormData();
       formData.set("sourceKind", worksheetSourceKind);
@@ -789,11 +805,26 @@ export function SetupWorkspace({
                   accept="image/jpeg,image/png,image/webp,application/pdf"
                   className="mt-4 block w-full text-xs font-normal"
                   disabled={!selectedClass}
-                  onChange={(event) => {
+                  onChange={async (event) => {
                     const file = event.target.files?.[0] ?? null;
                     setWorksheetFile(file);
+                    setWorksheetPdfPageCount(null);
+                    setPageRangeStart(1);
+                    setPageRangeEnd(MAX_DIRECT_EXTRACTION_PDF_PAGES);
+                    setError(null);
                     if (file && !assignmentTitle.trim()) {
                       setAssignmentTitle(titleFromFilename(file.name));
+                    }
+                    if (file?.type === "application/pdf") {
+                      const pageCount = detectPdfPageCount(
+                        new Uint8Array(await file.arrayBuffer()),
+                      );
+                      setWorksheetPdfPageCount(pageCount);
+                      if (pageCount !== null) {
+                        setPageRangeEnd(
+                          Math.min(pageCount, MAX_DIRECT_EXTRACTION_PDF_PAGES),
+                        );
+                      }
                     }
                   }}
                   required
@@ -801,6 +832,45 @@ export function SetupWorkspace({
                 />
               </label>
             )}
+
+            {oversizedWorksheetPdf ? (
+              <div className="rounded-2xl border border-[var(--amber)]/30 bg-[var(--amber)]/10 p-4 text-sm text-[#765725]">
+                <p className="font-semibold">
+                  This PDF has {worksheetPdfPageCount} pages — select the exam pages
+                </p>
+                <div className="mt-3 grid max-w-sm grid-cols-[1fr_auto_1fr] items-end gap-3">
+                  <label className="text-xs font-semibold">
+                    From page
+                    <input
+                      className={fieldClass}
+                      max={worksheetPdfPageCount ?? undefined}
+                      min={1}
+                      onChange={(event) => setPageRangeStart(Number(event.target.value))}
+                      type="number"
+                      value={pageRangeStart}
+                    />
+                  </label>
+                  <span className="pb-3 text-xs">to</span>
+                  <label className="text-xs font-semibold">
+                    Through page
+                    <input
+                      className={fieldClass}
+                      max={worksheetPdfPageCount ?? undefined}
+                      min={pageRangeStart}
+                      onChange={(event) => setPageRangeEnd(Number(event.target.value))}
+                      type="number"
+                      value={pageRangeEnd}
+                    />
+                  </label>
+                </div>
+                <p className="mt-3 text-xs leading-5">
+                  Save pages {pageRangeStart}–{pageRangeEnd} as a new PDF, then choose that
+                  split file above. Without adding a PDF rewriting dependency, the app
+                  cannot safely remove the other pages itself, so it will never send this
+                  full {worksheetPdfPageCount}-page document to OpenAI.
+                </p>
+              </div>
+            ) : null}
 
             <label className="flex items-start gap-3 rounded-xl border border-black/[0.07] bg-[var(--soft-mint)]/55 px-4 py-3 text-xs leading-5 text-[var(--muted)]">
               <input
@@ -847,6 +917,7 @@ export function SetupWorkspace({
                 (worksheetSourceKind === "TYPED"
                   ? !worksheetText.trim()
                   : !worksheetFile) ||
+                oversizedWorksheetPdf ||
                 !liveAiReady
               }
               type="submit"

@@ -75,7 +75,16 @@ export default function StatusPage() {
                   {status.recentRuns.map((run, index) => (
                     <tr key={`${run.createdAt}-${run.purpose}-${index}`}>
                       <td className="px-4 py-3"><span className="font-semibold">{run.purpose.replaceAll("_", " ").toLowerCase()}</span><span className="mt-0.5 block text-[10px] text-[var(--muted)]">{run.model}{run.cacheHit ? " · cache hit" : ""}</span></td>
-                      <td className="px-4 py-3">{run.status.toLowerCase()}</td>
+                      <td className="px-4 py-3">
+                        {run.status.toLowerCase()}
+                        {run.errorCode ? (
+                          <span className="mt-0.5 block max-w-64 text-[10px] leading-4 text-[#8e402d]">
+                            {run.errorCode}
+                            {run.pageCount ? ` · ${run.pageCount} pages` : ""}
+                            {run.errorMessage ? ` — ${run.errorMessage}` : ""}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3 font-mono">{tokenLabel(run.inputTokens)}</td>
                       <td className="px-4 py-3 font-mono">{tokenLabel(run.outputTokens)}</td>
                       <td className="px-4 py-3 font-mono font-semibold">{tokenLabel(run.totalTokens)}</td>

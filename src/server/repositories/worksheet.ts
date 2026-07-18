@@ -168,6 +168,75 @@ type ExtractionRun = {
   cacheHit: boolean;
 };
 
+export function startWorksheetExtractionAttempt(input: {
+  assignmentId: string;
+  sourceKind: "TYPED" | "IMAGE" | "PDF";
+  originalFilename: string | null;
+  pageCount: number | null;
+  inputHash: string;
+  modelName: string;
+  promptVersion: string;
+  schemaVersion: string;
+}) {
+  const assignment = getDraftWorksheetAssignment(input.assignmentId);
+  const attemptId = randomUUID();
+  getDatabase()
+    .prepare(
+      [
+        "INSERT INTO worksheet_extraction_attempts",
+        "(id, assignment_id, source_kind, original_filename, page_count, input_hash,",
+        "model_name, prompt_version, schema_version, status)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING')",
+      ].join(" "),
+    )
+    .run(
+      attemptId,
+      assignment.id,
+      input.sourceKind,
+      input.originalFilename,
+      input.pageCount,
+      z.string().regex(/^[a-f0-9]{64}$/).parse(input.inputHash),
+      input.modelName,
+      input.promptVersion,
+      input.schemaVersion,
+    );
+  return attemptId;
+}
+
+export function completeWorksheetExtractionAttempt(input: {
+  attemptId: string;
+  status: "SUCCEEDED" | "FAILED";
+  cacheHit: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  latencyMs: number;
+}) {
+  const result = getDatabase()
+    .prepare(
+      [
+        "UPDATE worksheet_extraction_attempts SET status = ?, cache_hit = ?,",
+        "error_code = ?, error_message = ?, input_tokens = ?, output_tokens = ?,",
+        "latency_ms = ?, completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        "WHERE id = ? AND status = 'RUNNING'",
+      ].join(" "),
+    )
+    .run(
+      input.status,
+      input.cacheHit ? 1 : 0,
+      input.errorCode,
+      input.errorMessage?.slice(0, 500) ?? null,
+      input.inputTokens,
+      input.outputTokens,
+      Math.max(0, Math.round(input.latencyMs)),
+      idSchema.parse(input.attemptId),
+    );
+  if (result.changes !== 1) {
+    throw new Error("Worksheet extraction attempt is already complete or missing.");
+  }
+}
+
 export function getCachedWorksheetExtractionRun(inputHash: string) {
   const parsedHash = z.string().regex(/^[a-f0-9]{64}$/).parse(inputHash);
   const row = getDatabase()

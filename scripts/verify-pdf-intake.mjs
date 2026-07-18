@@ -13,6 +13,10 @@ import {
   PDF_DIRECT_INPUT_VERSION,
   PDF_MEDIA_TYPE,
 } from "../src/domain/pdf-input.mjs";
+import {
+  detectPdfPageCount,
+  MAX_DIRECT_EXTRACTION_PDF_PAGES,
+} from "../src/domain/pdf-page-count.mjs";
 
 const root = process.cwd();
 const pdfBytes = Buffer.from(
@@ -39,6 +43,38 @@ assert.equal(
   Buffer.from(apiInput.file_data.split(",")[1], "base64").equals(pdfBytes),
   true,
 );
+
+const thirtySixPagePdf = Buffer.from(
+  [
+    "%PDF-1.4",
+    "1 0 obj<</Type /Pages /Count 36>>endobj",
+    ...Array.from(
+      { length: 36 },
+      (_, index) => `${index + 2} 0 obj<</Type /Page /Parent 1 0 R>>endobj`,
+    ),
+    "%%EOF",
+  ].join("\n"),
+  "latin1",
+);
+assert.equal(detectPdfPageCount(thirtySixPagePdf), 36);
+assert.equal(MAX_DIRECT_EXTRACTION_PDF_PAGES, 10);
+assert.equal(detectPdfPageCount(Buffer.from("%PDF-1.4\n%%EOF")), null);
+
+const extractionService = fs.readFileSync(
+  path.join(root, "src", "server", "openai", "extract-worksheet.ts"),
+  "utf8",
+);
+assert.match(extractionService, /PDF_WORKSHEET_EXTRACTION_TIMEOUT_MS = 180_000/);
+assert.match(extractionService, /PDF_WORKSHEET_MAX_OUTPUT_TOKENS = 16_000/);
+assert.match(extractionService, /6_000 \+ pages \* 1_000/);
+
+const extractionRoute = fs.readFileSync(
+  path.join(root, "src", "app", "api", "assignments", "[assignmentId]", "worksheet", "route.ts"),
+  "utf8",
+);
+assert.match(extractionRoute, /PDF_TOO_LONG/);
+assert.match(extractionRoute, /startWorksheetExtractionAttempt/);
+assert.match(extractionRoute, /completeWorksheetExtractionAttempt/);
 assert.equal(apiInput.file_data.includes("student-name"), false);
 assert.equal(
   buildPdfInputFile(pdfBytes, "worksheet.pdf", "low").detail,
@@ -126,6 +162,19 @@ try {
       )
       .run(PDF_MEDIA_TYPE, pdfBytes.byteLength, hash, PDF_DIRECT_INPUT_VERSION);
 
+    database
+      .prepare(
+        [
+          "INSERT INTO worksheet_extraction_attempts",
+          "(id, assignment_id, source_kind, original_filename, page_count, input_hash, model_name,",
+          "prompt_version, schema_version, status, error_code, error_message, latency_ms, completed_at)",
+          "VALUES ('long_pdf_attempt', 'pdf_assignment', 'PDF', 'exam.pdf', 36, ?, 'gpt-5.6',",
+          "'2.3.0', '2.2.0', 'FAILED', 'PDF_TOO_LONG', 'PDF too long — 36 pages', 4,",
+          "strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        ].join(" "),
+      )
+      .run(hash);
+
     assert.equal(
       database
         .prepare(
@@ -133,6 +182,14 @@ try {
         )
         .get().media_type,
       PDF_MEDIA_TYPE,
+    );
+    assert.deepEqual(
+      database
+        .prepare(
+          "SELECT status, error_code, page_count FROM worksheet_extraction_attempts WHERE id = 'long_pdf_attempt'",
+        )
+        .get(),
+      { status: "FAILED", error_code: "PDF_TOO_LONG", page_count: 36 },
     );
     assert.equal(
       database

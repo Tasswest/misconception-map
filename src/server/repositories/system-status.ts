@@ -26,7 +26,7 @@ export function getSystemStatus() {
     const aiRuns = database
       .prepare(
         [
-          "SELECT purpose, status, model_name, input_tokens, output_tokens, latency_ms, created_at",
+          "SELECT purpose, status, model_name, input_tokens, output_tokens, latency_ms, error_code, created_at",
           "FROM ai_runs ORDER BY created_at DESC, id DESC LIMIT 25",
         ].join(" "),
       )
@@ -37,13 +37,15 @@ export function getSystemStatus() {
         input_tokens: number | null;
         output_tokens: number | null;
         latency_ms: number | null;
+        error_code: string | null;
         created_at: string;
       }>;
     const extractionRuns = database
       .prepare(
         [
           "SELECT 'WORKSHEET_EXTRACTION' AS purpose, 'SUCCEEDED' AS status, extraction.model_name,",
-          "extraction.input_tokens, extraction.output_tokens, extraction.latency_ms, extraction.cache_hit, extraction.created_at",
+          "extraction.input_tokens, extraction.output_tokens, extraction.latency_ms, extraction.cache_hit,",
+          "NULL AS error_code, NULL AS error_message, NULL AS page_count, extraction.created_at",
           "FROM assignment_source_extractions AS extraction",
           "ORDER BY extraction.created_at DESC, extraction.id DESC LIMIT 25",
         ].join(" "),
@@ -56,11 +58,44 @@ export function getSystemStatus() {
         output_tokens: number | null;
         latency_ms: number | null;
         cache_hit: 0 | 1;
+        error_code: null;
+        error_message: null;
+        page_count: null;
+        created_at: string;
+      }>;
+    const extractionFailures = database
+      .prepare(
+        [
+          "SELECT 'WORKSHEET_EXTRACTION' AS purpose, attempt.status, attempt.model_name,",
+          "attempt.input_tokens, attempt.output_tokens, attempt.latency_ms, attempt.cache_hit,",
+          "attempt.error_code, attempt.error_message, attempt.page_count, attempt.created_at",
+          "FROM worksheet_extraction_attempts AS attempt",
+          "WHERE attempt.status IN ('RUNNING', 'FAILED')",
+          "ORDER BY attempt.created_at DESC, attempt.id DESC LIMIT 25",
+        ].join(" "),
+      )
+      .all() as Array<{
+        purpose: string;
+        status: string;
+        model_name: string;
+        input_tokens: number | null;
+        output_tokens: number | null;
+        latency_ms: number | null;
+        cache_hit: 0 | 1;
+        error_code: string | null;
+        error_message: string | null;
+        page_count: number | null;
         created_at: string;
       }>;
     const recentRuns = [
-      ...aiRuns.map((run) => ({ ...run, cache_hit: 0 as const })),
+      ...aiRuns.map((run) => ({
+        ...run,
+        cache_hit: 0 as const,
+        error_message: null,
+        page_count: null,
+      })),
       ...extractionRuns,
+      ...extractionFailures,
     ]
       .sort((left, right) => right.created_at.localeCompare(left.created_at))
       .slice(0, 25)
@@ -76,6 +111,9 @@ export function getSystemStatus() {
             : (run.input_tokens ?? 0) + (run.output_tokens ?? 0),
         latencyMs: run.latency_ms,
         cacheHit: run.cache_hit === 1,
+        errorCode: run.error_code,
+        errorMessage: run.error_message,
+        pageCount: run.page_count,
         createdAt: run.created_at,
       }));
 

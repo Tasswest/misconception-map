@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import OpenAI, { APIError } from "openai";
+import OpenAI, { APIConnectionTimeoutError, APIError } from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
@@ -14,7 +14,10 @@ import { assignmentDomainSchema } from "@/domain/contracts";
 import { buildPdfInputFile } from "@/domain/pdf-input.mjs";
 import { OPENAI_MODEL } from "@/lib/config";
 
-export const WORKSHEET_EXTRACTION_PROMPT_VERSION = "2.2.0";
+export const WORKSHEET_EXTRACTION_PROMPT_VERSION = "2.3.0";
+export const WORKSHEET_EXTRACTION_TIMEOUT_MS = 85_000;
+export const PDF_WORKSHEET_EXTRACTION_TIMEOUT_MS = 180_000;
+export const PDF_WORKSHEET_MAX_OUTPUT_TOKENS = 16_000;
 
 const typedInputSchema = z
   .object({
@@ -40,6 +43,7 @@ const pdfInputSchema = z
     assignmentDomain: assignmentDomainSchema,
     pdfBytes: z.instanceof(Uint8Array).refine((value) => value.byteLength > 0),
     pdfSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    pdfPageCount: z.number().int().positive(),
   })
   .strict();
 
@@ -57,33 +61,66 @@ export class WorksheetExtractionError extends Error {
     | "OPENAI_AUTH_FAILED"
     | "OPENAI_RATE_LIMITED"
     | "OPENAI_UNAVAILABLE"
+    | "OPENAI_TIMEOUT"
     | "OPENAI_REQUEST_FAILED"
-    | "OPENAI_OUTPUT_INVALID";
+    | "OPENAI_OUTPUT_INVALID"
+    | "OPENAI_OUTPUT_LIMIT";
 
-  constructor(code: WorksheetExtractionError["code"], options?: ErrorOptions) {
+  readonly latencyMs: number;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+
+  constructor(
+    code: WorksheetExtractionError["code"],
+    options: ErrorOptions & {
+      latencyMs?: number;
+      inputTokens?: number | null;
+      outputTokens?: number | null;
+    } = {},
+  ) {
     const messages = {
       OPENAI_NOT_CONFIGURED:
         "Worksheet extraction needs OPENAI_API_KEY in the local environment.",
       OPENAI_AUTH_FAILED: "Worksheet extraction could not authenticate with OpenAI.",
       OPENAI_RATE_LIMITED: "Worksheet extraction is busy. Try again shortly.",
       OPENAI_UNAVAILABLE: "OpenAI is temporarily unavailable. Try the worksheet again.",
+      OPENAI_TIMEOUT:
+        "The PDF needed more than 3 minutes to extract. Select fewer exam pages and retry.",
       OPENAI_REQUEST_FAILED: "The worksheet could not be extracted.",
       OPENAI_OUTPUT_INVALID:
         "The worksheet extraction was incomplete. Try a clearer photo or typed copy.",
+      OPENAI_OUTPUT_LIMIT:
+        "The PDF contained more questions than one extraction response could hold. Select fewer exam pages and retry.",
     } as const;
     super(messages[code], options);
     this.name = "WorksheetExtractionError";
     this.code = code;
+    this.latencyMs = options.latencyMs ?? 0;
+    this.inputTokens = options.inputTokens ?? null;
+    this.outputTokens = options.outputTokens ?? null;
   }
 }
 
-let client: OpenAI | null = null;
+let shortClient: OpenAI | null = null;
+let pdfClient: OpenAI | null = null;
 
-function getClient() {
+function getClient(sourceKind: "TYPED" | "IMAGE" | "PDF") {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) throw new WorksheetExtractionError("OPENAI_NOT_CONFIGURED");
-  client ??= new OpenAI({ apiKey, timeout: 85_000, maxRetries: 0 });
-  return client;
+  if (sourceKind === "PDF") {
+    pdfClient ??= new OpenAI({
+      apiKey,
+      timeout: PDF_WORKSHEET_EXTRACTION_TIMEOUT_MS,
+      maxRetries: 0,
+    });
+    return pdfClient;
+  }
+  shortClient ??= new OpenAI({
+    apiKey,
+    timeout: WORKSHEET_EXTRACTION_TIMEOUT_MS,
+    maxRetries: 0,
+  });
+  return shortClient;
 }
 
 function sha256(value: string | Uint8Array) {
@@ -107,8 +144,18 @@ export function createWorksheetExtractionInputHash(
           : input.sourceKind === "IMAGE"
             ? input.imageSha256
             : input.pdfSha256,
+      pdfPageCount: input.sourceKind === "PDF" ? input.pdfPageCount : null,
     }),
   );
+}
+
+export function getWorksheetExtractionMaxOutputTokens(
+  sourceKind: "TYPED" | "IMAGE" | "PDF",
+  pdfPageCount: number | null = null,
+) {
+  if (sourceKind !== "PDF") return 8_000;
+  const pages = Math.max(1, Math.floor(pdfPageCount ?? 1));
+  return Math.min(PDF_WORKSHEET_MAX_OUTPUT_TOKENS, Math.max(8_000, 6_000 + pages * 1_000));
 }
 
 export async function extractWorksheet(rawInput: ExtractWorksheetInput) {
@@ -154,7 +201,7 @@ export async function extractWorksheet(rawInput: ExtractWorksheetInput) {
   const startedAt = performance.now();
 
   try {
-    const response = await getClient().responses.parse({
+    const response = await getClient(input.sourceKind).responses.parse({
       model: OPENAI_MODEL,
       store: false,
       reasoning: { effort: "low" },
@@ -167,11 +214,23 @@ export async function extractWorksheet(rawInput: ExtractWorksheetInput) {
           { description: "Exercises, self-contained questions, and expected answers extracted from one worksheet." },
         ),
       },
-      max_output_tokens: 20_000,
+      max_output_tokens: getWorksheetExtractionMaxOutputTokens(
+        input.sourceKind,
+        input.sourceKind === "PDF" ? input.pdfPageCount : null,
+      ),
     });
 
     if (response.status !== "completed" || response.output_parsed === null) {
-      throw new WorksheetExtractionError("OPENAI_OUTPUT_INVALID");
+      const latencyMs = Math.max(0, Math.round(performance.now() - startedAt));
+      const metadata = {
+        latencyMs,
+        inputTokens: response.usage?.input_tokens ?? null,
+        outputTokens: response.usage?.output_tokens ?? null,
+      };
+      if (response.incomplete_details?.reason === "max_output_tokens") {
+        throw new WorksheetExtractionError("OPENAI_OUTPUT_LIMIT", metadata);
+      }
+      throw new WorksheetExtractionError("OPENAI_OUTPUT_INVALID", metadata);
     }
     const extraction = worksheetExtractionAIOutputSchema.parse(
       response.output_parsed,
@@ -193,20 +252,27 @@ export async function extractWorksheet(rawInput: ExtractWorksheetInput) {
     };
   } catch (error) {
     if (error instanceof WorksheetExtractionError) throw error;
+    const latencyMs = Math.max(0, Math.round(performance.now() - startedAt));
+    if (error instanceof APIConnectionTimeoutError) {
+      throw new WorksheetExtractionError("OPENAI_TIMEOUT", {
+        cause: error,
+        latencyMs,
+      });
+    }
     if (error instanceof APIError) {
       if (error.status === 401 || error.status === 403) {
-        throw new WorksheetExtractionError("OPENAI_AUTH_FAILED", { cause: error });
+        throw new WorksheetExtractionError("OPENAI_AUTH_FAILED", { cause: error, latencyMs });
       }
       if (error.status === 429) {
-        throw new WorksheetExtractionError("OPENAI_RATE_LIMITED", { cause: error });
+        throw new WorksheetExtractionError("OPENAI_RATE_LIMITED", { cause: error, latencyMs });
       }
       if (typeof error.status === "number" && error.status >= 500) {
-        throw new WorksheetExtractionError("OPENAI_UNAVAILABLE", { cause: error });
+        throw new WorksheetExtractionError("OPENAI_UNAVAILABLE", { cause: error, latencyMs });
       }
     }
     if (error instanceof z.ZodError) {
-      throw new WorksheetExtractionError("OPENAI_OUTPUT_INVALID", { cause: error });
+      throw new WorksheetExtractionError("OPENAI_OUTPUT_INVALID", { cause: error, latencyMs });
     }
-    throw new WorksheetExtractionError("OPENAI_REQUEST_FAILED", { cause: error });
+    throw new WorksheetExtractionError("OPENAI_REQUEST_FAILED", { cause: error, latencyMs });
   }
 }
