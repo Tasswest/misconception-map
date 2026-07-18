@@ -24,6 +24,15 @@ assert.match(diagnosisService, /unmatchedProblems/);
 assert.match(diagnosisService, /\[No safely matched student work\]/);
 assert.match(diagnosisService, /inTaxonomyScope: problem\.inTaxonomyScope/);
 
+const diagnosisRepository = read("src/server/repositories/diagnosis.ts");
+assert.equal(
+  diagnosisRepository.match(
+    /diagnosis\.outcome === "INCORRECT" \? 0 : diagnosis\.severity/g,
+  )?.length,
+  2,
+  "single and full-page correction-only errors must preserve the legacy CORRECT-row severity invariant",
+);
+
 const policy = read("src/domain/diagnosis-policy.mjs");
 assert.match(policy, /!inTaxonomyScope && parsed\.outcome === "MISCONCEPTION"/);
 assert.match(policy, /\? "INCORRECT"/);

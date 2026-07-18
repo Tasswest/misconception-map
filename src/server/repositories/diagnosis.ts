@@ -1673,7 +1673,11 @@ export function completeDiagnosisRun(input: {
           ? diagnosis.misconceptionId
           : null,
         diagnosis.confidence,
-        diagnosis.severity,
+        // The legacy diagnosis outcome enum predates universal correction.
+        // A correction-only INCORRECT result is represented as CORRECT plus
+        // correction_verdict=INCORRECT; it must therefore retain the legacy
+        // CORRECT invariants while its incorrect steps carry the feedback.
+        diagnosis.outcome === "INCORRECT" ? 0 : diagnosis.severity,
         diagnosis.transcription,
         result.observedTransformation
           ? JSON.stringify(result.observedTransformation)
@@ -1980,7 +1984,7 @@ export function completeStudentPageDiagnosisRun(input: {
           ? diagnosis.misconceptionId
           : null,
         diagnosis.confidence,
-        diagnosis.severity,
+        diagnosis.outcome === "INCORRECT" ? 0 : diagnosis.severity,
         diagnosis.transcription,
         result.observedTransformation
           ? JSON.stringify(result.observedTransformation)

@@ -87,6 +87,47 @@ function errorResponse(error: unknown) {
   );
 }
 
+function logUnhandledDiagnosisFailure(error: unknown) {
+  if (
+    error instanceof DiagnosisServiceError ||
+    error instanceof DiagnosisRepositoryError
+  ) {
+    return;
+  }
+  const details =
+    typeof error === "object" && error !== null
+      ? {
+          name: "name" in error ? String(error.name) : "UnknownError",
+          code: "code" in error ? String(error.code) : null,
+          message: "message" in error ? String(error.message).slice(0, 500) : null,
+        }
+      : { name: typeof error, code: null, message: null };
+  // Never log request content, transcription, filenames, or student identity.
+  console.error("Unhandled diagnosis failure after route claim", details);
+}
+
+function reportableDiagnosisError(error: unknown) {
+  if (
+    error instanceof DiagnosisServiceError ||
+    error instanceof DiagnosisRepositoryError
+  ) {
+    return error;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    String(error.code).startsWith("SQLITE_")
+  ) {
+    return new DiagnosisRepositoryError(
+      "PERSISTENCE_ERROR",
+      "The diagnosis result could not be saved. The work is ready to retry.",
+      { cause: error },
+    );
+  }
+  return error;
+}
+
 type VisualMediaType =
   | "image/jpeg"
   | "image/png"
@@ -479,12 +520,14 @@ export async function POST(
     }
     return NextResponse.json(responseBody);
   } catch (error) {
+    logUnhandledDiagnosisFailure(error);
+    const reportableError = reportableDiagnosisError(error);
     if (runId) {
       const errorCode =
-        error instanceof DiagnosisServiceError
-          ? error.code
-          : error instanceof DiagnosisRepositoryError
-            ? error.code
+        reportableError instanceof DiagnosisServiceError
+          ? reportableError.code
+          : reportableError instanceof DiagnosisRepositoryError
+            ? reportableError.code
             : "DIAGNOSIS_FAILED";
 
       try {
@@ -493,8 +536,9 @@ export async function POST(
           runId,
           errorCode,
           latencyMs:
-            error instanceof DiagnosisServiceError && error.latencyMs > 0
-              ? error.latencyMs
+            reportableError instanceof DiagnosisServiceError &&
+            reportableError.latencyMs > 0
+              ? reportableError.latencyMs
               : Math.max(
                   0,
                   Math.round(performance.now() - routeStartedAt),
@@ -506,7 +550,7 @@ export async function POST(
       }
     }
 
-    return errorResponse(error);
+    return errorResponse(reportableError);
   } finally {
     protectedRequest.release();
   }

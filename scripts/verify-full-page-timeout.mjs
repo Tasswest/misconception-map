@@ -44,7 +44,7 @@ assert.doesNotMatch(
 );
 
 assert.match(route, /maxDuration = 360/);
-assert.match(route, /error\.latencyMs > 0/);
+assert.match(route, /reportableError\.latencyMs > 0/);
 assert.match(repository, /"OPENAI_TIMEOUT"/);
 assert.match(
   repository,
