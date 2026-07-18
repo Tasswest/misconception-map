@@ -378,14 +378,6 @@ function CorrectedQuestion({
           >
             {item.problemPrompt}
           </p>
-          {!item.inTaxonomyScope ? (
-            <span className="mt-2 inline-flex rounded-full bg-black/[0.05] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
-              {french
-                ? "Corrigé — hors analyse des conceptions (taxonomie algèbre/fractions)"
-                : "Corrected — outside misconception analysis (algebra/fractions taxonomy)"}
-            </span>
-          ) : null}
-
           {!diagnosis ? (
             <div className="mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
               <span className="font-semibold">
