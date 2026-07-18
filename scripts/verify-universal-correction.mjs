@@ -31,7 +31,11 @@ assert.match(policy, /\? "INCORRECT"/);
 const correctedCopy = read(
   "src/app/assignments/[assignmentId]/students/[membershipId]/corrected/page.tsx",
 );
-assert.match(correctedCopy, /Corrected — outside misconception analysis/);
+assert.doesNotMatch(
+  correctedCopy,
+  /Corrected — outside misconception analysis/,
+  "a teacher-selected exam question is corrected without an out-of-scope exclusion label",
+);
 
 const databasePath = path.join(root, "data", "misconception-map.db");
 if (fs.existsSync(databasePath)) {

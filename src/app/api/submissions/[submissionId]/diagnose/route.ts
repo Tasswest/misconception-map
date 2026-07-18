@@ -41,7 +41,9 @@ import { synchronizePredictionOutcomesForClass } from "@/server/repositories/pre
 import { resolveStoredStudentWorkAsset } from "@/server/storage/submission-assets";
 
 export const runtime = "nodejs";
-export const maxDuration = 240;
+// Leave one minute after the full-page SDK timeout to persist an observable
+// terminal run state and return the truthful retry response.
+export const maxDuration = 360;
 
 function serviceErrorStatus(code: string) {
   if (code === "OPENAI_NOT_CONFIGURED") return 503;
@@ -490,7 +492,13 @@ export async function POST(
           submissionId,
           runId,
           errorCode,
-          latencyMs: Math.max(0, Math.round(performance.now() - routeStartedAt)),
+          latencyMs:
+            error instanceof DiagnosisServiceError && error.latencyMs > 0
+              ? error.latencyMs
+              : Math.max(
+                  0,
+                  Math.round(performance.now() - routeStartedAt),
+                ),
         });
       } catch {
         // Preserve the original failure response. A later retry can reclaim a

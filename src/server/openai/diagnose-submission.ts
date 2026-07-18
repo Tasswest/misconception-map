@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import OpenAI, { APIError } from "openai";
+import OpenAI, { APIConnectionTimeoutError, APIError } from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
@@ -31,7 +31,10 @@ import {
 export { DIAGNOSIS_PROMPT_VERSION, DIAGNOSIS_SCHEMA_VERSION };
 
 export const DIAGNOSIS_MODEL = OPENAI_MODEL;
-export const DIAGNOSIS_RETRY_POLICY_VERSION = "1.1.0";
+export const DIAGNOSIS_RETRY_POLICY_VERSION = "1.2.0";
+export const SINGLE_DIAGNOSIS_TIMEOUT_MS = 85_000;
+export const FULL_PAGE_DIAGNOSIS_TIMEOUT_MS = 300_000;
+export const FULL_PAGE_MAX_OUTPUT_TOKENS = 20_000;
 export {
   STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION,
   STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION,
@@ -131,6 +134,7 @@ export const DIAGNOSIS_SERVICE_ERROR_CODES = [
   "OPENAI_NOT_CONFIGURED",
   "OPENAI_AUTH_FAILED",
   "OPENAI_RATE_LIMITED",
+  "OPENAI_TIMEOUT",
   "OPENAI_INVALID_REQUEST",
   "OPENAI_UNAVAILABLE",
   "OPENAI_REQUEST_FAILED",
@@ -159,6 +163,8 @@ const ERROR_MESSAGES: Record<DiagnosisServiceErrorCode, string> = {
     "Live diagnosis could not authenticate with OpenAI.",
   OPENAI_RATE_LIMITED:
     "Live diagnosis is busy. Try this submission again shortly.",
+  OPENAI_TIMEOUT:
+    "The page needed more time than allowed — retry once; if it persists, the page may be too dense.",
   OPENAI_INVALID_REQUEST:
     "OpenAI could not process this student-work submission.",
   OPENAI_UNAVAILABLE:
@@ -183,6 +189,7 @@ const ERROR_MESSAGES: Record<DiagnosisServiceErrorCode, string> = {
 
 const RETRYABLE_ERROR_CODES = new Set<DiagnosisServiceErrorCode>([
   "OPENAI_RATE_LIMITED",
+  "OPENAI_TIMEOUT",
   "OPENAI_UNAVAILABLE",
   "OPENAI_REQUEST_FAILED",
   "OPENAI_RESPONSE_FAILED",
@@ -327,24 +334,37 @@ export function createStudentPageDiagnosisInputHash(
   );
 }
 
-let openAIClient: OpenAI | null = null;
+let shortOpenAIClient: OpenAI | null = null;
+let fullPageOpenAIClient: OpenAI | null = null;
 
-function getOpenAIClient(inputHash: string) {
+function requireOpenAIApiKey(inputHash: string) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new DiagnosisServiceError("OPENAI_NOT_CONFIGURED", { inputHash });
   }
+  return apiKey;
+}
 
-  // Full multi-page booklets can legitimately need longer than the old
-  // 85-second single-question budget. Keep one request inside the route's
-  // 240-second ceiling while leaving enough time to persist a terminal state.
-  // SDK retries remain disabled because retry is explicit and observable.
-  openAIClient ??= new OpenAI({
-    apiKey,
-    timeout: 210_000,
+function getShortOpenAIClient(inputHash: string) {
+  shortOpenAIClient ??= new OpenAI({
+    apiKey: requireOpenAIApiKey(inputHash),
+    timeout: SINGLE_DIAGNOSIS_TIMEOUT_MS,
     maxRetries: 0,
   });
-  return openAIClient;
+  return shortOpenAIClient;
+}
+
+function getFullPageOpenAIClient(inputHash: string) {
+  // Universal correction can legitimately generate more than 11k output
+  // tokens. The 300-second SDK budget remains below the route ceiling so a
+  // terminal failure can still be persisted. SDK retries stay disabled:
+  // retries and the quality-only original-image fallback are explicit.
+  fullPageOpenAIClient ??= new OpenAI({
+    apiKey: requireOpenAIApiKey(inputHash),
+    timeout: FULL_PAGE_DIAGNOSIS_TIMEOUT_MS,
+    maxRetries: 0,
+  });
+  return fullPageOpenAIClient;
 }
 
 function elapsedMilliseconds(startedAt: number) {
@@ -395,7 +415,7 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
   const startedAt = performance.now();
 
   try {
-    const response = await getOpenAIClient(inputHash).responses.parse({
+    const response = await getShortOpenAIClient(inputHash).responses.parse({
       model: DIAGNOSIS_MODEL,
       store: false,
       reasoning: { effort: "medium" },
@@ -512,6 +532,9 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
       latencyMs: elapsedMilliseconds(startedAt),
       cause: error,
     };
+    if (error instanceof APIConnectionTimeoutError) {
+      throw new DiagnosisServiceError("OPENAI_TIMEOUT", metadata);
+    }
     if (error instanceof APIError) {
       throw new DiagnosisServiceError(mapAPIError(error), metadata);
     }
@@ -576,7 +599,7 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
   const startedAt = performance.now();
 
   try {
-    const response = await getOpenAIClient(inputHash).responses.parse({
+    const response = await getFullPageOpenAIClient(inputHash).responses.parse({
       model: DIAGNOSIS_MODEL,
       store: false,
       reasoning: { effort: "medium" },
@@ -608,7 +631,7 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
           },
         ),
       },
-      max_output_tokens: 20_000,
+      max_output_tokens: FULL_PAGE_MAX_OUTPUT_TOKENS,
     });
     const latencyMs = elapsedMilliseconds(startedAt);
     const errorMetadata = { inputHash, responseId: response.id, latencyMs };
@@ -791,6 +814,9 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
       latencyMs: elapsedMilliseconds(startedAt),
       cause: error,
     };
+    if (error instanceof APIConnectionTimeoutError) {
+      throw new DiagnosisServiceError("OPENAI_TIMEOUT", metadata);
+    }
     if (error instanceof APIError) {
       throw new DiagnosisServiceError(mapAPIError(error), metadata);
     }
@@ -806,7 +832,6 @@ export function shouldRetryStudentPageWithOriginal(input: Awaited<
 >) {
   return (
     input.result.pageTranscriptionConfidence < 0.72 ||
-    input.result.results.length === 0 ||
     input.result.results.some((item) =>
       shouldRetryDiagnosisWithOriginal(item),
     )

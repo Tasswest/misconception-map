@@ -198,6 +198,7 @@ export const DIAGNOSIS_FAILURE_CODES = [
   "OPENAI_NOT_CONFIGURED",
   "OPENAI_AUTH_FAILED",
   "OPENAI_RATE_LIMITED",
+  "OPENAI_TIMEOUT",
   "OPENAI_INVALID_REQUEST",
   "OPENAI_UNAVAILABLE",
   "OPENAI_REQUEST_FAILED",
@@ -237,6 +238,8 @@ const FAILURE_MESSAGES: Record<DiagnosisFailureCode, string> = {
   OPENAI_AUTH_FAILED: "Live diagnosis could not authenticate with OpenAI.",
   OPENAI_RATE_LIMITED:
     "Live diagnosis is busy. Try this submission again shortly.",
+  OPENAI_TIMEOUT:
+    "The page needed more time than allowed — retry once; if it persists, the page may be too dense.",
   OPENAI_INVALID_REQUEST:
     "OpenAI could not process this student-work submission.",
   OPENAI_UNAVAILABLE:

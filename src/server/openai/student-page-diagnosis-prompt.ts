@@ -1,7 +1,7 @@
 import type { AssignmentDomain } from "@/domain/contracts";
 import { buildDiagnosisPrompt } from "@/server/openai/diagnosis-prompt";
 
-export const STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION = "2.1.0";
+export const STUDENT_PAGE_DIAGNOSIS_PROMPT_VERSION = "2.2.0";
 
 type PageProblem = {
   position: number;
@@ -35,6 +35,7 @@ export function buildStudentPageDiagnosisPrompt(input: {
     "For each visible problem, return region as the smallest practical bounding rectangle around that problem's student work, using normalized page coordinates from 0 to 1 with origin at the top-left: {x, y, width, height}. If the work cannot be localized confidently, set region to null. Region is display metadata only and must never change or suppress a diagnosis.",
     "For every visible problem, copy that list entry's prompt exactly into diagnosis.observedPrompt and diagnose against that entry's correctAnswer.",
     "Correct every safely matched problem, whatever its subject. For a problem with inTaxonomyScope false, choose CORRECT when all visible work is correct or INCORRECT when a readable step or answer is wrong. In that correction-only case misconceptionId must be null, candidates must be empty, observedTransformation and strategyVariant must be null, and the errorNote must explain the mistake in the language of the problem. Never apply the algebra/fractions taxonomy to it.",
+    "Keep every step's correctNote or errorNote concise: one or two short sentences at most. State only what the teacher or student needs to understand that step; do not repeat the prompt, shared context, expected answer, or the same explanation across steps.",
     "If a work block is ambiguous, lacks a reliable label cue, conflicts with the supplied exercise/question pair, or cannot be matched safely, omit it and explain the uncertainty in segmentationReviewNote. Never guess it into the closest slot. If nothing is readable, return visibleProblems [] and a non-null segmentationReviewNote.",
     "pageTranscriptionConfidence measures both segmentation and whole-page legibility. If it is below 0.72, every visible nested diagnosis must abstain with LOW_TRANSCRIPTION_CONFIDENCE.",
   ].join("\n");

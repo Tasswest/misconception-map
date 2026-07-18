@@ -493,8 +493,13 @@ function verifyGuidedAndGroupedSurfaces() {
   );
   assert.match(
     diagnosisService,
-    /timeout: 210_000/,
-    "multi-page student booklets must fit inside the 240-second route budget",
+    /SINGLE_DIAGNOSIS_TIMEOUT_MS = 85_000/,
+    "single-question diagnosis must retain its short request budget",
+  );
+  assert.match(
+    diagnosisService,
+    /FULL_PAGE_DIAGNOSIS_TIMEOUT_MS = 300_000/,
+    "universal full-page correction needs a five-minute request budget",
   );
 }
 
