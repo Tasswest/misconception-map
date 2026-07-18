@@ -404,7 +404,11 @@ export function MisconceptionHeatmap({
               </span>
               <h3 className="mt-4 text-lg font-semibold">No repeated error pattern yet</h3>
               <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                Most items are waiting for your review. Reviewed items can reveal patterns.
+                {dashboard.summary.awaitingReviewCount > dashboard.summary.diagnosedCount
+                  ? "Most items are waiting for your review. Reviewed items can reveal patterns."
+                  : dashboard.summary.diagnosedCount > 0
+                    ? "No repeated pattern — errors found are isolated slips or outside the algebra/fractions analysis scope."
+                    : "No diagnosed work is available yet. Review flagged items to reveal patterns."}
               </p>
               <Link
                 className="mt-5 inline-flex rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"

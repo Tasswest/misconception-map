@@ -47,6 +47,7 @@ assert.doesNotMatch(heatmap, /Out of scope|out of scope/);
 assert.doesNotMatch(heatmap, /No repeated misconception|No flags|safe/);
 assert.match(heatmap, /No repeated error pattern yet/);
 assert.match(heatmap, /Reviewed items can reveal patterns/);
+assert.match(heatmap, /errors found are isolated slips or outside the algebra\/fractions analysis scope/);
 
 const legend = read("src/components/evidence-legend.tsx");
 for (const label of [
