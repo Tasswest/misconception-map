@@ -40,6 +40,17 @@ type IncorrectStepRow = {
   evidence_quote: string | null;
 };
 
+type UnmatchedReviewRow = {
+  submission_id: string;
+  assignment_id: string;
+  assignment_title: string;
+  class_id: string;
+  class_name: string;
+  membership_id: string;
+  student_name: string;
+  reason: string;
+};
+
 export type ErrorInventoryClassification =
   | "TAXONOMY_MISCONCEPTION"
   | "CALCULATION_SLIP"
@@ -103,6 +114,7 @@ export function getAssignmentErrorInventory(
   assignmentId: string,
 ): AssignmentErrorInventory | null {
   const rows = listLatestDiagnosisRows("assignment.id = ?", [assignmentId]);
+  const unmatchedRows = listUnmatchedReviewRows(assignmentId);
   if (rows.length === 0) {
     const assignment = getDatabase()
       .prepare(
@@ -120,6 +132,7 @@ export function getAssignmentErrorInventory(
         className: assignment.class_name,
       },
       [],
+      unmatchedRows,
     );
   }
   const first = rows[0];
@@ -131,7 +144,28 @@ export function getAssignmentErrorInventory(
       className: first.class_name,
     },
     rows,
+    unmatchedRows,
   );
+}
+
+function listUnmatchedReviewRows(assignmentId: string) {
+  return getDatabase()
+    .prepare(
+      [
+        "SELECT submission.id AS submission_id, assignment.id AS assignment_id, assignment.title AS assignment_title,",
+        "assignment.class_id, class.name AS class_name, submission.membership_id, student.display_name AS student_name,",
+        "submission.sanitized_error_message AS reason",
+        "FROM submissions AS submission",
+        "JOIN assignments AS assignment ON assignment.id = submission.assignment_id",
+        "JOIN classes AS class ON class.id = assignment.class_id",
+        "JOIN class_memberships AS membership ON membership.id = submission.membership_id",
+        "JOIN students AS student ON student.id = membership.student_id",
+        "WHERE assignment.id = ? AND submission.status = 'NEEDS_REVIEW'",
+        "AND COALESCE(TRIM(submission.sanitized_error_message), '') <> ''",
+        "AND NOT EXISTS (SELECT 1 FROM submission_answers AS answer JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id WHERE answer.submission_id = submission.id)",
+      ].join(" "),
+    )
+    .all(assignmentId) as UnmatchedReviewRow[];
 }
 
 export function listClassErrorInventoryRollups() {
@@ -212,6 +246,7 @@ function listLatestDiagnosisRows(
 function buildInventory(
   assignment: AssignmentErrorInventory["assignment"],
   rows: DiagnosisRow[],
+  unmatchedRows: UnmatchedReviewRow[] = [],
 ): AssignmentErrorInventory {
   const diagnosisIds = rows.map((row) => row.diagnosis_id);
   const stepRows = diagnosisIds.length
@@ -291,6 +326,28 @@ function buildInventory(
         correctedCopyUrl: `/analytics/${row.assignment_id}/corrected-copies/${row.membership_id}`,
       });
     }
+  }
+
+  for (const row of unmatchedRows) {
+    items.push({
+      id: `${row.submission_id}:unmatched`,
+      classification: "AWAITING_REVIEW",
+      assignmentId: row.assignment_id,
+      assignmentTitle: row.assignment_title,
+      classId: row.class_id,
+      className: row.class_name,
+      membershipId: row.membership_id,
+      studentName: row.student_name,
+      exerciseLabel: "Unmatched copy",
+      exercisePosition: 0,
+      questionLabel: "—",
+      questionReference: "Unmatched copy",
+      evidenceQuote: row.reason,
+      explanation: row.reason,
+      misconceptionId: null,
+      teacherLabel: null,
+      correctedCopyUrl: `/analytics/${row.assignment_id}/corrected-copies/${row.membership_id}`,
+    });
   }
 
   const misconceptions = groupMisconceptions(

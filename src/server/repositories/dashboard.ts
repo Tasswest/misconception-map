@@ -233,6 +233,20 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
     )
     .all(assignment.id, assignment.class_id) as DiagnosisRow[];
 
+  const unmatchedReviewCount = (
+    database
+      .prepare(
+        [
+          "SELECT count(*) AS count FROM submissions AS submission",
+          "WHERE submission.assignment_id = ? AND submission.class_id = ?",
+          "AND submission.status = 'NEEDS_REVIEW'",
+          "AND COALESCE(TRIM(submission.sanitized_error_message), '') <> ''",
+          "AND NOT EXISTS (SELECT 1 FROM submission_answers AS answer JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id WHERE answer.submission_id = submission.id)",
+        ].join(" "),
+      )
+      .get(assignment.id, assignment.class_id) as { count: number }
+  ).count;
+
   const diagnosisIds = diagnoses.map((diagnosis) => diagnosis.diagnosis_id);
   const steps = diagnosisIds.length
     ? (database
@@ -539,7 +553,7 @@ export function getHeatmapDashboard(assignmentId: string): HeatmapDashboard | nu
       awaitingReviewCount: diagnoses.filter(
         (diagnosis) =>
           !["CORRECT", "MISCONCEPTION"].includes(diagnosis.outcome),
-      ).length,
+      ).length + unmatchedReviewCount,
       notYetDiagnosedExerciseCount: exerciseRows.filter(
         (exercise) => exercise.question_count === 0,
       ).length,

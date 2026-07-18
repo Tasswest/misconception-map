@@ -247,7 +247,28 @@ export function listManagedAssignments(): ManagedAssignment[] {
           (
             SELECT count(*) FROM submissions AS submission
             WHERE submission.assignment_id = assignment.id
-              AND submission.status IN ('UPLOADED', 'PROCESSING', 'FAILED')
+              AND (
+                submission.status IN ('UPLOADED', 'PROCESSING', 'FAILED')
+                OR (
+                  submission.status = 'DIAGNOSED'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM submission_answers AS answer
+                    JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id
+                    JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id
+                    WHERE answer.submission_id = submission.id
+                  )
+                )
+                OR (
+                  submission.status = 'NEEDS_REVIEW'
+                  AND COALESCE(TRIM(submission.sanitized_error_message), '') = ''
+                  AND NOT EXISTS (
+                    SELECT 1 FROM submission_answers AS answer
+                    JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id
+                    JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id
+                    WHERE answer.submission_id = submission.id
+                  )
+                )
+              )
           ) AS unfinishedSubmissionCount
         FROM assignments AS assignment
         JOIN classes AS class ON class.id = assignment.class_id

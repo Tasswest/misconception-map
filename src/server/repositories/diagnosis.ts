@@ -583,7 +583,9 @@ function refreshUploadBatchState(uploadBatchId: string | null) {
     .prepare(
       [
         "SELECT batch.total_files,",
-        "SUM(CASE WHEN submission.status IN ('DIAGNOSED', 'NEEDS_REVIEW') THEN 1 ELSE 0 END) AS processed_files,",
+        "SUM(CASE WHEN (",
+        "submission.status = 'DIAGNOSED' AND EXISTS (SELECT 1 FROM submission_answers AS answer JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id WHERE answer.submission_id = submission.id)",
+        ") OR (submission.status = 'NEEDS_REVIEW' AND (COALESCE(TRIM(submission.sanitized_error_message), '') <> '' OR EXISTS (SELECT 1 FROM submission_answers AS answer JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id WHERE answer.submission_id = submission.id))) THEN 1 ELSE 0 END) AS processed_files,",
         "SUM(CASE WHEN submission.status = 'FAILED' THEN 1 ELSE 0 END) AS failed_files",
         "FROM upload_batches AS batch",
         "LEFT JOIN submissions AS submission ON submission.upload_batch_id = batch.id",
