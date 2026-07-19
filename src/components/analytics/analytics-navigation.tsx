@@ -29,7 +29,7 @@ export function AnalyticsTabs({
 }) {
   return (
     <nav
-      aria-label="Assignment analytics"
+      aria-label="Exam analytics"
       className={`overflow-x-auto rounded-2xl border border-black/[0.06] bg-white/70 p-1.5 ${className}`}
     >
       <div className="flex min-w-max gap-1">

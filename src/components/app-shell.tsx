@@ -13,7 +13,7 @@ const navigation = [
   { key: "Classes", label: "Classes", icon: UsersIcon, href: "/classes" },
   {
     key: "Assignments",
-    label: "Assignments",
+    label: "Exams",
     icon: ClipboardIcon,
     href: "/assignments",
   },

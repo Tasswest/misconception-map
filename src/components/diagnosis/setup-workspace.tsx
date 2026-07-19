@@ -122,7 +122,7 @@ export function SetupWorkspace({
     : selectedClass.students.length === 0
       ? "Add at least one student to the class first."
       : !assignmentTitle.trim()
-        ? "Enter an assignment title to continue."
+        ? "Enter an exam title to continue."
         : worksheetSourceKind === "TYPED" && !worksheetText.trim()
           ? "Paste the worksheet text to continue."
           : worksheetSourceKind === "IMAGE" && !worksheetFile
@@ -525,7 +525,7 @@ export function SetupWorkspace({
           <StepHeading
             icon={<ClipboardIcon className="size-5" />}
             number="3"
-            title="Create a diagnostic assignment"
+            title="Create a diagnostic exam"
           />
 
           {selectedClass?.assignments.length ? (
@@ -869,7 +869,7 @@ function titleFromFilename(filename: string) {
     .replace(/[_-]+/gu, " ")
     .replace(/\s+/gu, " ")
     .trim();
-  return (readable || "Diagnostic assignment").slice(0, 160);
+  return (readable || "Diagnostic exam").slice(0, 160);
 }
 
 function StepHeading({

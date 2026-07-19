@@ -307,10 +307,35 @@ export function seedDemoDatabase(database) {
     const insertMembership = database.prepare(
       "INSERT INTO class_memberships (id, class_id, student_id, sort_order, joined_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
     );
+    // Realistic but entirely fictional names, so the demo roster reads like a
+    // real class instead of "Demo learner 01". Kept as a fixed list so the
+    // synthetic classroom stays deterministic and reproducible.
+    const DEMO_STUDENT_NAMES = [
+      "Camille Laurent",
+      "Lucas Moreau",
+      "Inès Bernard",
+      "Hugo Petit",
+      "Léa Dubois",
+      "Nathan Girard",
+      "Chloé Rousseau",
+      "Adam Fontaine",
+      "Manon Lefèvre",
+      "Yanis Mercier",
+      "Jade Bonnet",
+      "Théo Lambert",
+      "Sarah Vidal",
+      "Enzo Faure",
+      "Louna Garnier",
+      "Rayan Chevalier",
+      "Emma Robin",
+      "Noah Blanchard",
+      "Zoé Marchand",
+      "Malik Henry",
+    ];
     for (let studentIndex = 1; studentIndex <= 20; studentIndex += 1) {
       const studentId = id(1000 + studentIndex);
       const membershipId = id(2000 + studentIndex);
-      const displayName = `Demo learner ${String(studentIndex).padStart(2, "0")}`;
+      const displayName = DEMO_STUDENT_NAMES[studentIndex - 1];
       insertStudent.run(studentId, displayName, BASELINE_CREATED, BASELINE_CREATED);
       insertMembership.run(
         membershipId,

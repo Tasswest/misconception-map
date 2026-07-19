@@ -153,7 +153,7 @@ export async function extractWorksheet(rawInput: ExtractWorksheetInput) {
   const startedAt = performance.now();
 
   try {
-    const response = await getClient().responses.parse({
+    const response = await getClient().responses.stream({
       model: OPENAI_MODEL,
       store: false,
       reasoning: { effort: "low" },
@@ -167,7 +167,7 @@ export async function extractWorksheet(rawInput: ExtractWorksheetInput) {
         ),
       },
       max_output_tokens: 20_000,
-    });
+    }).finalResponse();
 
     if (response.status !== "completed" || response.output_parsed === null) {
       throw new WorksheetExtractionError("OPENAI_OUTPUT_INVALID");

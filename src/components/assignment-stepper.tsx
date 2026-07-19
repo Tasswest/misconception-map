@@ -22,7 +22,7 @@ export function AssignmentStepper({
 }) {
   return (
     <nav
-      aria-label="Assignment progress"
+      aria-label="Exam progress"
       className={`assignment-stepper ${className}`}
     >
       <ol className="grid gap-2 rounded-[22px] border border-black/[0.06] bg-[var(--paper)] p-2 shadow-[0_12px_32px_rgba(35,51,46,0.04)] sm:grid-cols-4">

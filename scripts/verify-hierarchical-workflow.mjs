@@ -481,7 +481,7 @@ function verifyGuidedAndGroupedSurfaces() {
     path.join(root, "src", "components", "diagnosis", "setup-workspace.tsx"),
     "utf8",
   );
-  assert.match(setupWorkspace, /Enter an assignment title to continue\./);
+  assert.match(setupWorkspace, /Enter an exam title to continue\./);
   assert.match(setupWorkspace, /titleFromFilename\(file\.name\)/);
 
   const diagnosisService = fs.readFileSync(

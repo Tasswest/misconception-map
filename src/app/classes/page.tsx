@@ -1,9 +1,6 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { AddMemberButton } from "@/components/management/add-member-button";
-import { ClassActions } from "@/components/management/class-actions";
-import { MemberActions } from "@/components/management/member-actions";
 import { FreshDatabaseState } from "@/components/readiness-states";
 import { isOpenAIConfigured } from "@/lib/config";
 import { listManagedClasses } from "@/server/repositories/management";
@@ -15,7 +12,7 @@ export default function ClassesPage() {
 
   return (
     <AppShell activeNav="Classes" liveAiReady={isOpenAIConfigured()}>
-      <div className="mx-auto max-w-[1380px] px-5 py-7 md:px-8 lg:px-10 lg:py-9">
+      <div className="mx-auto max-w-[1120px] px-5 py-7 md:px-8 lg:px-10 lg:py-9">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--sage)]">
@@ -25,7 +22,7 @@ export default function ClassesPage() {
               Classes
             </h1>
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-              Open a class to see its roster, evidence coverage, and latest diagnostic.
+              Open a class to see its students, exams, and grade analysis.
             </p>
           </div>
           {classes.length ? (
@@ -33,148 +30,68 @@ export default function ClassesPage() {
               className="inline-flex self-start rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
               href="/assignments?new=1"
             >
-              New class or assignment
+              New class or exam
             </Link>
           ) : null}
         </header>
 
         {classes.length ? (
-          <div className="mt-6 grid gap-5 xl:grid-cols-2">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {classes.map((classroom) => (
-              <article
-                className="rounded-[24px] border border-black/[0.06] bg-[var(--paper)] p-5 shadow-[0_18px_45px_rgba(35,51,46,0.05)]"
+              <Link
+                className="group flex items-center gap-4 rounded-[22px] border border-black/[0.06] bg-[var(--paper)] p-5 shadow-[0_18px_45px_rgba(35,51,46,0.05)] transition hover:border-[var(--sage)]/30 hover:shadow-[0_20px_50px_rgba(35,51,46,0.09)]"
+                href={`/classes/${classroom.id}`}
                 key={classroom.id}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-xl font-semibold tracking-[-0.025em]">
-                      {classroom.name}
-                    </h2>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      {gradeLabel(classroom.gradeBand)}
-                      {classroom.schoolYear ? ` · ${classroom.schoolYear}` : ""}
-                    </p>
-                  </div>
-                  <ClassActions
-                    classId={classroom.id}
-                    currentGradeBand={classroom.gradeBand}
-                    currentName={classroom.name}
-                    currentSchoolYear={classroom.schoolYear}
-                  />
-                </div>
-
-                <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <Stat label="Students" value={classroom.studentCount} />
-                  <Stat label="Assignments" value={classroom.assignmentCount} />
-                  <Stat label="Diagnosed" value={classroom.diagnosedStudentCount} />
-                  <Stat label="Review" value={classroom.needsReviewCount} tone="amber" />
-                </div>
-
-                <div className="mt-5 border-t border-black/[0.06] pt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-                      Roster
-                    </p>
-                    <AddMemberButton
-                      classId={classroom.id}
-                      className={classroom.name}
-                    />
-                  </div>
-                  {classroom.students.length ? (
-                    <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {classroom.students.map((student) => (
-                        <li
-                          className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-black/[0.07] bg-white px-3 py-2"
-                          key={student.membershipId}
-                        >
-                          {classroom.latestAssignment ? (
-                            <Link
-                              className="min-w-0 truncate text-xs font-semibold text-[var(--ink)] transition hover:text-[var(--sage)]"
-                              href={`/analytics/${classroom.latestAssignment.id}/corrected-copies/${student.membershipId}`}
-                              title="Open corrected copy"
-                            >
-                              {student.displayName}
-                            </Link>
-                          ) : (
-                            <span className="min-w-0 truncate text-xs font-semibold">
-                              {student.displayName}
-                            </span>
-                          )}
-                          <MemberActions
-                            classId={classroom.id}
-                            currentName={student.displayName}
-                            membershipId={student.membershipId}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="mt-3 rounded-xl border border-dashed border-black/10 bg-white/55 px-4 py-4">
-                      <p className="text-xs text-[var(--muted)]">
-                        No class members yet. Use <span className="font-semibold text-[var(--ink)]">Add person</span> to build this roster.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-5 flex flex-wrap items-center gap-2">
-                  {classroom.latestAssignment ? (
-                    <>
-                      <Link
-                        className="rounded-xl bg-[var(--sidebar)] px-3.5 py-2.5 text-xs font-semibold text-white"
-                        href={`/analytics/${classroom.latestAssignment.id}`}
-                      >
-                        Open latest analytics
-                      </Link>
-                      <span className="text-xs text-[var(--muted)]">
-                        {classroom.latestAssignment.title}
-                      </span>
-                    </>
-                  ) : (
-                    <Link
-                      className="rounded-xl border border-black/10 bg-white px-3.5 py-2.5 text-xs font-semibold"
-                      href="/assignments?new=1"
-                    >
-                      Create first assignment
-                    </Link>
-                  )}
-                </div>
-              </article>
+                <span
+                  aria-hidden="true"
+                  className="grid size-14 shrink-0 place-items-center rounded-2xl bg-[var(--soft-mint)] text-lg font-semibold text-[var(--sidebar)]"
+                >
+                  {monogram(classroom.name)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-lg font-semibold tracking-[-0.02em] text-[var(--ink)]">
+                    {classroom.name}
+                  </span>
+                  <span className="mt-0.5 block truncate text-sm font-medium text-[var(--sage)]">
+                    {classroom.schoolName ?? gradeLabel(classroom.gradeBand)}
+                  </span>
+                  <span className="mt-1.5 block text-xs text-[var(--muted)]">
+                    {classroom.studentCount} student
+                    {classroom.studentCount === 1 ? "" : "s"} ·{" "}
+                    {classroom.assignmentCount} exam
+                    {classroom.assignmentCount === 1 ? "" : "s"}
+                  </span>
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="shrink-0 text-[var(--muted)] transition group-hover:translate-x-0.5 group-hover:text-[var(--sage)]"
+                >
+                  →
+                </span>
+              </Link>
             ))}
           </div>
         ) : (
-          <EmptyState />
+          <FreshDatabaseState title="No active classes yet" />
         )}
       </div>
     </AppShell>
   );
 }
 
-function Stat({
-  label,
-  value,
-  tone = "green",
-}: {
-  label: string;
-  value: number;
-  tone?: "green" | "amber";
-}) {
-  return (
-    <div className="rounded-xl border border-black/[0.05] bg-white/65 p-3">
-      <p className="text-xl font-semibold tracking-[-0.025em]">{value}</p>
-      <p className={`mt-1 text-[10px] font-semibold ${tone === "amber" && value ? "text-[#8a642a]" : "text-[var(--muted)]"}`}>
-        {label}
-      </p>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return <FreshDatabaseState title="No active classes yet" />;
-}
-
-function gradeLabel(value: string) {
+function gradeLabel(value: string): string {
   return value === "MIXED_5_8"
     ? "Grades 5–8"
     : value.replace("GRADE_", "Grade ");
+}
+
+function monogram(name: string): string {
+  const words = name
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
 }

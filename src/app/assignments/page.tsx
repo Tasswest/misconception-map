@@ -40,10 +40,10 @@ export default async function AssignmentsPage({
               Diagnostic history
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
-              Assignments
+              Exams
             </h1>
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-              Each assignment reopens at the next action that needs you.
+              Each exam reopens at the next action that needs you.
             </p>
           </div>
           {hasClasses ? (
@@ -51,7 +51,7 @@ export default async function AssignmentsPage({
               className="inline-flex self-start rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white"
               href="/assignments?new=1"
             >
-              New assignment
+              New exam
             </Link>
           ) : null}
         </header>

@@ -214,7 +214,7 @@ async function runStructuredGeneration<T>(input: {
   const startedAt = performance.now();
 
   try {
-    const response = await getClient(input.feature).responses.parse({
+    const response = await getClient(input.feature).responses.stream({
       model: OPENAI_MODEL,
       store: false,
       reasoning: { effort: "medium" },
@@ -236,7 +236,7 @@ async function runStructuredGeneration<T>(input: {
         }),
       },
       max_output_tokens: input.maxOutputTokens,
-    });
+    }).finalResponse();
 
     if (response.status !== "completed" || response.output_parsed === null) {
       throw new InstructionalGenerationError(
