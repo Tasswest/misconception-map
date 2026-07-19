@@ -201,7 +201,7 @@ export async function extractWorksheet(rawInput: ExtractWorksheetInput) {
   const startedAt = performance.now();
 
   try {
-    const response = await getClient(input.sourceKind).responses.parse({
+    const response = await getClient(input.sourceKind).responses.stream({
       model: OPENAI_MODEL,
       store: false,
       reasoning: { effort: "low" },
@@ -218,7 +218,7 @@ export async function extractWorksheet(rawInput: ExtractWorksheetInput) {
         input.sourceKind,
         input.sourceKind === "PDF" ? input.pdfPageCount : null,
       ),
-    });
+    }).finalResponse();
 
     if (response.status !== "completed" || response.output_parsed === null) {
       const latencyMs = Math.max(0, Math.round(performance.now() - startedAt));

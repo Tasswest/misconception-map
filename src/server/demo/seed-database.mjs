@@ -16,6 +16,29 @@ const PREDICTION_LOCKED = "2026-01-20T08:00:00.000Z";
 const FOLLOWUP_SUBMITTED = "2026-01-21T09:00:00.000Z";
 const FOLLOWUP_ANSWERED = "2026-01-21T09:01:00.000Z";
 const FOLLOWUP_DIAGNOSED = "2026-01-21T09:02:00.000Z";
+const DEMO_SCHOOL_NAME = "Riverside Middle School · Synthetic Demo";
+const DEMO_STUDENT_NAMES = [
+  "Camille Laurent",
+  "Lucas Moreau",
+  "Inès Bernard",
+  "Hugo Petit",
+  "Léa Dubois",
+  "Nathan Girard",
+  "Chloé Rousseau",
+  "Adam Fontaine",
+  "Manon Lefèvre",
+  "Yanis Mercier",
+  "Jade Bonnet",
+  "Théo Lambert",
+  "Sarah Vidal",
+  "Enzo Faure",
+  "Louna Garnier",
+  "Rayan Chevalier",
+  "Emma Robin",
+  "Noah Blanchard",
+  "Zoé Marchand",
+  "Malik Henry",
+];
 
 /** @typedef {import("better-sqlite3").Database} Database */
 /**
@@ -97,6 +120,74 @@ const predictedAnswers = [
 /** @param {number} number */
 function id(number) {
   return `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`;
+}
+
+/** @param {Database} database */
+function ensureDemoGradebook(database) {
+  database
+    .prepare(
+      "UPDATE classes SET school_name = ?, updated_at = ? WHERE id = ? AND school_name IS NULL",
+    )
+    .run(
+      DEMO_SCHOOL_NAME,
+      "2026-01-22T08:00:00.000Z",
+      DEMO_CLASS_ID,
+    );
+
+  const updateLegacyName = database.prepare(
+    "UPDATE students SET display_name = ?, updated_at = ? WHERE id = ? AND is_demo = 1 AND display_name GLOB 'Demo learner *'",
+  );
+  DEMO_STUDENT_NAMES.forEach((displayName, index) => {
+    updateLegacyName.run(
+      displayName,
+      "2026-01-22T08:00:00.000Z",
+      id(1001 + index),
+    );
+  });
+
+  const insertGrade = database.prepare(
+    [
+      "INSERT INTO exam_grades",
+      "(id, class_id, assignment_id, membership_id, score, max_score, graded_at, created_at, updated_at)",
+      "VALUES (?, ?, ?, ?, ?, 20, ?, ?, ?)",
+      "ON CONFLICT (assignment_id, membership_id) DO NOTHING",
+    ].join(" "),
+  );
+  const assignments = [
+    {
+      id: DEMO_BASELINE_ASSIGNMENT_ID,
+      gradedStudentCount: 20,
+      gradeIdStart: 90_000,
+      timestampDay: "22",
+      score: (studentIndex) => 8 + ((studentIndex * 7) % 12),
+    },
+    {
+      id: DEMO_FOLLOWUP_ASSIGNMENT_ID,
+      gradedStudentCount: 16,
+      gradeIdStart: 90_100,
+      timestampDay: "23",
+      score: (studentIndex) => 9 + ((studentIndex * 5) % 11),
+    },
+  ];
+  for (const assignment of assignments) {
+    for (
+      let studentIndex = 1;
+      studentIndex <= assignment.gradedStudentCount;
+      studentIndex += 1
+    ) {
+      const timestamp = `2026-01-${assignment.timestampDay}T08:${String(studentIndex).padStart(2, "0")}:00.000Z`;
+      insertGrade.run(
+        id(assignment.gradeIdStart + studentIndex),
+        DEMO_CLASS_ID,
+        assignment.id,
+        id(2000 + studentIndex),
+        assignment.score(studentIndex),
+        timestamp,
+        timestamp,
+        timestamp,
+      );
+    }
+  }
 }
 
 /** @param {string} value */
@@ -274,6 +365,7 @@ export function seedDemoDatabase(database) {
             DEMO_FOLLOWUP_ASSIGNMENT_ID,
             DEMO_CLASS_ID,
           );
+        ensureDemoGradebook(database);
       })();
       return {
         classId: DEMO_CLASS_ID,
@@ -310,7 +402,7 @@ export function seedDemoDatabase(database) {
     for (let studentIndex = 1; studentIndex <= 20; studentIndex += 1) {
       const studentId = id(1000 + studentIndex);
       const membershipId = id(2000 + studentIndex);
-      const displayName = `Demo learner ${String(studentIndex).padStart(2, "0")}`;
+      const displayName = DEMO_STUDENT_NAMES[studentIndex - 1];
       insertStudent.run(studentId, displayName, BASELINE_CREATED, BASELINE_CREATED);
       insertMembership.run(
         membershipId,
@@ -478,6 +570,7 @@ export function seedDemoDatabase(database) {
     insertRevisionSuggestion(database, modelId, diagnosisIds);
     insertTeachingBrief(database, diagnosisIds);
     insertDemoWorksheet(database, modelId);
+    ensureDemoGradebook(database);
   })();
 
   return {

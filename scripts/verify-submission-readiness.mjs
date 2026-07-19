@@ -40,6 +40,27 @@ function verifyFreshAndSeededDatabases() {
       fresh.prepare("SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1").pluck().get(),
       "020_worksheet_extraction_attempts.sql",
     );
+    assert.equal(
+      fresh
+        .prepare("SELECT count(*) FROM schema_migrations WHERE name = '019_gradebook.sql'")
+        .pluck()
+        .get(),
+      1,
+    );
+    assert.deepEqual(
+      fresh
+        .prepare("PRAGMA table_info(classes)")
+        .all()
+        .filter((column) => ["school_name", "photo_asset_path"].includes(column.name))
+        .map((column) => column.name)
+        .sort(),
+      ["photo_asset_path", "school_name"],
+    );
+    assert.ok(
+      fresh
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'exam_grades'")
+        .get(),
+    );
     assert.deepEqual(
       fresh
         .prepare("PRAGMA table_info(assignment_source_extractions)")
@@ -85,6 +106,17 @@ function verifyFreshAndSeededDatabases() {
         .get() > 0,
     );
     assert.ok(seeded.prepare("SELECT count(*) FROM diagnoses").pluck().get() > 0);
+    assert.equal(
+      seeded.prepare("SELECT count(*) FROM exam_grades").pluck().get(),
+      36,
+    );
+    assert.equal(
+      seeded
+        .prepare("SELECT count(DISTINCT assignment_id) FROM exam_grades")
+        .pluck()
+        .get(),
+      2,
+    );
     assert.deepEqual(
       seeded
         .prepare(
@@ -237,10 +269,26 @@ function verifyCostCacheAndStatus() {
   assert.match(extraction, /reasoning: \{ effort: "low" \}/);
   assert.match(extraction, /buildPdfInputFile\(input\.pdfBytes, "worksheet\.pdf", "low"\)/);
   assert.match(extraction, /detail: "low" as const/);
+  assert.equal((extraction.match(/responses\.stream\(/g) ?? []).length, 1);
+  assert.equal((extraction.match(/\.finalResponse\(\)/g) ?? []).length, 1);
 
   const diagnosis = read("src/server/openai/diagnose-submission.ts");
   assert.match(diagnosis, /reasoning: \{ effort: "medium" \}/);
   assert.match(diagnosis, /detail: "high" as const/);
+  assert.equal((diagnosis.match(/responses\.stream\(/g) ?? []).length, 2);
+  assert.equal((diagnosis.match(/\.finalResponse\(\)/g) ?? []).length, 2);
+
+  const instructionalSupport = read(
+    "src/server/openai/generate-instructional-support.ts",
+  );
+  assert.equal(
+    (instructionalSupport.match(/responses\.stream\(/g) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (instructionalSupport.match(/\.finalResponse\(\)/g) ?? []).length,
+    1,
+  );
 
   const worksheetRoute = read("src/app/api/assignments/[assignmentId]/worksheet/route.ts");
   assert.match(worksheetRoute, /const cached = getCachedWorksheetExtractionRun\(inputHash\)/);

@@ -25,17 +25,20 @@ export function ClassActions({
   currentName,
   currentGradeBand,
   currentSchoolYear,
+  currentSchoolName,
 }: {
   classId: string;
   currentName: string;
   currentGradeBand: GradeBand;
   currentSchoolYear: string | null;
+  currentSchoolName: string | null;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(currentName);
   const [gradeBand, setGradeBand] = useState(currentGradeBand);
   const [schoolYear, setSchoolYear] = useState(currentSchoolYear ?? "");
+  const [schoolName, setSchoolName] = useState(currentSchoolName ?? "");
   const [busy, setBusy] = useState<"save" | "remove" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const endpoint = `/api/classes/${encodeURIComponent(classId)}`;
@@ -65,6 +68,7 @@ export function ClassActions({
         name: name.trim(),
         gradeBand,
         schoolYear: schoolYear.trim() || null,
+        schoolName: schoolName.trim() || null,
       });
       setEditing(false);
       router.refresh();
@@ -145,6 +149,17 @@ export function ClassActions({
               onChange={(event) => setName(event.target.value)}
               required
               value={name}
+            />
+          </label>
+          <label className="block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">
+            School <span className="font-medium normal-case">(optional)</span>
+            <input
+              className="mt-1.5 w-full rounded-lg border border-black/10 px-3 py-2 text-xs font-medium normal-case tracking-normal outline-none focus:border-[var(--sage)]"
+              disabled={busy !== null}
+              maxLength={120}
+              onChange={(event) => setSchoolName(event.target.value)}
+              placeholder="Collège Jean Moulin"
+              value={schoolName}
             />
           </label>
           <label className="block text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">

@@ -26,6 +26,7 @@ export const updateClassDetailsInputSchema = z
     name: z.string().trim().min(1).max(120),
     gradeBand: managedGradeBandSchema,
     schoolYear: z.string().trim().min(1).max(20).nullable(),
+    schoolName: z.string().trim().min(1).max(120).nullable().default(null),
   })
   .strict();
 
@@ -62,6 +63,7 @@ export type ManagedClass = {
   name: string;
   gradeBand: z.infer<typeof managedGradeBandSchema>;
   schoolYear: string | null;
+  schoolName: string | null;
   isDemo: boolean;
   studentCount: number;
   assignmentCount: number;
@@ -117,6 +119,7 @@ export function listManagedClasses(): ManagedClass[] {
           class.name,
           class.grade_band AS gradeBand,
           class.school_year AS schoolYear,
+          class.school_name AS schoolName,
           class.is_demo,
           (
             SELECT count(*) FROM class_memberships AS membership
@@ -184,6 +187,7 @@ export function listManagedClasses(): ManagedClass[] {
     name: row.name,
     gradeBand: row.gradeBand,
     schoolYear: row.schoolYear,
+    schoolName: row.schoolName,
     isDemo: row.is_demo === 1,
     studentCount: row.studentCount,
     assignmentCount: row.assignmentCount,
@@ -323,12 +327,18 @@ export function updateClassDetails(
   const result = getDatabase()
     .prepare(
       [
-        "UPDATE classes SET name = ?, grade_band = ?, school_year = ?,",
+        "UPDATE classes SET name = ?, grade_band = ?, school_year = ?, school_name = ?,",
         "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
         "WHERE id = ? AND archived_at IS NULL",
       ].join(" "),
     )
-    .run(parsed.name, parsed.gradeBand, parsed.schoolYear, classId);
+    .run(
+      parsed.name,
+      parsed.gradeBand,
+      parsed.schoolYear,
+      parsed.schoolName,
+      classId,
+    );
   if (!result.changes) {
     throw new ManagementRepositoryError(
       "CLASS_NOT_FOUND",

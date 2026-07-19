@@ -415,7 +415,7 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
   const startedAt = performance.now();
 
   try {
-    const response = await getShortOpenAIClient(inputHash).responses.parse({
+    const response = await getShortOpenAIClient(inputHash).responses.stream({
       model: DIAGNOSIS_MODEL,
       store: false,
       reasoning: { effort: "medium" },
@@ -432,7 +432,7 @@ export async function diagnoseSubmission(input: DiagnoseSubmissionInput) {
         ),
       },
       max_output_tokens: 6_000,
-    });
+    }).finalResponse();
     const latencyMs = elapsedMilliseconds(startedAt);
     const errorMetadata = {
       inputHash,
@@ -599,7 +599,7 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
   const startedAt = performance.now();
 
   try {
-    const response = await getFullPageOpenAIClient(inputHash).responses.parse({
+    const response = await getFullPageOpenAIClient(inputHash).responses.stream({
       model: DIAGNOSIS_MODEL,
       store: false,
       reasoning: { effort: "medium" },
@@ -632,7 +632,7 @@ export async function diagnoseStudentPage(input: DiagnoseStudentPageInput) {
         ),
       },
       max_output_tokens: FULL_PAGE_MAX_OUTPUT_TOKENS,
-    });
+    }).finalResponse();
     const latencyMs = elapsedMilliseconds(startedAt);
     const errorMetadata = { inputHash, responseId: response.id, latencyMs };
     if (response.error !== null) {
