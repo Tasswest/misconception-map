@@ -1,7 +1,11 @@
 .git
 .github
 .next
+.vscode
+.idea
+.cursor
 .claude
+.codex
 tmp
 node_modules
 data
@@ -11,3 +15,4 @@ uploads
 *.log
 *.tsbuildinfo
 docs
+sample-exams

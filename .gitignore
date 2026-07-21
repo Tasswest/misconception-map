@@ -23,5 +23,11 @@ uploads/
 .DS_Store
 .vercel/
 *.tsbuildinfo
-.claude/
 tmp/
+
+# Local editor and assistant workspaces
+.vscode/
+.idea/
+.cursor/
+.claude/
+.codex/
