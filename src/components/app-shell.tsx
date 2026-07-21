@@ -146,22 +146,11 @@ export function AppShell({
             </div>
           </div>
         </header>
-        {hosted ? (
+        {hosted && aiAvailability && !aiAvailability.available ? (
           <div className="hosted-demo-banner border-b border-[#d7aa55]/35 bg-[#fff5df] px-5 py-3 text-sm text-[#765725] md:px-8 lg:px-10" role="status">
-            <div className="mx-auto flex max-w-7xl flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-              <p>
-                <strong>Shared demo instance</strong> — upload only synthetic or de-identified work. Provided sample fixtures below.
-              </p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold">
-                <a className="underline underline-offset-4" href="/api/fixtures/full-page-followup.jpeg">Download full-page fixture</a>
-                <a className="underline underline-offset-4" href="/api/fixtures/negative-distribution.jpeg">Download single-answer fixture</a>
-              </div>
-            </div>
-            {aiAvailability && !aiAvailability.available ? (
-              <p className="mx-auto mt-2 max-w-7xl border-t border-[#d7aa55]/25 pt-2 font-semibold">
-                {aiAvailability.message}
-              </p>
-            ) : null}
+            <p className="mx-auto max-w-7xl font-semibold">
+              {aiAvailability.message}
+            </p>
           </div>
         ) : null}
         <main>{children}</main>

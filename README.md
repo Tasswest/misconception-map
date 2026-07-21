@@ -51,7 +51,7 @@ OPENAI_API_KEY=your_key_here
 
 Hosted URL: **[web-production-6c624.up.railway.app](https://web-production-6c624.up.railway.app)**. The shared access code is intentionally not in this public README; put **`<JUDGE_ACCESS_CODE from the author>`** only in the Devpost testing-instructions field.
 
-The hosted path is the same application with `HOSTED_MODE=1`: every product page and API route requires a seven-day, httpOnly, HMAC-signed access cookie; failed gate attempts and live-AI requests are rate-limited. The banner asks judges to upload only synthetic or de-identified work and provides two downloadable fixtures. Seeded Analytics views, grouped copies, and Prediction Lab remain available if live AI is unavailable.
+The hosted path is the same application with `HOSTED_MODE=1`: every product page and API route requires a seven-day, httpOnly, HMAC-signed access cookie; failed gate attempts and live-AI requests are rate-limited. A banner appears only when live AI is unavailable (for example when the daily demo budget is reached). Sample fixtures remain downloadable at `/api/fixtures/full-page-followup.jpeg` and `/api/fixtures/negative-distribution.jpeg`; upload only synthetic or de-identified work to the shared instance. Seeded Analytics views, grouped copies, and Prediction Lab remain available if live AI is unavailable.
 
 Railway deployment:
 
