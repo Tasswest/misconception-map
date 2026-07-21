@@ -120,16 +120,22 @@ All live calls use `gpt-5.6`, strict Structured Outputs, `store: false`, prompt/
 
 All files in `sample-work/` and `fixtures/student-work/` are synthetic and name-free. In hosted mode, the same single-answer and full-page fixtures are downloadable from the privacy banner.
 
-### Real six-page French exam and booklet
+### Real French exams, included for judging
 
-The real evaluation files are intentionally not committed because they are not synthetic project assets. If you have the local fixtures, use:
+`sample-exams/` contains the material I actually test with: five past papers from the 2019 French **brevet** (the national exam at the end of middle school, ~grade 8/9), each with a teacher subject PDF and three handwritten student booklets.
 
-- teacher source: `2019_07_Amerique_du_Sud_Serie_generale_SUJET.pdf`;
-- deidentified booklet: `2019_07_Amerique_du_Sud_Cecilia.pdf`.
+Two things to know before opening them:
 
-Create an Algebra assignment, upload the teacher PDF, and inspect extraction before confirming. The extracted structure must show **Exercices 1–6** with their original numbering. Exercises outside algebra/fractions remain preserved as teacher-selected exam content; they are never silently dropped or forced into an algebra misconception. Then upload the booklet as one full-page PDF. Matching uses printed cues such as `1.1` and `Ex 7 Q3`; ambiguous work remains visibly unmatched rather than being guessed into a slot.
+- **Everything in there is French.** I am French, and the complete national exam sets I had access to are the French ones. The app itself is in English; only the exam content and the generated feedback follow the language of the exam, which is what a returned copy should do anyway.
+- **The students are invented.** Cecilia, Julia and Thomas do not exist. I wrote every booklet by hand myself, giving each invented student a different profile of mistakes. No real student work is in this repository; `npm run verify:privacy` allows exactly this folder and still rejects databases, uploads, and everything under `data/`.
 
-The verified fixture produced French feedback and a 12-page A4 corrected report with the summary on page 1, exercise boundaries, and no orphaned question headers.
+To run one exam end to end (with `OPENAI_API_KEY` set):
+
+1. **Assignments → New assignment**, pick a class, domain **Algebra**, source **Exam or worksheet**, and upload for example `sample-exams/France/2019_04_France_Serie_generale_SUJET.pdf`. Review the extracted exercises, then **Confirm worksheet and add student work**. Exercises outside algebra/fractions (geometry, probability, Scratch) stay visible as exam content — they are never forced into an algebra misconception.
+2. Under **Student copies**, upload the three booklets from the same folder, tag each one to a student, attest that no real names are visible, and hit **Diagnose**. A full six-page booklet takes about two to four minutes.
+3. Open the assignment's Analytics for the class view, the returnable corrected copies, and the follow-up evaluation generator.
+
+I ran all five exams through the pipeline on July 20–21, 2026: 15 booklets, 393 questions diagnosed, 59 items flagged as uncertain instead of guessed, and no forced verdict. Matching uses printed cues such as `1.1`; ambiguous work stays visibly unmatched rather than being guessed into a slot. The France exam is loaded and fully diagnosed on the hosted judge demo, so the fastest way to see the result is to open its analytics there.
 
 ## Teacher workflow and evidence model
 
@@ -290,21 +296,19 @@ OpenAI calls use `store: false`. The teacher source, assignment context, and dei
 - Hierarchical cross-page matching v2, including page-numbered regions for multi-page booklets.
 - A student mode for receiving corrected copies and completing discrepant-event practice.
 
-## Draft — How Codex and GPT-5.6 were used
+## How Codex and GPT-5.6 were used
 
-> **TODO (author):** Personalize this draft with your own motivation, the decisions you made during the build, and what surprised you. Add the Codex `/feedback` Session ID before submission: **`TODO: SESSION_ID`**.
+I came to this with a teacher problem and a short list of things an AI grader must never do. Codex wrote most of the code. The split stayed the same for the whole build: I decided what the product refuses to do, the agent implemented it, and a growing pile of verifier scripts kept both of us honest.
 
-The author set the product boundaries: local-first teacher workflow, algebra/fractions scope, teacher-controlled grading, strict abstention, versioned Student Models, Prediction Lab as the signature feature, and a deterministic judge path. Codex was delegated implementation, repository inspection, schema/migration work, adversarial verification, regression diagnosis, UI iteration, real-fixture testing, and print/accessibility QA. The author retained product calls such as making uncertainty informative instead of actionable, preserving unsupported exam content rather than forcing labels, never allowing an AI proposal into statistics without teacher validation, and never weakening prediction history for the demo.
+The rules I set on day one and never traded away: the AI proposes, the teacher decides, so no AI score reaches the gradebook or any statistic before explicit validation. A wrong answer alone is never a misconception; a label needs a quoted incorrect step from the copy. And when evidence is weak, the engine abstains visibly instead of guessing. What I like about how these came out is that they are not UI copy, they are schema. Grade proposals live in append-only rows with a one-way `PROPOSED → VALIDATED` transition enforced by SQL triggers, Student Models are versioned hypotheses with recorded evidence, and predictions are timestamped and locked before the held-out work exists.
 
-One live handwriting test exposed a consequential OCR error: a faint handwritten `=` was read as a dash. That failure became engineering work rather than prompt folklore. The history records the image pipeline/fallback fix in `7b061d0`, and the repository now keeps an exact permanent fixture at `fixtures/student-work/sign-error-equals-regression.jpeg`. The input pipeline auto-orients and crops single-question work around line-aware ink, retains a full-frame fallback, and the diagnosis policy flags an implausible variable-bearing final fragment instead of accepting a confident guess. `npm run verify:images` keeps that regression reproducible.
+Two failures shaped the codebase more than any feature did. Early on, a live handwriting test read a faint handwritten `=` as a dash. Instead of prompt tweaking, that became engineering: the image pipeline fix and fallback are in `7b061d0`, and the exact failing image is a permanent fixture (`fixtures/student-work/sign-error-equals-regression.jpeg`) that `npm run verify:images` replays forever. Later, Codex found a quieter bug I would have shipped: spreading a full GPT service result into a narrower repository shape let fields drift across a strict schema boundary. The fix in `cfde617` added explicit field selectors and compile-time `satisfies` checks, plus a verifier so it cannot come back.
 
-Codex also diagnosed a full-page persistence contract failure: spreading the complete GPT service result into a narrower repository shape allowed fields to drift across a strict schema boundary. The fix in `cfde617` introduced explicit completion-field selectors, compile-time `satisfies` checks against the repository inputs, and a permanent verifier for both single-question and full-page results. Later optional region work (`97864fe`) extended the contract without weakening backward compatibility.
+That is the pattern the whole test suite follows. It grew adversarially, around failure modes rather than happy paths: faint ink, implausible steps, PDF signature abuse, oversized intake, stale runs, ungrounded evidence, cross-domain labels, legacy migrations, ambiguous label matching, no-key routes, cache reuse, A4 page fragmentation, Prediction Lab invalidation. `npm run check` runs seventeen `verify:*` scripts plus lint, typecheck, and a production build, and it gates every deploy.
 
-The verification suite was built adversarially around failure modes, not only happy paths: faint ink, handwritten equals signs, implausible steps, PDF signatures, oversized or unsafe intake, stale runs, evidence grounding, cross-domain labels, confidence thresholds, strict persistence, legacy flat migrations, all-six-exercise extraction, ambiguous label matching, no-key routes, cache reuse, A4 page fragmentation, and Prediction Lab invalidation. `npm run check` runs every `verify:*` script plus lint, typecheck, and a production build.
+Some of my calls are visible in the history as me overruling the tooling. One session renamed "Assignments" to "Exams" across the app; I kept "Assignments" when merging (`da2e48b`). The first class heatmap was technically fine and pedagogically unreadable, so I had it rebuilt around the questions a teacher actually asks: headline counts first, then each frequent difficulty with the affected students named inline, then the compact per-student grid. And right now the Prediction Lab shows nothing for my real Grade 8 class, because nobody repeated the same flawed rule on two distinct problems. I left it that way. Lowering the evidence thresholds would have made a better-looking demo and a worse product.
 
-GPT-5.6 powers every live model call and no other model is used. Every call has a strict root-object Structured Output: teacher-source vision extraction with optional printed points; full-page exercise/question segmentation; single and booklet diagnosis; per-question grading proposals; Student Model synthesis and revision suggestions; five-question discrepant-event practice; Teach This Tomorrow briefs; mistake-targeted follow-up evaluations; and three-kind held-out predictions. Printed teacher sources use low image detail and low reasoning effort; handwritten diagnosis and grounded grading proposals use medium reasoning effort. Identical extraction hashes and persisted submission diagnoses are reused before another call is considered, while `/status` makes per-run token counts and cache hits visible.
-
-> **TODO (author):** Add one short paragraph in your own voice distinguishing the moments where you rejected or redirected Codex’s proposal, and include the final `/feedback` Session ID.
+GPT-5.6 powers every live call and no other model is used. Every call is a strict root-object Structured Output: teacher-source vision extraction, full-page segmentation, single and booklet diagnosis, per-question grading proposals, Student Model synthesis and revision suggestions, discrepant-event practice, Teach This Tomorrow briefs, mistake-targeted follow-up evaluations, and three-kind held-out predictions. Printed sources use low image detail and low reasoning effort; handwritten diagnosis uses medium. Identical inputs are reused by hash before any new call, and `/status` shows per-run tokens and cache hits. When I benchmarked the account's model tiers on July 18 (`docs/model-benchmark.md`), the faster tier was three times cheaper but failed the handwritten-equals gate, so diagnosis stayed on the accurate one. The final proof run was July 20–21: all five brevet exams, 15 handwritten booklets, 393 questions diagnosed, 59 honest abstentions, and one misconception found and named.
 
 ## License
 

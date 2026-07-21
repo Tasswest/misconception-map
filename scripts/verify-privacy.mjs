@@ -4,10 +4,17 @@ const tracked = execFileSync("git", ["ls-files"], {
   encoding: "utf8",
 }).trim().split("\n").filter(Boolean);
 
+// sample-exams/ is the one allowed PDF location: past public brevet subjects
+// plus student booklets the author wrote by hand under invented names
+// (Cecilia, Julia, Thomas). No real student produced any of it. Everything
+// else that looks like student data stays forbidden.
+const AUTHOR_EXAM_FIXTURES = /^sample-exams\//u;
+
 const forbidden = tracked.filter((file) =>
-  (/(^|\/)(uploads|data)\//u.test(file) && file !== "data/.gitkeep") ||
-  /\.(db|db-wal|db-shm|sqlite|pdf)$/iu.test(file) ||
-  /(cecilia|julia|student[-_ ]?booklet)/iu.test(file),
+  !AUTHOR_EXAM_FIXTURES.test(file) &&
+  ((/(^|\/)(uploads|data)\//u.test(file) && file !== "data/.gitkeep") ||
+    /\.(db|db-wal|db-shm|sqlite|pdf)$/iu.test(file) ||
+    /(cecilia|julia|student[-_ ]?booklet)/iu.test(file)),
 );
 if (forbidden.length > 0) {
   throw new Error(
@@ -28,6 +35,9 @@ if (unexpectedImages.length > 0) {
   );
 }
 
+const examFixtureCount = tracked.filter((file) =>
+  AUTHOR_EXAM_FIXTURES.test(file),
+).length;
 console.log(
-  `Privacy verification passed: ${trackedImages.length} allowlisted synthetic/product images; no tracked databases, uploads, PDFs, or named booklet fixtures.`,
+  `Privacy verification passed: ${trackedImages.length} allowlisted synthetic/product images and ${examFixtureCount} author-written exam PDFs under sample-exams/; no tracked databases, uploads, or other PDFs.`,
 );
