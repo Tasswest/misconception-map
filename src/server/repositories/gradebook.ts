@@ -1,41 +1,9 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
-import { z } from "zod";
-
 import { getDatabase } from "@/lib/db";
 import { entityIdSchema } from "@/server/repositories/workspace";
 
-/**
- * The gradebook is deliberately separate from the diagnosis engine. A grade is
- * a teacher-owned fact recorded alongside — never derived from — the AI
- * misconception analysis. Storing it here keeps the "no automatic grading"
- * guarantee intact while still letting a teacher who marks the paper keep the
- * two side by side.
- */
-
-export const setExamGradeInputSchema = z
-  .object({
-    membershipId: entityIdSchema,
-    score: z.number().finite().min(0).max(100_000),
-    maxScore: z.number().finite().gt(0).max(100_000),
-  })
-  .strict()
-  .refine((value) => value.score <= value.maxScore, {
-    message: "A score cannot be higher than the paper's maximum.",
-    path: ["score"],
-  });
-
-export class GradebookRepositoryError extends Error {
-  readonly code: "ASSIGNMENT_NOT_FOUND" | "CLASS_MEMBER_NOT_FOUND";
-  readonly status = 404;
-
-  constructor(code: GradebookRepositoryError["code"], message: string) {
-    super(message);
-    this.name = "GradebookRepositoryError";
-    this.code = code;
-  }
-}
+/** Only explicitly teacher-validated proposal totals are added here. */
 
 export type ExamGrade = {
   score: number;
@@ -48,6 +16,7 @@ export type AssignmentGradeStudent = {
   membershipId: string;
   studentName: string;
   grade: ExamGrade | null;
+  proposalStatus: "PROPOSED" | "VALIDATED" | null;
 };
 
 export type AssignmentGrades = {
@@ -59,6 +28,7 @@ export type AssignmentGrades = {
   };
   studentCount: number;
   gradedCount: number;
+  pendingValidationCount: number;
   stats: {
     meanPercent: number;
     highestPercent: number;
@@ -76,26 +46,6 @@ type AssignmentRow = {
 
 function roundPercent(value: number): number {
   return Math.round(value * 10) / 10;
-}
-
-function loadReadyAssignment(assignmentId: string): AssignmentRow {
-  const assignment = getDatabase()
-    .prepare(
-      [
-        "SELECT assignment.id, assignment.title, assignment.class_id, class.name AS class_name",
-        "FROM assignments AS assignment",
-        "JOIN classes AS class ON class.id = assignment.class_id AND class.archived_at IS NULL",
-        "WHERE assignment.id = ? AND assignment.status = 'READY' AND assignment.archived_at IS NULL",
-      ].join(" "),
-    )
-    .get(assignmentId) as AssignmentRow | undefined;
-  if (!assignment) {
-    throw new GradebookRepositoryError(
-      "ASSIGNMENT_NOT_FOUND",
-      "That exam is no longer available.",
-    );
-  }
-  return assignment;
 }
 
 export function getAssignmentGrades(
@@ -119,26 +69,32 @@ export function getAssignmentGrades(
     .prepare(
       [
         "SELECT membership.id AS membership_id, student.display_name,",
-        "grade.score, grade.max_score, grade.graded_at",
+        "grade.score, grade.max_score, grade.graded_at, proposal.status AS proposal_status",
         "FROM class_memberships AS membership",
         "JOIN students AS student ON student.id = membership.student_id AND student.archived_at IS NULL",
         "LEFT JOIN exam_grades AS grade",
         "ON grade.membership_id = membership.id AND grade.assignment_id = ?",
+        "LEFT JOIN exam_grade_proposals AS proposal",
+        "ON proposal.membership_id = membership.id AND proposal.assignment_id = ?",
+        "AND proposal.version = (SELECT max(latest.version) FROM exam_grade_proposals AS latest",
+        "WHERE latest.membership_id = membership.id AND latest.assignment_id = ?)",
         "WHERE membership.class_id = ? AND membership.archived_at IS NULL",
         "ORDER BY membership.sort_order, student.display_name COLLATE NOCASE",
       ].join(" "),
     )
-    .all(assignment.id, assignment.class_id) as Array<{
+    .all(assignment.id, assignment.id, assignment.id, assignment.class_id) as Array<{
     membership_id: string;
     display_name: string;
     score: number | null;
     max_score: number | null;
     graded_at: string | null;
+    proposal_status: "PROPOSED" | "VALIDATED" | null;
   }>;
 
   const students: AssignmentGradeStudent[] = rows.map((row) => ({
     membershipId: row.membership_id,
     studentName: row.display_name,
+    proposalStatus: row.proposal_status,
     grade:
       row.score !== null && row.max_score !== null && row.graded_at !== null
         ? {
@@ -187,6 +143,9 @@ export function getAssignmentGrades(
     },
     studentCount: students.length,
     gradedCount: graded.length,
+    pendingValidationCount: students.filter(
+      (student) => student.proposalStatus === "PROPOSED",
+    ).length,
     stats,
     students,
   };
@@ -469,64 +428,5 @@ export function getStudentGradebook(
     overallPercent:
       ownPercents.length > 0 ? roundPercent(mean(ownPercents)) : null,
     exams,
-  };
-}
-
-export function setExamGrade(
-  assignmentIdInput: string,
-  input: z.input<typeof setExamGradeInputSchema>,
-): ExamGrade {
-  const assignmentId = entityIdSchema.parse(assignmentIdInput);
-  const parsed = setExamGradeInputSchema.parse(input);
-  const database = getDatabase();
-  const assignment = loadReadyAssignment(assignmentId);
-
-  const membership = database
-    .prepare(
-      [
-        "SELECT membership.id FROM class_memberships AS membership",
-        "JOIN students AS student ON student.id = membership.student_id AND student.archived_at IS NULL",
-        "WHERE membership.id = ? AND membership.class_id = ? AND membership.archived_at IS NULL",
-      ].join(" "),
-    )
-    .get(parsed.membershipId, assignment.class_id) as
-    | { id: string }
-    | undefined;
-  if (!membership) {
-    throw new GradebookRepositoryError(
-      "CLASS_MEMBER_NOT_FOUND",
-      "That student is no longer in this class.",
-    );
-  }
-
-  const now = new Date().toISOString();
-  database
-    .prepare(
-      [
-        "INSERT INTO exam_grades",
-        "(id, class_id, assignment_id, membership_id, score, max_score, graded_at, created_at, updated_at)",
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        "ON CONFLICT (assignment_id, membership_id) DO UPDATE SET",
-        "score = excluded.score, max_score = excluded.max_score,",
-        "graded_at = excluded.graded_at, updated_at = excluded.updated_at",
-      ].join(" "),
-    )
-    .run(
-      randomUUID(),
-      assignment.class_id,
-      assignment.id,
-      parsed.membershipId,
-      parsed.score,
-      parsed.maxScore,
-      now,
-      now,
-      now,
-    );
-
-  return {
-    score: parsed.score,
-    maxScore: parsed.maxScore,
-    percent: roundPercent((parsed.score / parsed.maxScore) * 100),
-    gradedAt: now,
   };
 }

@@ -41,6 +41,8 @@ type ExtractedQuestion = {
   inTaxonomyScope: boolean;
   answerKind: "EXPRESSION" | "NUMBER" | "FRACTION" | "MULTIPLE_CHOICE" | "SHORT_TEXT";
   expectedAnswer: string;
+  printedPoints: number | null;
+  points: number;
   extractionConfidence: number;
   answerConfidence: number;
   reviewNote: string | null;
@@ -301,11 +303,15 @@ export function SetupWorkspace({
             (question) =>
               !question.questionLabel.trim() ||
               !question.problemStatement.trim() ||
-              !question.expectedAnswer.trim(),
+              !question.expectedAnswer.trim() ||
+              !Number.isFinite(question.points) ||
+              question.points <= 0,
           ),
       )
     ) {
-      setError("Every exercise and question needs a label, statement, and expected answer.");
+      setError(
+        "Every question needs a label, statement, expected answer, and a positive point value.",
+      );
       return;
     }
 
@@ -575,7 +581,7 @@ export function SetupWorkspace({
                   Check the extracted worksheet
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-                  GPT extracted {worksheetReview.exercises.length} {worksheetReview.exercises.length === 1 ? "exercise" : "exercises"} and {countExtractedQuestions(worksheetReview.exercises)} {countExtractedQuestions(worksheetReview.exercises) === 1 ? "question" : "questions"} at {Math.round(worksheetReview.overallConfidence * 100)}% overall confidence. {countOutOfScopeQuestions(worksheetReview.exercises, domain) > 0 ? `${countOutOfScopeQuestions(worksheetReview.exercises, domain)} ${countOutOfScopeQuestions(worksheetReview.exercises, domain) === 1 ? "question is" : "questions are"} preserved as teacher-selected exam content but not yet diagnosed by the algebra/fractions engine. ` : ""}Your confirmation makes this structure the shared reference for every student submission.
+                  GPT extracted {worksheetReview.exercises.length} {worksheetReview.exercises.length === 1 ? "exercise" : "exercises"} and {countExtractedQuestions(worksheetReview.exercises)} {countExtractedQuestions(worksheetReview.exercises) === 1 ? "question" : "questions"} at {Math.round(worksheetReview.overallConfidence * 100)}% overall confidence. {countOutOfScopeQuestions(worksheetReview.exercises, domain) > 0 ? `${countOutOfScopeQuestions(worksheetReview.exercises, domain)} ${countOutOfScopeQuestions(worksheetReview.exercises, domain) === 1 ? "question is" : "questions are"} preserved as teacher-selected exam content but not yet diagnosed by the algebra/fractions engine. ` : ""}Review the points below; questions without printed points use equal weighting by default. Total: {formatPoints(totalWorksheetPoints(worksheetReview.exercises))} points. Your confirmation makes this structure and barème the shared reference for every student submission.
                 </p>
               </div>
 
@@ -662,7 +668,7 @@ export function SetupWorkspace({
                               value={question.problemStatement}
                             />
                           </label>
-                          <div className="mt-3 grid gap-3 sm:grid-cols-[150px_1fr]">
+                          <div className="mt-3 grid gap-3 sm:grid-cols-[140px_130px_1fr]">
                             <label className="block text-sm font-semibold">
                               Domain
                               <select
@@ -686,6 +692,28 @@ export function SetupWorkspace({
                                 <option value="FRACTIONS">Fractions</option>
                                 <option value="OUT_OF_SCOPE">Not yet diagnosed (preserve)</option>
                               </select>
+                            </label>
+                            <label className="block text-sm font-semibold">
+                              Points
+                              <input
+                                className={fieldClass + " tabular-nums"}
+                                max="1000"
+                                min="0.01"
+                                onChange={(event) =>
+                                  updateExtractedQuestion(exerciseIndex, questionIndex, {
+                                    points: Number(event.target.value),
+                                  })
+                                }
+                                required
+                                step="0.01"
+                                type="number"
+                                value={question.points}
+                              />
+                              <span className="mt-1 block text-[10px] font-normal leading-4 text-[var(--muted)]">
+                                {question.printedPoints === null
+                                  ? "Equal-weight default"
+                                  : `Printed value: ${formatPoints(question.printedPoints)}`}
+                              </span>
                             </label>
                             <label className="block text-sm font-semibold">
                               Expected answer
@@ -1080,6 +1108,12 @@ function readExtractedExercises(value: unknown): ExtractedExercise[] {
       const domain = rawDomain === null ? null : readString(questionRecord, "domain");
       const answerKind = readString(questionRecord, "answerKind");
       const expectedAnswer = readString(questionRecord, "expectedAnswer");
+      const printedPoints =
+        typeof questionRecord.printedPoints === "number" &&
+        Number.isFinite(questionRecord.printedPoints) &&
+        questionRecord.printedPoints > 0
+          ? questionRecord.printedPoints
+          : null;
       if (
         !questionLabel ||
         !problemStatement ||
@@ -1105,6 +1139,8 @@ function readExtractedExercises(value: unknown): ExtractedExercise[] {
             : domain === "ALGEBRA" || domain === "FRACTIONS",
         answerKind: answerKind as ExtractedQuestion["answerKind"],
         expectedAnswer,
+        printedPoints,
+        points: printedPoints ?? 1,
         extractionConfidence: readNumber(questionRecord, "extractionConfidence"),
         answerConfidence: readNumber(questionRecord, "answerConfidence"),
         reviewNote: readNullableString(questionRecord, "reviewNote"),
@@ -1126,6 +1162,22 @@ function countExtractedQuestions(exercises: ExtractedExercise[]) {
     (count, exercise) => count + exercise.questions.length,
     0,
   );
+}
+
+function totalWorksheetPoints(exercises: ExtractedExercise[]) {
+  return exercises.reduce(
+    (total, exercise) =>
+      total +
+      exercise.questions.reduce(
+        (exerciseTotal, question) => exerciseTotal + question.points,
+        0,
+      ),
+    0,
+  );
+}
+
+function formatPoints(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/u, "");
 }
 
 function countOutOfScopeQuestions(

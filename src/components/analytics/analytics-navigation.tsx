@@ -90,12 +90,14 @@ export function AnalyticsHeader({
             {description}
           </p>
         </div>
-        <Link
-          className="inline-flex self-start items-center justify-center rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm font-semibold transition hover:bg-[var(--paper)] md:self-auto"
-          href={`/analytics/${assignment.id}/corrected-copies`}
-        >
-          See corrected copies
-        </Link>
+        {activeTab !== "copies" ? (
+          <Link
+            className="inline-flex self-start items-center justify-center rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm font-semibold transition hover:bg-[var(--paper)] md:self-auto"
+            href={`/analytics/${assignment.id}/corrected-copies`}
+          >
+            See corrected copies
+          </Link>
+        ) : null}
       </div>
       <AnalyticsTabs
         activeTab={activeTab}

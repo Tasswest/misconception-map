@@ -38,7 +38,7 @@ function verifyFreshAndSeededDatabases() {
   try {
     assert.equal(
       fresh.prepare("SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1").pluck().get(),
-      "020_worksheet_extraction_attempts.sql",
+      "022_follow_up_evaluations.sql",
     );
     assert.equal(
       fresh
@@ -60,6 +60,24 @@ function verifyFreshAndSeededDatabases() {
       fresh
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'exam_grades'")
         .get(),
+    );
+    for (const table of [
+      "exam_grade_proposals",
+      "exam_grade_proposal_items",
+      "exam_grade_validation_audit",
+    ]) {
+      assert.ok(
+        fresh
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+          .get(table),
+        `${table} must be present in a fresh database`,
+      );
+    }
+    assert.ok(
+      fresh
+        .prepare("PRAGMA table_info(exam_grades)")
+        .all()
+        .some((column) => column.name === "validated_proposal_id"),
     );
     assert.deepEqual(
       fresh
@@ -116,6 +134,35 @@ function verifyFreshAndSeededDatabases() {
         .pluck()
         .get(),
       2,
+    );
+    assert.equal(
+      seeded
+        .prepare("SELECT count(*) FROM exam_grade_proposals WHERE status = 'PROPOSED'")
+        .pluck()
+        .get(),
+      1,
+    );
+    assert.equal(
+      seeded
+        .prepare("SELECT count(*) FROM exam_grade_proposals WHERE status = 'VALIDATED'")
+        .pluck()
+        .get(),
+      1,
+    );
+    assert.equal(
+      seeded
+        .prepare(
+          "SELECT count(*) FROM exam_grade_proposal_items WHERE manual_reason IS NOT NULL AND proposed_score IS NULL",
+        )
+        .pluck()
+        .get(),
+      1,
+    );
+    assert.ok(
+      seeded
+        .prepare("SELECT count(*) FROM exam_grade_validation_audit")
+        .pluck()
+        .get() > 0,
     );
     assert.deepEqual(
       seeded

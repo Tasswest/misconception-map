@@ -31,9 +31,9 @@ export function AssignmentResultsSummary({
         </div>
         <Link
           className="inline-flex self-start rounded-xl bg-[var(--sidebar)] px-4 py-2.5 text-sm font-semibold text-white md:self-auto"
-          href={`/analytics/${results.assignment.id}/corrected-copies`}
+          href={`/analytics/${results.assignment.id}`}
         >
-          See corrected copies
+          Open class analytics
         </Link>
       </div>
 
@@ -87,38 +87,61 @@ export function AssignmentResultsSummary({
         </div>
       </section>
 
-      {results.correctedCopies.length ? (
-        <section className="mt-6 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)]">
-          <div className="border-b border-black/[0.06] px-5 py-4 md:px-6">
-            <h2 className="text-lg font-semibold">Corrected copies</h2>
-          </div>
-          <div className="divide-y divide-black/[0.06]">
-            {results.correctedCopies.map((copy) => (
-              <article
-                className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6"
-                key={copy.membershipId}
-              >
-                <div>
-                  <h3 className="text-sm font-semibold">{copy.studentName}</h3>
-                  <p className="mt-1 text-xs text-[var(--muted)]">
-                    {copy.diagnosedCount} items corrected · {copy.flaggedCount} flagged as uncertain
-                    {copy.outsideAnalysisCount
-                      ? ` · ${copy.outsideAnalysisCount} outside misconception analysis`
-                      : ""}
-                  </p>
-                </div>
-                <Link
-                  className="self-start rounded-xl border border-black/10 bg-white px-3.5 py-2 text-xs font-semibold sm:self-auto"
-                  href={copy.correctedCopyUrl}
-                >
-                  Read corrected copy
-                </Link>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <section className="mt-6">
+        <h2 className="text-lg font-semibold tracking-[-0.02em]">Read the results in Analytics</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Everything below is already computed from this correction; nothing needs to be re-run.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <NextStepCard
+            description="The class summary: most frequent difficulties with the students behind each one, exercise success rates, and the per-student evidence grid."
+            href={`/analytics/${results.assignment.id}`}
+            step="1"
+            title="Class by exercise"
+          />
+          <NextStepCard
+            description={`One returnable, exercise-grouped copy for each of the ${results.correctedCopies.length} ${results.correctedCopies.length === 1 ? "student" : "students"}, with feedback in the language of the exam.`}
+            href={`/analytics/${results.assignment.id}/corrected-copies`}
+            step="2"
+            title="Corrected copies"
+          />
+          <NextStepCard
+            description="The Teach This Tomorrow brief, targeted practice sheets, and a follow-up evaluation that retests every diagnosed mistake."
+            href={`/analytics/${results.assignment.id}/practice`}
+            step="3"
+            title="Practice & brief"
+          />
+        </div>
+      </section>
     </div>
+  );
+}
+
+function NextStepCard({
+  description,
+  href,
+  step,
+  title,
+}: {
+  description: string;
+  href: string;
+  step: string;
+  title: string;
+}) {
+  return (
+    <Link
+      className="group rounded-[22px] border border-black/[0.06] bg-[var(--paper)] p-5 shadow-[0_14px_35px_rgba(35,51,46,0.04)] transition hover:border-[var(--sage)]/35 hover:shadow-[0_18px_45px_rgba(35,51,46,0.08)]"
+      href={href}
+    >
+      <span className="grid size-7 place-items-center rounded-lg bg-[var(--soft-mint)] text-xs font-bold text-[var(--sidebar)]">
+        {step}
+      </span>
+      <h3 className="mt-3 text-sm font-semibold">
+        {title}
+        <span aria-hidden="true" className="ml-1 inline-block transition group-hover:translate-x-0.5">→</span>
+      </h3>
+      <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">{description}</p>
+    </Link>
   );
 }
 

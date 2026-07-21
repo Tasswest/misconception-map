@@ -56,6 +56,12 @@ export function getDailyAiSpendEstimate() {
         "UNION ALL",
         "SELECT input_tokens, output_tokens FROM assignment_source_extractions",
         "WHERE cache_hit = 0 AND date(created_at) = date('now')",
+        "UNION ALL",
+        "SELECT input_tokens, output_tokens FROM follow_up_evaluations",
+        "WHERE date(created_at) = date('now')",
+        "UNION ALL",
+        "SELECT input_tokens, output_tokens FROM exam_grade_proposals",
+        "WHERE date(created_at) = date('now')",
         ")",
       ].join(" "),
     )

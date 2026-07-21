@@ -3,9 +3,13 @@ import { notFound } from "next/navigation";
 
 import { AnalyticsHeader } from "@/components/analytics/analytics-navigation";
 import { AppShell } from "@/components/app-shell";
+import { GenerateFollowUpEvaluationButton } from "@/components/follow-up/generate-follow-up-evaluation-button";
 import { SparkIcon } from "@/components/icons";
+import { GeneratePracticeButton } from "@/components/practice/generate-practice-button";
 import { isOpenAIConfigured } from "@/lib/config";
 import { getHeatmapDashboard } from "@/server/repositories/dashboard";
+import { getLatestFollowUpEvaluationSummary } from "@/server/repositories/follow-up-evaluation";
+import { formatUtcTimestamp } from "@/lib/date-format";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +21,18 @@ export default async function PracticeAndBriefPage({
   const { assignmentId } = await params;
   const dashboard = getHeatmapDashboard(assignmentId);
   if (!dashboard) notFound();
+  const liveAiReady = isOpenAIConfigured();
   const supportRows = dashboard.rows.filter(
     (row) => row.practice !== null || row.practiceTarget !== null,
   );
+  const followUp = getLatestFollowUpEvaluationSummary(assignmentId);
+  const hasMistakes =
+    dashboard.errorInventory.totals.misconceptionOccurrenceCount > 0 ||
+    dashboard.errorInventory.totals.slipCount > 0 ||
+    dashboard.errorInventory.totals.uncertainCount > 0;
 
   return (
-    <AppShell activeNav="Analytics" liveAiReady={isOpenAIConfigured()}>
+    <AppShell activeNav="Analytics" liveAiReady={liveAiReady}>
       <div className="mx-auto max-w-[1180px] px-5 py-7 md:px-8 lg:px-10 lg:py-9">
         <AnalyticsHeader
           activeTab="practice"
@@ -71,6 +81,43 @@ export default async function PracticeAndBriefPage({
           </section>
         )}
 
+        <section className="mt-5 flex flex-col gap-4 rounded-[24px] border border-black/[0.06] bg-[var(--paper)] p-5 shadow-[0_18px_45px_rgba(35,51,46,0.05)] sm:flex-row sm:items-center sm:justify-between md:p-6">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
+              Follow-up evaluation
+            </p>
+            <h2 className="mt-1 text-xl font-semibold">
+              A new evaluation that retests every mistake
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
+              Drafted in the same structure and language as the source exam. Every question is
+              pinned to an observed mistake — repeated patterns, one-off slips, and items the AI
+              could not settle — with a teacher answer key explaining what each question retests.
+            </p>
+            {followUp ? (
+              <p className="mt-2 text-xs font-medium text-[var(--muted)]">
+                Latest: v{followUp.version} · {followUp.questionCount} questions ·{" "}
+                {followUp.totalPoints} points · {formatUtcTimestamp(followUp.createdAt)}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+            {followUp ? (
+              <Link
+                className="inline-flex rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm font-semibold transition hover:bg-[var(--canvas)]"
+                href={`/analytics/${assignmentId}/follow-up/${followUp.id}`}
+              >
+                Open follow-up evaluation
+              </Link>
+            ) : null}
+            <GenerateFollowUpEvaluationButton
+              assignmentId={assignmentId}
+              hasMistakes={hasMistakes}
+              liveAiReady={liveAiReady}
+            />
+          </div>
+        </section>
+
         <section className="mt-5 overflow-hidden rounded-[24px] border border-black/[0.06] bg-[var(--paper)] shadow-[0_18px_45px_rgba(35,51,46,0.05)]">
           <div className="border-b border-black/[0.06] px-5 py-4 md:px-6">
             <p className="text-xs font-bold uppercase tracking-[0.13em] text-[var(--sage)]">
@@ -99,14 +146,15 @@ export default async function PracticeAndBriefPage({
                     >
                       Open worksheet & answer key
                     </Link>
-                  ) : (
-                    <Link
-                      className="inline-flex self-start text-xs font-semibold text-[var(--sage)] hover:text-[var(--ink)] sm:self-auto"
-                      href={`/analytics/${assignmentId}`}
-                    >
-                      Generate on Class by exercise →
-                    </Link>
-                  )}
+                  ) : row.practiceTarget ? (
+                    <GeneratePracticeButton
+                      assignmentId={assignmentId}
+                      liveAiReady={liveAiReady}
+                      membershipId={row.membershipId}
+                      misconceptionId={row.practiceTarget.misconceptionId}
+                      studentName={row.studentName}
+                    />
+                  ) : null}
                 </article>
               ))}
             </div>

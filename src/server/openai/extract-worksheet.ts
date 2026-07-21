@@ -14,7 +14,7 @@ import { assignmentDomainSchema } from "@/domain/contracts";
 import { buildPdfInputFile } from "@/domain/pdf-input.mjs";
 import { OPENAI_MODEL } from "@/lib/config";
 
-export const WORKSHEET_EXTRACTION_PROMPT_VERSION = "2.3.0";
+export const WORKSHEET_EXTRACTION_PROMPT_VERSION = "2.4.0";
 export const WORKSHEET_EXTRACTION_TIMEOUT_MS = 85_000;
 export const PDF_WORKSHEET_EXTRACTION_TIMEOUT_MS = 180_000;
 export const PDF_WORKSHEET_MAX_OUTPUT_TOKENS = 16_000;
@@ -171,6 +171,7 @@ export async function extractWorksheet(rawInput: ExtractWorksheetInput) {
     "Every problemStatement must be self-contained: merge or restate every part of sharedContext needed to solve that question alone. This intentional repetition keeps downstream one-question diagnosis safe.",
     "Include all information a student needs, including answer choices, table values, and diagram facts when present.",
     "Compute expectedAnswer for each question, but return only the concise answer—not hidden reasoning or chain-of-thought.",
+    "Extract printedPoints only when the source explicitly prints a point value for that individual question, such as `(2 points)` or `3 pts`. Preserve decimal values. Use null when points are absent, apply only to an exercise as a whole, or cannot be assigned to one question without guessing.",
     "Set domain to ALGEBRA or FRACTIONS only when the question genuinely belongs to that researched taxonomy domain. Set domain to null for geometry, probability, statistics, algorithms, general numeracy, or any other domain.",
     "Set inTaxonomyScope true exactly for algebra/fractions questions eligible for the researched taxonomy, otherwise false. Every question is still retained and corrected; this flag controls misconception analysis only. The assignmentDomain is a teacher override and must never cause printed exercises or questions to be omitted.",
     "Use answerKind EXPRESSION for algebraic expressions or solved equations, NUMBER for numeric values, FRACTION for fraction-form answers, MULTIPLE_CHOICE for letter/choice answers, and SHORT_TEXT only when none of the math formats fit.",

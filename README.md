@@ -7,7 +7,7 @@ Misconception Map is a local-first, teacher-facing diagnostic workspace for midd
 3. How is the class doing, exercise by exercise?
 4. What happened on this copy?
 
-There are no grades or points. The product corrects what it can support from visible work, abstains when evidence is weak, and treats every Student Model as a versioned, testable hypothesis rather than a fixed learner attribute.
+Grading follows one non-negotiable rule: **AI proposes; the teacher decides.** The model may suggest evidence-grounded points after correction, but no proposal enters the gradebook or any class/student statistic until the teacher reviews every question and explicitly validates the final values. The diagnostic layer still abstains when evidence is weak, and every Student Model remains a versioned, testable hypothesis rather than a fixed learner attribute.
 
 ## What the demo proves
 
@@ -15,12 +15,14 @@ There are no grades or points. The product corrects what it can support from vis
 - Four unambiguous top-level destinations: **Classes → Assignments → Analytics → Prediction Lab**. Assignments owns the complete correction workflow; Analytics owns every result view.
 - Hierarchical extraction that preserves every printed exercise, shared stimulus, and question label. The real six-page French brevet fixture returns all six exercises; geometry, probability, and statistics questions remain visible as teacher-selected exam content and are marked “not yet diagnosed” when the current algebra/fractions engine cannot assess them.
 - A read-only Results summary where ambiguous, unreadable, or unmatched work remains visibly flagged without creating a teacher task.
-- A class summary by exercise before the full misconception heatmap.
+- Analytics that lead with the answer: headline counts, then each frequent difficulty with the affected students named inline (one click from a student chip to their exact work), then the class summary by exercise, then the compact per-student evidence grid.
 - Corrected copies grouped by exercise, with shared context shown once and feedback written in the language of the exam.
+- Assignment-owned point schemes, per-question AI proposals with grounded partial-credit explanations, explicit no-score abstentions, and an auditable teacher validation step before any grade becomes statistical data.
 - Targeted five-question micro-practice, a teacher answer key, and a short “Teach This Tomorrow” intervention.
+- A one-click follow-up evaluation drafted in the same structure and language as the source exam, where every question is pinned to an observed mistake — repeated misconceptions, one-off slips, and items the AI could not settle — with a printable student sheet and a teacher answer key that names what each question retests. Identical inputs reuse the saved draft instead of a new API call, and the draft never enters the gradebook.
 - A Prediction Lab that locks flawed-rule, demonstrated-mastery, or abstain predictions before held-out work exists, then scores, revises, or invalidates them transparently.
 
-Misconception Map is built for the Education category of OpenAI Build Week. Next.js and SQLite run on the teacher’s machine. Only live extraction, diagnosis, model synthesis, practice, briefs, and predictions call the OpenAI API.
+Misconception Map is built for the Education category of OpenAI Build Week. Next.js and SQLite run on the teacher’s machine. Only live extraction, diagnosis, grading proposals, model synthesis, practice, briefs, follow-up evaluations, and predictions call the OpenAI API.
 
 ## Quickstart
 
@@ -73,6 +75,7 @@ Leave `OPENAI_API_KEY` empty, run `npm run seed`, and open the app. The determin
 - exercise-grouped corrected copies with French prompts and French step feedback;
 - a printable targeted worksheet and teacher answer key linked to `Ex. 2 · Q2.2`;
 - a Teach This Tomorrow brief;
+- one pending grading proposal with an abstained question requiring manual points, plus one teacher-validated proposal and audit trail;
 - a 4-of-5 consistency-weighted Student Model, a locked mastery prediction, a teacher-reviewed revision suggestion, abstentions, matches, mismatches, and invalidation history.
 
 Live-only controls remain visibly disabled and explain that `OPENAI_API_KEY` must be added to `.env.local`. There are no dead clicks; seeded views remain readable.
@@ -81,8 +84,8 @@ Live-only controls remain visibly disabled and explain that `OPENAI_API_KEY` mus
 
 1. Open **Classes** and inspect the 20-learner synthetic roster.
 2. Open **Assignments**, then **Unit 3 follow-up · Held-out check**. The assignment resumes at step 4 of the Exam → Student copies → AI correction → Results path.
-3. Open **Results**, then read a corrected copy and its error inventory. The uncertainty flag and its reason stay attached to the evidence; nothing needs to be cleared or marked complete.
-4. Open **Analytics** and visit all three assignment tabs: **Class by exercise**, **Corrected copies**, and **Practice & brief**. The exercise rows identify the difficult exercise before the heatmap; a corrected copy’s summary chips jump directly to each exercise. Print/PDF hides the application chrome.
+3. Open **Results** for the completion summary, then follow its numbered cards into Analytics and read a corrected copy. The uncertainty flag and its reason stay attached to the evidence; nothing needs to be cleared or marked complete.
+4. Open **Analytics** and visit all three assignment tabs: **Class by exercise**, **Corrected copies**, and **Practice & brief**. Class by exercise leads with headline counts and the most frequent difficulties, each naming its affected students inline; a corrected copy’s summary chips jump directly to each exercise. Print/PDF hides the application chrome.
 5. Open **Prediction Lab**. Inspect predictions that were timestamped and locked before the held-out responses, including visible abstentions and invalidated historical trials.
 
 ### Navigation and legacy links
@@ -132,9 +135,9 @@ The verified fixture produced French feedback and a 12-page A4 corrected report 
 
 ### 1. Exam source
 
-Teacher intake accepts typed text, JPEG, PNG, WebP, and PDF up to 15 MB. Printed sources use low-detail vision and low reasoning effort. The extraction schema is a strict root object containing exercises, optional shared context represented explicitly as `null`, original or synthesized question labels, self-contained statements, expected answers, answer kinds, domains, confidence, and review notes.
+Teacher intake accepts typed text, JPEG, PNG, WebP, and PDF up to 15 MB. Printed sources use low-detail vision and low reasoning effort. The extraction schema is a strict root object containing exercises, optional shared context represented explicitly as `null`, original or synthesized question labels, self-contained statements, expected answers, printed points when present, answer kinds, domains, confidence, and review notes.
 
-An identical extraction input hash reuses the stored run. The teacher edits labels, statements, context, domains, and answers before confirmation. Confirmed grouping is immutable; legacy assignments are migrated into a default exercise without renumbering already-diagnosed work.
+An identical extraction input hash reuses the stored run. The teacher edits labels, statements, context, domains, answers, and per-question points before confirmation. Missing printed points default to equal weighting. The confirmed barème is assignment-owned; confirmed grouping is immutable, and legacy assignments are migrated into a default exercise without renumbering already-diagnosed work.
 
 ### 2. Student copies
 
@@ -148,7 +151,13 @@ The model segments visible work against confirmed exercise and question labels, 
 
 A wrong answer alone never becomes a misconception. A definitive label requires a grounded incorrect step, exact evidence quote, observed transformation, and enough confidence. OpenAI failures persist a sanitized retry state. Repeating the same submission replays the saved diagnosis before the API-key check, so refreshes and retries do not create duplicate spend.
 
-### 4. Results
+### 4. AI grading proposal and teacher validation
+
+After correction, the teacher may request a strict Structured Output containing one proposed score per safely corrected question. Full credit requires demonstrated correct reasoning. Partial credit requires a grounded correct prefix before the first flawed step, with a concise explanation in the exam’s language; zero also requires an evidence-based explanation. `NEEDS_REVIEW`, abstained, or uncorrectable questions receive no AI score and remain explicitly manual, so the proposal total is provisional and incomplete.
+
+Every proposal begins as `PROPOSED`. The teacher sees the AI value, quoted student work, and justification beside the correction, may edit every per-question score, and must explicitly choose **Validate grade & add to gradebook**. Validation writes the final total to `exam_grades` and appends an audit row containing the AI-proposed value, teacher-final value, and timestamp for each question. Only `VALIDATED` totals are read by gradebook statistics.
+
+### 5. Results
 
 Results presents corrected-copy, uncertainty, and misconception-analysis counts without creating a task list. Teacher-selected exam content always remains part of the assignment. Analytics includes a complete error inventory ranked by pedagogical priority: taxonomy misconceptions by distinct students and occurrences, settled one-off slips by exercise, then items the AI could not settle. Every entry links to its evidence and corrected copy. An isolated slip never becomes a misconception or Student Model evidence; this follows Sleeman’s (1984) distinction between systematic, clerical, and random errors. The cross-assignment class profile rolls misconception evidence forward while keeping slips attached to their source assignment. Analytics then exposes the student-by-difficulty evidence grid. It uses identical legend semantics everywhere:
 
@@ -193,6 +202,8 @@ Useful commands:
 | `npm run verify:full-page-timeout` | 85 s/300 s timeout separation, bounded page output, truthful timeout persistence, and quality-only fallback. |
 | `npm run verify:phase4` | 4-of-5 consistency, expected/actual fit, all three prediction kinds, revision suggestions, practice, and briefs. |
 | `npm run verify:navigation` | Four-tab order, assignment-first root, Analytics sub-tabs, canonical cross-links, and permanent legacy redirects. |
+| `npm run verify:ai-grading` | Grounded partial credit, no AI score on abstention, audit rows, and the one-way `PROPOSED → VALIDATED` grade boundary. |
+| `npm run verify:follow-up` | Follow-up evaluation schema strictness, target coherence, append-only storage, mistake-coverage enforcement, and the guarded generation route. |
 | `npm run verify:readiness` | Fresh/seeded DBs, no-key states, language, print, accessibility, cost, cache, and status ledger. |
 | `npm run check` | Lint, typecheck, every verifier, and production build. |
 
@@ -228,10 +239,10 @@ For the live smoke, the local key was added to the clone’s ignored `.env.local
 - Small client islands for intake, heatmap drawers, Prediction Lab, and print actions.
 - Node.js route handlers for local file processing and OpenAI Responses API calls.
 - `gpt-5.6` is the only live model.
-- Strict structured output on worksheet extraction, page segmentation, diagnosis, Student Model synthesis, practice, teaching briefs, three-kind predictions, and outcome-driven model-revision suggestions.
+- Strict structured output on worksheet extraction, page segmentation, diagnosis, grading proposals, Student Model synthesis, practice, teaching briefs, mistake-targeted follow-up evaluations, three-kind predictions, and outcome-driven model-revision suggestions.
 - Append-oriented answer versions, diagnoses, Student Models, prediction locks/outcomes, and AI provenance.
 
-The data graph covers classes, memberships, exercises, reusable problems, assignment items, protected assets, upload batches, submissions, answer versions, diagnosis steps/candidates, Student Model evidence/opportunities/mastery, append-only revision decisions, worksheets, teaching briefs, frozen predictions, token provenance, and redacted audit events. Historical teacher-review columns remain migration-compatible but are no longer read or written. Composite foreign keys and triggers keep every record inside its class and assignment.
+The data graph covers classes, memberships, exercises, reusable problems, assignment items and point schemes, protected assets, upload batches, submissions, answer versions, diagnosis steps/candidates, grading proposals and validation audits, validated exam grades, Student Model evidence/opportunities/mastery, append-only revision decisions, worksheets, teaching briefs, frozen predictions, token provenance, and redacted audit events. Historical teacher-review columns remain migration-compatible but are no longer read or written. Composite foreign keys and triggers keep every record inside its class and assignment.
 
 ## Accessibility and print
 
@@ -283,7 +294,7 @@ OpenAI calls use `store: false`. The teacher source, assignment context, and dei
 
 > **TODO (author):** Personalize this draft with your own motivation, the decisions you made during the build, and what surprised you. Add the Codex `/feedback` Session ID before submission: **`TODO: SESSION_ID`**.
 
-The author set the product boundaries: local-first teacher workflow, algebra/fractions scope, no grades, strict abstention, versioned Student Models, Prediction Lab as the signature feature, and a deterministic judge path. Codex was delegated implementation, repository inspection, schema/migration work, adversarial verification, regression diagnosis, UI iteration, real-fixture testing, and print/accessibility QA. The author retained product calls such as making uncertainty informative instead of actionable, preserving unsupported exam content rather than forcing labels, and never weakening prediction history for the demo.
+The author set the product boundaries: local-first teacher workflow, algebra/fractions scope, teacher-controlled grading, strict abstention, versioned Student Models, Prediction Lab as the signature feature, and a deterministic judge path. Codex was delegated implementation, repository inspection, schema/migration work, adversarial verification, regression diagnosis, UI iteration, real-fixture testing, and print/accessibility QA. The author retained product calls such as making uncertainty informative instead of actionable, preserving unsupported exam content rather than forcing labels, never allowing an AI proposal into statistics without teacher validation, and never weakening prediction history for the demo.
 
 One live handwriting test exposed a consequential OCR error: a faint handwritten `=` was read as a dash. That failure became engineering work rather than prompt folklore. The history records the image pipeline/fallback fix in `7b061d0`, and the repository now keeps an exact permanent fixture at `fixtures/student-work/sign-error-equals-regression.jpeg`. The input pipeline auto-orients and crops single-question work around line-aware ink, retains a full-frame fallback, and the diagnosis policy flags an implausible variable-bearing final fragment instead of accepting a confident guess. `npm run verify:images` keeps that regression reproducible.
 
@@ -291,7 +302,7 @@ Codex also diagnosed a full-page persistence contract failure: spreading the com
 
 The verification suite was built adversarially around failure modes, not only happy paths: faint ink, handwritten equals signs, implausible steps, PDF signatures, oversized or unsafe intake, stale runs, evidence grounding, cross-domain labels, confidence thresholds, strict persistence, legacy flat migrations, all-six-exercise extraction, ambiguous label matching, no-key routes, cache reuse, A4 page fragmentation, and Prediction Lab invalidation. `npm run check` runs every `verify:*` script plus lint, typecheck, and a production build.
 
-GPT-5.6 powers every live model call and no other model is used. Every call has a strict root-object Structured Output: teacher-source vision extraction; full-page exercise/question segmentation; single and booklet diagnosis; Student Model synthesis and revision suggestions; five-question discrepant-event practice; Teach This Tomorrow briefs; and three-kind held-out predictions. Printed teacher sources use low image detail and low reasoning effort; handwritten diagnosis uses high detail and medium effort. Identical extraction hashes and persisted submission diagnoses are reused before another call is considered, while `/status` makes per-run token counts and cache hits visible.
+GPT-5.6 powers every live model call and no other model is used. Every call has a strict root-object Structured Output: teacher-source vision extraction with optional printed points; full-page exercise/question segmentation; single and booklet diagnosis; per-question grading proposals; Student Model synthesis and revision suggestions; five-question discrepant-event practice; Teach This Tomorrow briefs; mistake-targeted follow-up evaluations; and three-kind held-out predictions. Printed teacher sources use low image detail and low reasoning effort; handwritten diagnosis and grounded grading proposals use medium reasoning effort. Identical extraction hashes and persisted submission diagnoses are reused before another call is considered, while `/status` makes per-run token counts and cache hits visible.
 
 > **TODO (author):** Add one short paragraph in your own voice distinguishing the moments where you rejected or redirected Codex’s proposal, and include the final `/feedback` Session ID.
 

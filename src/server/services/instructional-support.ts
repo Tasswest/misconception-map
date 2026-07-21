@@ -2,10 +2,20 @@ import "server-only";
 
 import { misconceptionIdSchema } from "@/domain/misconception-taxonomy.mjs";
 import {
+  followUpEvaluationInputHash,
+  generateFollowUpEvaluation,
   generatePracticeWorksheet,
   generateTeachingBrief,
+  InstructionalGenerationError,
   synthesizeStudentModel,
 } from "@/server/openai/generate-instructional-support";
+import {
+  findFollowUpEvaluationIdByInputHash,
+  getFollowUpGenerationContext,
+  getPrintableFollowUpEvaluation,
+  persistFollowUpEvaluation,
+  type FollowUpGenerationContext,
+} from "@/server/repositories/follow-up-evaluation";
 import {
   findReusableStudentModel,
   getLargestClusterContext,
@@ -93,6 +103,74 @@ export async function generatePracticeForStudent(input: {
     throw new Error("The saved worksheet could not be reloaded.");
   }
   return worksheet;
+}
+
+type FollowUpQuestions = Awaited<
+  ReturnType<typeof generateFollowUpEvaluation>
+>["result"]["exercises"][number]["questions"];
+
+function assertFollowUpCoverage(
+  context: FollowUpGenerationContext,
+  questions: FollowUpQuestions,
+) {
+  const invalid = () =>
+    new InstructionalGenerationError(
+      "OPENAI_OUTPUT_INVALID",
+      "follow-up evaluation",
+    );
+  const suppliedIds = new Set<string>(
+    context.payload.mistakes.misconceptions.map(
+      (misconception) => misconception.misconceptionId,
+    ),
+  );
+  const targetedIds = new Set<string>();
+  for (const question of questions) {
+    if (question.targetMisconceptionId !== null) {
+      if (!suppliedIds.has(question.targetMisconceptionId)) throw invalid();
+      targetedIds.add(question.targetMisconceptionId);
+    }
+  }
+  for (const suppliedId of suppliedIds) {
+    if (!targetedIds.has(suppliedId)) throw invalid();
+  }
+  if (
+    context.payload.mistakes.slips.length > 0 &&
+    !questions.some((question) => question.targetKind === "SLIP")
+  ) {
+    throw invalid();
+  }
+  if (
+    context.payload.mistakes.uncertainItems.length > 0 &&
+    !questions.some((question) => question.targetKind === "UNCERTAIN_RETEST")
+  ) {
+    throw invalid();
+  }
+}
+
+export async function generateFollowUpEvaluationForAssignment(
+  assignmentId: string,
+) {
+  const context = getFollowUpGenerationContext(assignmentId);
+  const inputHash = followUpEvaluationInputHash(context.payload);
+  const existingId = findFollowUpEvaluationIdByInputHash(
+    context.assignment.id,
+    inputHash,
+  );
+  if (existingId) {
+    const existing = getPrintableFollowUpEvaluation(existingId);
+    if (existing) return { evaluation: existing, reused: true };
+  }
+  const run = await generateFollowUpEvaluation(context.payload);
+  assertFollowUpCoverage(
+    context,
+    run.result.exercises.flatMap((exercise) => exercise.questions),
+  );
+  const evaluationId = persistFollowUpEvaluation({ context, run });
+  const evaluation = getPrintableFollowUpEvaluation(evaluationId);
+  if (!evaluation) {
+    throw new Error("The saved follow-up evaluation could not be reloaded.");
+  }
+  return { evaluation, reused: false };
 }
 
 export async function generateBriefForLargestCluster(assignmentId: string) {

@@ -246,3 +246,97 @@ export const modelRevisionSuggestionSchema = z
       });
     }
   });
+
+export const FOLLOW_UP_EVALUATION_SCHEMA_VERSION = "1.0.0";
+
+const followUpQuestionSchema = z
+  .object({
+    position: z.number().int().min(1).max(8),
+    questionLabel: z.string().trim().min(1).max(40),
+    prompt: z.string().trim().min(1).max(2_000),
+    answerFormat: z.enum([
+      "EXPRESSION",
+      "NUMBER",
+      "FRACTION",
+      "MULTIPLE_CHOICE",
+      "SHORT_TEXT",
+    ]),
+    expectedAnswer: z.string().trim().min(1).max(1_000),
+    points: z.number().min(0.25).max(20),
+    targetKind: z.enum(["MISCONCEPTION", "SLIP", "UNCERTAIN_RETEST"]),
+    targetMisconceptionId: z.string().trim().min(1).max(80).nullable(),
+    sourceQuestionReference: z.string().trim().min(1).max(80),
+    whyThisQuestion: z.string().trim().min(1).max(700),
+  })
+  .strict();
+
+export const followUpEvaluationOutputSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    overview: z.string().trim().min(40).max(1_400),
+    exercises: z
+      .array(
+        z
+          .object({
+            position: z.number().int().min(1).max(10),
+            exerciseLabel: z.string().trim().min(1).max(200),
+            sharedContext: z.string().trim().min(1).max(2_000).nullable(),
+            questions: z.array(followUpQuestionSchema).min(1).max(8),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(10),
+  })
+  .strict()
+  .superRefine((evaluation, context) => {
+    const exercisePositions = new Set();
+    const prompts = new Set();
+    evaluation.exercises.forEach((exercise, exerciseIndex) => {
+      if (exercisePositions.has(exercise.position)) {
+        context.addIssue({
+          code: "custom",
+          message: "Exercise positions must be distinct.",
+          path: ["exercises", exerciseIndex, "position"],
+        });
+      }
+      exercisePositions.add(exercise.position);
+      const questionPositions = new Set();
+      exercise.questions.forEach((question, questionIndex) => {
+        if (questionPositions.has(question.position)) {
+          context.addIssue({
+            code: "custom",
+            message: "Question positions must be distinct within an exercise.",
+            path: ["exercises", exerciseIndex, "questions", questionIndex, "position"],
+          });
+        }
+        questionPositions.add(question.position);
+        if (
+          (question.targetKind === "MISCONCEPTION") !==
+          (question.targetMisconceptionId !== null)
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "Exactly the misconception retests must name a taxonomy misconception.",
+            path: [
+              "exercises",
+              exerciseIndex,
+              "questions",
+              questionIndex,
+              "targetMisconceptionId",
+            ],
+          });
+        }
+        const prompt = canonicalizeMathAnswer(question.prompt);
+        if (prompts.has(prompt)) {
+          context.addIssue({
+            code: "custom",
+            message: "Every follow-up question must be structurally distinct.",
+            path: ["exercises", exerciseIndex, "questions", questionIndex, "prompt"],
+          });
+        }
+        prompts.add(prompt);
+      });
+    });
+  });

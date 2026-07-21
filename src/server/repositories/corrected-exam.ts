@@ -6,6 +6,7 @@ import { MISCONCEPTION_BY_ID, misconceptionIdSchema } from "@/domain/misconcepti
 import { exerciseQuestionReference, shortExerciseLabel } from "@/domain/exam-labels";
 import { normalizeProblemRegion } from "@/domain/problem-region.mjs";
 import { getDatabase } from "@/lib/db";
+import { getGradeProposal } from "@/server/repositories/grading-proposals";
 
 const idSchema = z.string().uuid();
 
@@ -70,7 +71,7 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
   const items = database
     .prepare(
       [
-        "SELECT item.id AS assignment_item_id, item.position, item.question_label, item.in_taxonomy_scope, problem.prompt, problem.correct_answer,",
+        "SELECT item.id AS assignment_item_id, item.position, item.points, item.question_label, item.in_taxonomy_scope, problem.prompt, problem.correct_answer,",
         "exercise.id AS exercise_id, exercise.position AS exercise_position, exercise.exercise_label, exercise.shared_context",
         "FROM assignment_items AS item",
         "JOIN problems AS problem ON problem.id = item.problem_id AND problem.class_id = item.class_id",
@@ -81,6 +82,7 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
     .all(assignmentId, header.class_id) as Array<{
     assignment_item_id: string;
     position: number;
+    points: number;
     question_label: string;
     prompt: string;
     correct_answer: string;
@@ -176,6 +178,10 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
     steps.push(step);
     stepsByDiagnosis.set(step.diagnosis_id, steps);
   }
+  const gradeProposal = getGradeProposal(assignmentId, membershipId);
+  const gradingByItem = new Map(
+    gradeProposal?.items.map((item) => [item.assignmentItemId, item]) ?? [],
+  );
 
   const correctedItems = items.map((item) => {
     const diagnosis = latestByItem.get(item.assignment_item_id) ?? null;
@@ -196,10 +202,12 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
         item.exercise_label,
         item.question_label,
       ),
+      points: item.points,
       sharedContext: item.shared_context,
       problemPrompt: item.prompt,
       correctAnswer: item.correct_answer,
       inTaxonomyScope: item.in_taxonomy_scope === 1,
+      grading: gradingByItem.get(item.assignment_item_id) ?? null,
       diagnosis: diagnosis
         ? {
             id: diagnosis.diagnosis_id,
@@ -268,6 +276,7 @@ export function getCorrectedExam(assignmentId: string, membershipId: string) {
     generatedAt: new Date().toISOString(),
     diagnosedProblemCount: latestByItem.size,
     totalProblemCount: items.length,
+    gradeProposal,
     sourcePages: selectedSourcePages.map((source, index) => ({
       submissionId: source.submission_id,
       assignmentItemId: source.assignment_item_id,

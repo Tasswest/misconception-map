@@ -126,6 +126,17 @@ function id(number) {
 function ensureDemoGradebook(database) {
   database
     .prepare(
+      "UPDATE assignment_items SET points = CASE assignment_id WHEN ? THEN 2.5 WHEN ? THEN 4 ELSE points END WHERE class_id = ? AND assignment_id IN (?, ?)",
+    )
+    .run(
+      DEMO_BASELINE_ASSIGNMENT_ID,
+      DEMO_FOLLOWUP_ASSIGNMENT_ID,
+      DEMO_CLASS_ID,
+      DEMO_BASELINE_ASSIGNMENT_ID,
+      DEMO_FOLLOWUP_ASSIGNMENT_ID,
+    );
+  database
+    .prepare(
       "UPDATE classes SET school_name = ?, updated_at = ? WHERE id = ? AND school_name IS NULL",
     )
     .run(
@@ -186,6 +197,197 @@ function ensureDemoGradebook(database) {
         timestamp,
         timestamp,
       );
+    }
+  }
+  ensureDemoGradingProposals(database);
+}
+
+/** @param {Database} database */
+function ensureDemoGradingProposals(database) {
+  const existingCount = database
+    .prepare(
+      "SELECT count(*) FROM exam_grade_proposals WHERE assignment_id = ? AND membership_id IN (?, ?)",
+    )
+    .pluck()
+    .get(DEMO_FOLLOWUP_ASSIGNMENT_ID, id(2016), id(2020));
+  if (existingCount === 2) return;
+
+  const questionRows = database
+    .prepare(
+      [
+        "SELECT item.id AS assignment_item_id, item.position, item.points, item.question_label,",
+        "exercise.position AS exercise_position, diagnosis.id AS diagnosis_id,",
+        "COALESCE(diagnosis.correction_verdict, diagnosis.outcome) AS outcome,",
+        "diagnosis.evidence_quote",
+        "FROM assignment_items AS item",
+        "JOIN exercises AS exercise ON exercise.id = item.exercise_id",
+        "JOIN submissions AS submission ON submission.assignment_item_id = item.id AND submission.membership_id = ?",
+        "JOIN submission_answers AS answer ON answer.submission_id = submission.id",
+        "JOIN answer_versions AS answer_version ON answer_version.submission_answer_id = answer.id",
+        "JOIN diagnoses AS diagnosis ON diagnosis.answer_version_id = answer_version.id",
+        "WHERE item.assignment_id = ? ORDER BY item.position",
+      ].join(" "),
+    );
+  const insertProposal = database.prepare(
+    [
+      "INSERT INTO exam_grade_proposals",
+      "(id, class_id, assignment_id, membership_id, version, status, model_name, prompt_version, schema_version,",
+      "input_hash, output_hash, proposed_total, max_score, incomplete, manual_item_count, latency_ms, created_at, validated_at)",
+      "VALUES (?, ?, ?, ?, 1, ?, 'gpt-5.6', 'demo-grading-v1', '1.0.0', ?, ?, ?, 20, ?, ?, 0, ?, ?)",
+    ].join(" "),
+  );
+  const insertItem = database.prepare(
+    [
+      "INSERT INTO exam_grade_proposal_items",
+      "(id, proposal_id, assignment_item_id, diagnosis_id, position, question_reference, max_points, proposed_score, final_score,",
+      "credit_basis, evidence_quote, justification, manual_reason, created_at, validated_at)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ].join(" "),
+  );
+  const insertAudit = database.prepare(
+    [
+      "INSERT INTO exam_grade_validation_audit",
+      "(id, proposal_id, assignment_item_id, ai_proposed_score, teacher_final_score, max_points, validated_at)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ].join(" "),
+  );
+
+  for (const fixture of [
+    {
+      membershipId: id(2016),
+      proposalId: id(93_016),
+      status: "VALIDATED",
+      timestamp: "2026-01-23T09:16:00.000Z",
+      teacherTotal: 12,
+    },
+    {
+      membershipId: id(2020),
+      proposalId: id(93_020),
+      status: "PROPOSED",
+      timestamp: "2026-01-23T09:17:00.000Z",
+      teacherTotal: null,
+    },
+  ]) {
+    if (
+      database
+        .prepare("SELECT 1 FROM exam_grade_proposals WHERE id = ?")
+        .get(fixture.proposalId)
+    ) {
+      continue;
+    }
+    const rows = questionRows.all(
+      fixture.membershipId,
+      DEMO_FOLLOWUP_ASSIGNMENT_ID,
+    );
+    const proposedItems = rows.map((row) => {
+      if (row.outcome === "NEEDS_REVIEW") {
+        return {
+          ...row,
+          proposedScore: null,
+          creditBasis: "MANUAL_REQUIRED",
+          evidenceQuote: null,
+          justification: null,
+          manualReason: "NEEDS_REVIEW",
+        };
+      }
+      if (row.outcome === "CORRECT") {
+        return {
+          ...row,
+          proposedScore: row.points,
+          creditBasis: "FULL_CORRECT_REASONING",
+          evidenceQuote: row.evidence_quote,
+          justification:
+            "Le raisonnement visible aboutit à la réponse attendue ; tous les points sont proposés.",
+          manualReason: null,
+        };
+      }
+      return {
+        ...row,
+        proposedScore: row.points / 2,
+        creditBasis: "PARTIAL_CORRECT_PREFIX",
+        evidenceQuote: row.evidence_quote,
+        justification:
+          "La mise en place de l’expression est correcte avant l’erreur de signe ; cette étape correcte justifie un crédit partiel.",
+        manualReason: null,
+      };
+    });
+    const proposedTotal = proposedItems.reduce(
+      (sum, item) => sum + (item.proposedScore ?? 0),
+      0,
+    );
+    const manualItemCount = proposedItems.filter(
+      (item) => item.proposedScore === null,
+    ).length;
+    const inputHash = createHash("sha256")
+      .update(`demo-grade-input:${fixture.membershipId}`)
+      .digest("hex");
+    const outputHash = createHash("sha256")
+      .update(JSON.stringify(proposedItems))
+      .digest("hex");
+    insertProposal.run(
+      fixture.proposalId,
+      DEMO_CLASS_ID,
+      DEMO_FOLLOWUP_ASSIGNMENT_ID,
+      fixture.membershipId,
+      fixture.status,
+      inputHash,
+      outputHash,
+      proposedTotal,
+      manualItemCount > 0 ? 1 : 0,
+      manualItemCount,
+      fixture.timestamp,
+      fixture.status === "VALIDATED" ? fixture.timestamp : null,
+    );
+
+    let remainingTeacherPoints = fixture.teacherTotal;
+    proposedItems.forEach((item, index) => {
+      const finalScore =
+        remainingTeacherPoints === null
+          ? null
+          : Math.min(item.points, remainingTeacherPoints);
+      if (remainingTeacherPoints !== null) {
+        remainingTeacherPoints -= finalScore ?? 0;
+      }
+      const questionReference = `Ex. ${item.exercise_position} · Q${item.question_label}`;
+      insertItem.run(
+        id(94_000 + (fixture.membershipId === id(2016) ? 0 : 100) + index + 1),
+        fixture.proposalId,
+        item.assignment_item_id,
+        item.diagnosis_id,
+        item.position,
+        questionReference,
+        item.points,
+        item.proposedScore,
+        finalScore,
+        item.creditBasis,
+        item.evidenceQuote,
+        item.justification,
+        item.manualReason,
+        fixture.timestamp,
+        finalScore === null ? null : fixture.timestamp,
+      );
+      if (finalScore !== null) {
+        insertAudit.run(
+          id(95_000 + index + 1),
+          fixture.proposalId,
+          item.assignment_item_id,
+          item.proposedScore,
+          finalScore,
+          item.points,
+          fixture.timestamp,
+        );
+      }
+    });
+    if (fixture.status === "VALIDATED") {
+      database
+        .prepare(
+          "UPDATE exam_grades SET validated_proposal_id = ? WHERE assignment_id = ? AND membership_id = ?",
+        )
+        .run(
+          fixture.proposalId,
+          DEMO_FOLLOWUP_ASSIGNMENT_ID,
+          fixture.membershipId,
+        );
     }
   }
 }

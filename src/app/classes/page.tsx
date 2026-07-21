@@ -50,7 +50,7 @@ export default function ClassesPage() {
                   {monogram(classroom.name)}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-lg font-semibold tracking-[-0.02em] text-[var(--ink)]">
+                  <span className="line-clamp-2 block text-lg font-semibold leading-6 tracking-[-0.02em] text-[var(--ink)]">
                     {classroom.name}
                   </span>
                   <span className="mt-0.5 block truncate text-sm font-medium text-[var(--sage)]">

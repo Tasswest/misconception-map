@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-export const WORKSHEET_EXTRACTION_SCHEMA_VERSION = "2.2.0";
+export const WORKSHEET_EXTRACTION_SCHEMA_VERSION = "2.3.0";
+
+export const worksheetPointsSchema = z.number().finite().gt(0).max(1_000);
 
 export const worksheetAnswerKindSchema = z.enum([
   "EXPRESSION",
@@ -15,6 +17,7 @@ export const worksheetQuestionSchema = z
     questionLabel: z.string().trim().min(1).max(120),
     problemStatement: z.string().trim().min(1).max(4_000),
     expectedAnswer: z.string().trim().min(1).max(1_000),
+    printedPoints: worksheetPointsSchema.nullable(),
     answerKind: worksheetAnswerKindSchema,
     domain: z.enum(["ALGEBRA", "FRACTIONS"]).nullable(),
     inTaxonomyScope: z.boolean(),
@@ -29,6 +32,19 @@ export const worksheetExerciseSchema = z
     exerciseLabel: z.string().trim().min(1).max(200),
     sharedContext: z.string().trim().min(1).max(8_000).nullable(),
     questions: z.array(worksheetQuestionSchema).min(1).max(30),
+  })
+  .strict();
+
+export const confirmedWorksheetQuestionSchema = worksheetQuestionSchema
+  .extend({
+    points: worksheetPointsSchema,
+  })
+  .strict();
+
+export const confirmedWorksheetExerciseSchema = worksheetExerciseSchema
+  .omit({ questions: true })
+  .extend({
+    questions: z.array(confirmedWorksheetQuestionSchema).min(1).max(30),
   })
   .strict();
 

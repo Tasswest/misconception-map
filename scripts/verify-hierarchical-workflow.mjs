@@ -34,7 +34,7 @@ const tempDirectory = fs.mkdtempSync(
 );
 
 function verifyStructuredOutputs() {
-  assert.equal(WORKSHEET_EXTRACTION_SCHEMA_VERSION, "2.2.0");
+  assert.equal(WORKSHEET_EXTRACTION_SCHEMA_VERSION, "2.3.0");
   assert.equal(STUDENT_PAGE_DIAGNOSIS_SCHEMA_VERSION, "2.1.0");
   assert.equal(shortExerciseLabel("Exercice n° 2 — Transport"), "Ex. 2");
   assert.equal(shortExerciseLabel("Exercice no 2 — Transport"), "Ex. 2");
@@ -53,6 +53,7 @@ function verifyStructuredOutputs() {
         questions: [
           {
             questionLabel: "1.1",
+            printedPoints: 4,
             problemStatement:
               "Lina shares three quarters of a cake equally between 2 people. What fraction of the whole cake does each person receive?",
             expectedAnswer: "3/8",
@@ -71,6 +72,7 @@ function verifyStructuredOutputs() {
         questions: [
           {
             questionLabel: "7.3",
+            printedPoints: null,
             problemStatement: "Résoudre 2x + 5 = 17.",
             expectedAnswer: "x = 6",
             answerKind: "EXPRESSION",
@@ -88,6 +90,7 @@ function verifyStructuredOutputs() {
         questions: [
           {
             questionLabel: "8.1",
+            printedPoints: null,
             problemStatement:
               "ABC est un triangle rectangle en A, avec AB = 3 cm et AC = 4 cm. Calculer BC.",
             expectedAnswer: "5 cm",

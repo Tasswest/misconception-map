@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { AnalyticsTabs } from "@/components/analytics/analytics-navigation";
 import { AssignmentStepper } from "@/components/assignment-stepper";
+import { CorrectedCopyGrading } from "@/components/gradebook/corrected-copy-grading";
 import { PrintButton } from "@/components/practice/print-button";
 import { isOpenAIConfigured } from "@/lib/config";
 import {
@@ -200,6 +201,12 @@ export default async function CorrectedExamPage({
             </div>
           </nav>
 
+          <CorrectedCopyGrading
+            assignmentId={exam.assignmentId}
+            initialProposal={exam.gradeProposal}
+            membershipId={exam.membershipId}
+          />
+
           {exam.sourcePages.length > 0 ? (
             <div className="corrected-copy-sources mt-6 space-y-6">
               {exam.sourcePages.map((source) => (
@@ -393,12 +400,17 @@ function CorrectedQuestion({
           {item.questionReference}
         </span>
         <div className="min-w-0 flex-1">
-          <p
-            className="corrected-copy-problem-heading whitespace-pre-wrap font-mono text-sm font-semibold leading-6"
-            data-question-reference={item.questionReference}
-          >
-            {item.problemPrompt}
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <p
+              className="corrected-copy-problem-heading whitespace-pre-wrap font-mono text-sm font-semibold leading-6"
+              data-question-reference={item.questionReference}
+            >
+              {item.problemPrompt}
+            </p>
+            <span className="shrink-0 rounded-full bg-[var(--canvas)] px-2.5 py-1 text-[10px] font-bold tabular-nums text-[var(--sage)]">
+              {item.points} {item.points === 1 ? "point" : "points"}
+            </span>
+          </div>
           {!diagnosis ? (
             <div className="mt-3 rounded-xl border border-[var(--amber)]/45 bg-[var(--amber)]/12 px-3 py-2 text-xs leading-5 text-[#70501f]">
               <span className="font-semibold">
@@ -520,6 +532,55 @@ function CorrectedQuestion({
               </ol>
             </>
           )}
+
+          {item.grading ? (
+            <div
+              className={`mt-4 rounded-xl border px-3 py-3 text-xs leading-5 ${
+                item.grading.manualReason
+                  ? "border-[var(--amber)]/45 bg-[var(--amber)]/10 text-[#70501f]"
+                  : "border-[var(--sage)]/20 bg-[var(--soft-mint)]/55"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-semibold">
+                  {item.grading.manualReason
+                    ? french
+                      ? "Notation manuelle requise"
+                      : "Manual scoring required"
+                    : french
+                      ? "Proposition de points de l’IA"
+                      : "AI points proposal"}
+                </p>
+                <p className="font-bold tabular-nums">
+                  {item.grading.proposedScore === null
+                    ? `—/${item.grading.maxPoints}`
+                    : `${item.grading.proposedScore}/${item.grading.maxPoints}`}
+                  {item.grading.finalScore !== null ? (
+                    <span className="ml-2 rounded-full bg-white px-2 py-1 text-[10px] text-[var(--sage)]">
+                      {french ? "Validé" : "Validated"}: {item.grading.finalScore}/{item.grading.maxPoints}
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+              {item.grading.evidenceQuote ? (
+                <p className="mt-2">
+                  <span className="font-semibold">
+                    {french ? "Preuve citée : " : "Cited work: "}
+                  </span>
+                  “{item.grading.evidenceQuote}”
+                </p>
+              ) : null}
+              {item.grading.justification ? (
+                <p className="mt-1">{item.grading.justification}</p>
+              ) : (
+                <p className="mt-1">
+                  {french
+                    ? "L’IA s’est abstenue : l’enseignant doit attribuer les points avant de valider la note."
+                    : "The AI abstained: the teacher must assign points before validating the grade."}
+                </p>
+              )}
+            </div>
+          ) : null}
 
           <div className="mt-4 rounded-xl border border-[var(--sage)]/15 bg-[var(--soft-mint)] px-3 py-2 text-xs leading-5">
             <span className="font-semibold">

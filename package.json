@@ -9,7 +9,7 @@
     "start": "node scripts/start.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck && npm run verify:privacy && npm run verify:phase1 && npm run verify:hierarchy && npm run verify:phase2 && npm run verify:images && npm run verify:pdf && npm run verify:phase4 && npm run verify:diagnosis-contracts && npm run verify:accountability && npm run verify:universal-correction && npm run verify:full-page-timeout && npm run verify:navigation && npm run verify:representation && npm run verify:error-inventory && npm run verify:readiness && npm run build",
+    "check": "npm run lint && npm run typecheck && npm run verify:privacy && npm run verify:phase1 && npm run verify:hierarchy && npm run verify:phase2 && npm run verify:images && npm run verify:pdf && npm run verify:phase4 && npm run verify:diagnosis-contracts && npm run verify:accountability && npm run verify:universal-correction && npm run verify:full-page-timeout && npm run verify:navigation && npm run verify:representation && npm run verify:error-inventory && npm run verify:ai-grading && npm run verify:follow-up && npm run verify:readiness && npm run build",
     "db:migrate": "node scripts/migrate.mjs",
     "seed": "npm run db:migrate && node scripts/seed.mjs",
     "sample-work": "node scripts/generate-sample-work.mjs",
@@ -29,7 +29,9 @@
     "verify:representation": "node scripts/verify-representation-clarity.mjs",
     "verify:error-inventory": "node scripts/verify-error-inventory.mjs",
     "verify:readiness": "node scripts/verify-submission-readiness.mjs",
-    "verify:privacy": "node scripts/verify-privacy.mjs"
+    "verify:privacy": "node scripts/verify-privacy.mjs",
+    "verify:ai-grading": "node scripts/verify-ai-grading.mjs",
+    "verify:follow-up": "node scripts/verify-follow-up-evaluation.mjs"
   },
   "engines": {
     "node": ">=20.9.0"

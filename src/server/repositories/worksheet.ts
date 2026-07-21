@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import {
+  confirmedWorksheetExerciseSchema,
   worksheetExtractionAIOutputSchema,
   worksheetExerciseSchema,
   type WorksheetExtraction,
@@ -24,6 +25,10 @@ function parseStoredExercises(rawJson: string) {
           const questionRecord = question as Record<string, unknown>;
           return {
             ...questionRecord,
+            printedPoints:
+              typeof questionRecord.printedPoints === "number"
+                ? questionRecord.printedPoints
+                : null,
             inTaxonomyScope:
               typeof questionRecord.inTaxonomyScope === "boolean"
                 ? questionRecord.inTaxonomyScope
@@ -39,7 +44,7 @@ function parseStoredExercises(rawJson: string) {
 
 export const confirmWorksheetInputSchema = z
   .object({
-    exercises: z.array(worksheetExerciseSchema).min(1).max(30),
+    exercises: z.array(confirmedWorksheetExerciseSchema).min(1).max(30),
   })
   .strict()
   .superRefine((input, context) => {
@@ -129,7 +134,15 @@ export function getDraftWorksheetSetup(assignmentId: string) {
           assignmentId: assignment.id,
           overallConfidence: extraction.overall_confidence,
           needsReview: extraction.status === "NEEDS_REVIEW",
-          exercises: parseStoredExercises(extraction.exercises_json),
+          exercises: parseStoredExercises(extraction.exercises_json).map(
+            (exercise) => ({
+              ...exercise,
+              questions: exercise.questions.map((question) => ({
+                ...question,
+                points: question.printedPoints ?? 1,
+              })),
+            }),
+          ),
         }
       : null,
   };
@@ -429,6 +442,7 @@ export function confirmWorksheetExtraction(
     prompt: string;
     correctAnswer: string;
     answerFormat: string;
+    points: number;
     inTaxonomyScope: boolean;
   }> = [];
 
@@ -501,7 +515,7 @@ export function confirmWorksheetExtraction(
             [
               "INSERT INTO assignment_items",
               "(id, class_id, assignment_id, problem_id, position, points, is_required, exercise_id, question_label, in_taxonomy_scope)",
-              "VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?)",
+              "VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
             ].join(" "),
           )
           .run(
@@ -510,6 +524,7 @@ export function confirmWorksheetExtraction(
             assignment.id,
             problemId,
             itemPosition,
+            question.points,
             exerciseId,
             question.questionLabel,
             inTaxonomyScope ? 1 : 0,
@@ -524,6 +539,7 @@ export function confirmWorksheetExtraction(
           prompt: question.problemStatement,
           correctAnswer: question.expectedAnswer,
           answerFormat: question.answerKind,
+          points: question.points,
           inTaxonomyScope,
         });
       }
